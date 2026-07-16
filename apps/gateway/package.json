@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "next dev -p 3100",
+    "prebuild": "npx prisma generate --schema=../../packages/core/prisma/schema.prisma",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
