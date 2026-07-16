@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server";
 import type { SessionPayload } from "@praxis/core";
 
-const ROLES_PODEM_GERENCIAR_USUARIOS = ["MASTER", "GERENTE"];
+// MASTER/GERENTE gerenciam qualquer cadastro central do tenant — hoje
+// Usuários e UHs, ambos válidos em todos os módulos (Governança, Manutenção,
+// Avaliações). Um guard genérico só, em vez de um por cadastro.
+const ROLES_PODEM_GERENCIAR_CADASTROS = ["MASTER", "GERENTE"];
 
-export function podeGerenciarUsuarios(role: string | undefined | null): boolean {
-  return !!role && ROLES_PODEM_GERENCIAR_USUARIOS.includes(role);
+export function podeGerenciarCadastros(role: string | undefined | null): boolean {
+  return !!role && ROLES_PODEM_GERENCIAR_CADASTROS.includes(role);
 }
 
-/** Retorna 403 se a sessão não puder gerenciar usuários (ou não existir). */
-export function bloqueadoParaGerenciarUsuarios(session: SessionPayload | null) {
-  if (!session || !podeGerenciarUsuarios(session.role)) {
-    return NextResponse.json({ error: "Seu perfil não pode gerenciar usuários." }, { status: 403 });
+/** @deprecated use podeGerenciarCadastros — mantido pelo nome já usado em Usuários. */
+export const podeGerenciarUsuarios = podeGerenciarCadastros;
+
+/** Retorna 403 se a sessão não puder gerenciar cadastros centrais (ou não existir). */
+export function bloqueadoParaGerenciarCadastros(session: SessionPayload | null) {
+  if (!session || !podeGerenciarCadastros(session.role)) {
+    return NextResponse.json({ error: "Seu perfil não pode gerenciar este cadastro." }, { status: 403 });
   }
   return null;
 }
+
+/** @deprecated use bloqueadoParaGerenciarCadastros — mantido pelo nome já usado em Usuários. */
+export const bloqueadoParaGerenciarUsuarios = bloqueadoParaGerenciarCadastros;

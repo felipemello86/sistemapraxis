@@ -3,9 +3,13 @@ import { useState, useEffect } from "react";
 import { Plus, Pencil, Check, X, Trash2, ArrowUpDown } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
-// Portado de apps/housekeeping/src/app/configuracoes/tabs/UHsTab.tsx (v1).
-// fetch(...) → apiFetch(...); resto idêntico. API /api/uhs já existia
-// portada em v2 com o mesmo contrato.
+// ÓRFÃO — não é mais importado por ConfiguracoesClient.tsx. O cadastro de
+// UHs (criar/editar/desativar) mudou pro gateway (mesma decisão já tomada
+// pra usuários — ver RedirectTab em ConfiguracoesClient.tsx), então
+// /api/uhs aqui no housekeeping virou GET-only e os POST/PUT/DELETE que
+// este componente chama abaixo não existem mais (405). Mantido no repo só
+// por convenção (mesmo padrão do UsuariosTab.tsx órfão da v1), não deletado
+// por limitação do ambiente de execução do agente.
 
 type UH = { id: string; numero: string; tipo: string; status: string; ordem: number; ativo: boolean };
 

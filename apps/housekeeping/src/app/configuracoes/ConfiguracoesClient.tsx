@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Settings, Users, Hotel, ClipboardList, ShieldCheck, ExternalLink } from "lucide-react";
-import UHsTab from "./tabs/UHsTab";
 import ProgramasTab from "./tabs/ProgramasTab";
 import GeralTab from "./tabs/GeralTab";
 import InspecaoTab from "./tabs/InspecaoTab";
@@ -15,8 +14,12 @@ import InspecaoTab from "./tabs/InspecaoTab";
 //   - Aba "Telegram" (bot/contatos) não foi portada — depende de infra de
 //     bot que ainda não existe em v2 (mesmo escopo deferido das notificações
 //     em geral, ver TODOs nas rotas de API).
-//   - Aba "Usuários" continua só como redirect pro hub (mesma decisão da v1:
-//     cadastro único vive em apps/gateway/src/app/[cliente]/configuracoes/usuarios).
+//   - Abas "Usuários" e "UHs" viraram redirect pro hub (cadastro único,
+//     válido pra Governança, Manutenção e Avaliações — ver
+//     apps/gateway/src/app/[cliente]/configuracoes/usuarios/ e /uhs/). UHs
+//     era CRUD local até esta fatia; passou a redirect pra evitar a mesma
+//     duplicação de cadastro que a v1 tinha com usuários (id local vs
+//     suite_core, causava bugs de FK).
 
 const ALL_TABS = [
   { id: "geral",     label: "Geral",                  icon: Settings },
@@ -26,25 +29,22 @@ const ALL_TABS = [
   { id: "inspecao",  label: "Checklist de Inspeção",   icon: ShieldCheck },
 ];
 
-function UsuariosRedirectTab() {
+function RedirectTab({ titulo, descricao, path }: { titulo: string; descricao: string; path: string }) {
   // Extrai o slug do tenant da própria URL do navegador (ex:
   // "/bnbflex/governance/configuracoes" -> "bnbflex") — a sessão v2 até tem
   // tenantSlug, mas usar a URL direto evita precisar passar mais uma prop
   // só pra isso.
   const slug = typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "";
-  const href = slug ? `/${slug}/configuracoes/usuarios` : "/";
+  const href = slug ? `/${slug}/${path}` : "/";
 
   return (
     <div className="max-w-md">
       <div className="card">
-        <h3 className="font-semibold mb-2">Gestão de usuários mudou de lugar</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Cadastrar, editar cargo e liberar acesso por módulo agora é feito em um lugar só, no hub —
-          válido para Governança, Manutenção e Avaliações.
-        </p>
+        <h3 className="font-semibold mb-2">{titulo}</h3>
+        <p className="text-sm text-gray-500 mb-4">{descricao}</p>
         <a href={href} className="btn-primary inline-flex items-center gap-2">
           <ExternalLink className="w-4 h-4" />
-          Ir para Usuários no hub
+          Ir pro hub
         </a>
       </div>
     </div>
@@ -86,8 +86,20 @@ export default function ConfiguracoesClient({ role }: { role: string }) {
 
       {/* Content */}
       {tabAtiva === "geral" && <GeralTab somenteLeitura={somenteLeitura} />}
-      {tabAtiva === "uhs" && <UHsTab somenteLeitura={somenteLeitura} />}
-      {tabAtiva === "usuarios" && <UsuariosRedirectTab />}
+      {tabAtiva === "uhs" && (
+        <RedirectTab
+          titulo="Cadastro de UHs mudou de lugar"
+          descricao="Criar, editar e desativar UHs agora é feito em um lugar só, no hub — válido para Governança, Manutenção e Avaliações."
+          path="configuracoes/uhs"
+        />
+      )}
+      {tabAtiva === "usuarios" && (
+        <RedirectTab
+          titulo="Gestão de usuários mudou de lugar"
+          descricao="Cadastrar, editar cargo e liberar acesso por módulo agora é feito em um lugar só, no hub — válido para Governança, Manutenção e Avaliações."
+          path="configuracoes/usuarios"
+        />
+      )}
       {tabAtiva === "programas" && <ProgramasTab somenteLeitura={somenteLeitura} />}
       {tabAtiva === "inspecao" && <InspecaoTab somenteLeitura={somenteLeitura} />}
     </div>

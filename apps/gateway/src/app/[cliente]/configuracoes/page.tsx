@@ -80,7 +80,7 @@ export default async function ConfiguracoesHub({
             background: "#fff",
             borderRadius: 16,
             padding: 20,
-            marginBottom: 20,
+            marginBottom: 12,
             boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
             textDecoration: "none",
             color: "#1d1d1f",
@@ -88,6 +88,28 @@ export default async function ConfiguracoesHub({
         >
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>Usuários</h2>
+            <p style={{ margin: 0, color: "#6e6e73", fontSize: 13 }}>Cadastro único, válido em qualquer módulo</p>
+          </div>
+          <span style={{ color: "#0071e3", fontSize: 20 }}>›</span>
+        </a>
+
+        <a
+          href={`/${tenant.slug}/configuracoes/uhs`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: "#fff",
+            borderRadius: 16,
+            padding: 20,
+            marginBottom: 20,
+            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+            textDecoration: "none",
+            color: "#1d1d1f",
+          }}
+        >
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>Unidades (UHs)</h2>
             <p style={{ margin: 0, color: "#6e6e73", fontSize: 13 }}>Cadastro único, válido em qualquer módulo</p>
           </div>
           <span style={{ color: "#0071e3", fontSize: 20 }}>›</span>
