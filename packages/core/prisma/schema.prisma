@@ -38,6 +38,13 @@ model Tenant {
 
   modules TenantModule[]
   users   User[]
+
+  // Governança (Housekeeping)
+  hkConfig            HkConfig?
+  inspectionTemplates InspectionTemplate[]
+  uhs                 UH[]
+  cleaningPrograms    CleaningProgram[]
+  falhasLavanderia    FalhaLavanderia[]
 }
 
 enum SuiteModule {
@@ -79,6 +86,15 @@ model User {
 
   moduleAccess UserModuleAccess[]
 
+  // Relações do módulo Governança (Housekeeping) — na v1 esses campos
+  // apontavam pra um User LOCAL do app housekeeping (tabela duplicada,
+  // id diferente do suite_core). Aqui é o mesmo User de sempre, com FK de
+  // verdade — não tem mais espaço pra "local id vs suite_core id" divergir.
+  hkAssignments      DailyAssignment[]    @relation("HkCamareira")
+  hkCleaningSessions CleaningSession[]    @relation("HkCamareira")
+  hkInspections      InspectionSession[]  @relation("HkGovernanta")
+  hkPushTokens       PushToken[]
+
   // Constraint real — a v1 declarava isso no schema mas uma checagem
   // direta no Postgres de produção mostrou que ela nunca foi de fato
   // criada (schema drift), o que permitiu contas duplicadas silenciosas.
@@ -101,4 +117,242 @@ model UserModuleAccess {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, module])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GOVERNANÇA (Housekeeping) — domínio de negócio do primeiro módulo portado.
+//
+// Vindo de apps/housekeeping/prisma/schema.prisma (v1), adaptado: não existe
+// mais model Hotel nem model User locais — "Hotel" era 1:1 com Tenant (só
+// existia pra guardar um tenantId "solto", sem FK de verdade) e o User local
+// duplicava o cadastro do suite_core. Tudo aqui referencia Tenant.id e
+// User.id diretamente. hotelId virou tenantId, camareiraId/governantaId
+// continuam com esse nome (papel na operação), mas apontam pro User único.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model HkConfig {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  notificationTime String @default("08:00")
+  targetMinutes     Int    @default(25)
+  photoRequirements String @default("[\"cozinha\",\"cama\",\"toalhas\",\"banheiro\"]")
+}
+
+model InspectionTemplate {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  categoria String // CAMA | BANHEIRO | QUARTO | COZINHA | GERAL
+  item      String
+  ordem     Int
+  ativo     Boolean @default(true)
+}
+
+model PushToken {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token    String @unique
+  platform String // "ios" | "android"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model UH {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  numero String // ex: "101", "CHALÉ 3"
+  tipo   String  @default("Standard")
+  status String  @default("OCUPADO") // OCUPADO | DISPONIVEL | EM_LIMPEZA | AGUARDANDO_INSPECAO | PRONTO
+  ativo  Boolean @default(true)
+  ordem  Int     @default(0)
+
+  emManutencao            Boolean   @default(false)
+  manutencaoDescricao     String?
+  bloqueada               Boolean   @default(false)
+  bloqueioDescricao       String?
+  bloqueioSolicitanteNome String?
+  bloqueioEm              DateTime?
+
+  assignments      DailyAssignment[]
+  cleaningSessions CleaningSession[]
+  inspections      InspectionSession[]
+  selecoes         DailyUHSelection[]
+
+  @@unique([tenantId, numero])
+}
+
+model DailyUHSelection {
+  id              String    @id @default(cuid())
+  tenantId        String
+  data            String    // YYYY-MM-DD
+  uhId            String
+  uh              UH        @relation(fields: [uhId], references: [id], onDelete: Cascade)
+  liberada        Boolean   @default(false)
+  liberadaEm      DateTime?
+  liberadoPorNome String?
+  temReserva      Boolean   @default(false)
+
+  @@unique([data, uhId])
+}
+
+model CoberturaFolga {
+  id           String   @id @default(cuid())
+  tenantId     String
+  data         String   // YYYY-MM-DD (dia da folga)
+  governantaId String
+  substitutaId String
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, data])
+}
+
+model DailySelectionStatus {
+  id         String  @id @default(cuid())
+  tenantId   String
+  data       String
+  confirmado Boolean @default(false)
+
+  @@unique([tenantId, data])
+}
+
+model CleaningProgram {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome  String
+  tipo  String  @default("ARRUMACAO") // ARRUMACAO | LIMPEZA_COMPLETA
+  ativo Boolean @default(true)
+
+  steps       ProgramStep[]
+  assignments DailyAssignment[]
+}
+
+model ProgramStep {
+  id        String          @id @default(cuid())
+  programId String
+  program   CleaningProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  ordem     Int
+  titulo    String
+  descricao String?
+
+  sessionSteps SessionStep[]
+}
+
+model DailyAssignment {
+  id          String @id @default(cuid())
+  tenantId    String
+  data        String // YYYY-MM-DD
+  uhId        String
+  uh          UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+  camareiraId String
+  camareira   User   @relation("HkCamareira", fields: [camareiraId], references: [id], onDelete: Cascade)
+  programId   String?
+  program     CleaningProgram? @relation(fields: [programId], references: [id])
+
+  status              String    @default("PENDENTE") // PENDENTE | LIBERADO | EM_ANDAMENTO | CONCLUIDO | INSPECIONADO
+  liberadaEm          DateTime?
+  criadoPorNome       String?
+  observacoes         String?
+  solicitacaoMensagem String?
+  solicitacaoStatus   String? // null | PENDENTE | APROVADO | REJEITADO
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cleaningSession CleaningSession?
+
+  @@unique([data, uhId])
+}
+
+model CleaningSession {
+  id           String          @id @default(cuid())
+  assignmentId String          @unique
+  assignment   DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  uhId         String
+  uh           UH              @relation(fields: [uhId], references: [id], onDelete: Cascade)
+  camareiraId  String
+  camareira    User            @relation("HkCamareira", fields: [camareiraId], references: [id], onDelete: Cascade)
+
+  iniciadaEm      DateTime
+  finalizadaEm    DateTime?
+  duracaoSegundos Int?
+  fotos           String  @default("[]") // JSON array de URLs (Cloudinary)
+  observacoes     String?
+
+  comentarioCamareira    String?
+  excluidoDoScore        Boolean @default(false)
+  justificativaExclusao  String?
+
+  createdAt DateTime @default(now())
+
+  steps      SessionStep[]
+  inspection InspectionSession?
+}
+
+model SessionStep {
+  id              String          @id @default(cuid())
+  sessionId       String
+  session         CleaningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  stepId          String
+  step            ProgramStep     @relation(fields: [stepId], references: [id])
+  ordem           Int
+  iniciadoEm      DateTime
+  finalizadoEm    DateTime?
+  duracaoSegundos Int?
+}
+
+model InspectionSession {
+  id           String          @id @default(cuid())
+  sessionId    String          @unique
+  session      CleaningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  uhId         String
+  uh           UH              @relation(fields: [uhId], references: [id], onDelete: Cascade)
+  governantaId String
+  governanta   User            @relation("HkGovernanta", fields: [governantaId], references: [id], onDelete: Cascade)
+
+  iniciadaEm            DateTime
+  finalizadaEm          DateTime?
+  totalFalhas           Int     @default(0) // conta apenas falhas tipo CAMAREIRA
+  totalFalhasGerenciais Int     @default(0)
+  comentarioGovernanta  String?
+  observacoes           String?
+
+  createdAt DateTime @default(now())
+
+  itens InspectionItem[]
+}
+
+model InspectionItem {
+  id           String            @id @default(cuid())
+  inspectionId String
+  inspection   InspectionSession @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  categoria    String // CAMA | BANHEIRO | QUARTO | COZINHA | GERAL
+  item         String
+  ordem        Int
+  resultado    String  @default("OK") // OK | FALHA | NAO_APLICAVEL
+  tipoFalha    String  @default("CAMAREIRA") // CAMAREIRA | GERENCIAL
+  observacao   String?
+}
+
+model FalhaLavanderia {
+  id               String   @id @default(cuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  data             String   // YYYY-MM-DD
+  uhNumero         String
+  descricao        String
+  reportadoPorNome String
+  reportadoPorRole String // CAMAREIRA | GOVERNANTA
+  fotoUrl          String?
+  createdAt        DateTime @default(now())
 }
