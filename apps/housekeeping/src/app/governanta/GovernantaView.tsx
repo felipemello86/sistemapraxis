@@ -1,0 +1,575 @@
+"use client";
+import { useState, useEffect, useCallback } from "react";
+import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
+
+// Portado de apps/housekeeping/src/app/g/[token]/GovernantaView.tsx (v1),
+// mesclado com o resumo de apps/housekeeping/src/app/governanta/GovernantaAdmin.tsx.
+// Fica tudo numa tela só, acessada por sessão (/governance/governanta) em vez
+// do link público /g/[token] — mesma decisão de arquitetura da camareira
+// (ver mudança de fluxo conversada com o Felipe).
+//
+// Deliberadamente FORA desta fatia (ficam pra depois):
+//   - Fluxo de finalização do dia (ranking, exclusão de UH do score,
+//     confirmação, PDF) — depende de /api/finalizacao-dia, não portado.
+//   - Botões de reportar falha de lavanderia / solicitar bloqueio de UH
+//     dentro da tela de inspeção (a camareira já tem os dela em
+//     CamareiraView; a versão da governanta é replicação, não essencial
+//     pro loop operacional).
+//   - Configurar cobertura de folga (modal + link tokenizado pra substituta).
+
+type Sessao = {
+  id: string;
+  finalizadaEm: string;
+  duracaoSegundos: number;
+  uh: { numero: string; tipo: string };
+  camareira: { nome: string };
+  assignment: { data: string };
+  inspection: {
+    id: string;
+    finalizadaEm: string | null;
+    totalFalhas: number;
+    totalFalhasGerenciais?: number;
+    comentarioGovernanta?: string | null;
+    itens: {
+      id: string;
+      categoria: string;
+      item: string;
+      ordem: number;
+      resultado: string;
+      tipoFalha: string;
+      observacao: string | null;
+    }[];
+  } | null;
+};
+
+type Solicitacao = {
+  id: string;
+  data: string;
+  solicitacaoMensagem: string;
+  uh: { numero: string };
+  camareira: { nome: string };
+};
+
+const CATEGORIA_ICONS: Record<string, string> = {
+  CAMA: "🛏️", BANHEIRO: "🚿", QUARTO: "🏠", COZINHA: "🍳", GERAL: "✅",
+};
+
+type Fase = "lista" | "inspecao";
+
+export default function GovernantaView({ role }: { role: string }) {
+  const somenteLeitura = role === "MANUTENCAO";
+  const [sessoes, setSessoes] = useState<Sessao[]>([]);
+  const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fase, setFase] = useState<Fase>("lista");
+  const [sessaoAtiva, setSessaoAtiva] = useState<Sessao | null>(null);
+  const [inspecaoId, setInspecaoId] = useState<string | null>(null);
+  const [itens, setItens] = useState<NonNullable<Sessao["inspection"]>["itens"]>([]);
+  const [itemAtualIdx, setItemAtualIdx] = useState(0);
+  const [salvando, setSalvando] = useState(false);
+  const [finalizando, setFinalizando] = useState(false);
+  const [comentarioGovernanta, setComentarioGovernanta] = useState("");
+  const [decidindo, setDecidindo] = useState<string | null>(null);
+  const [modoEdicao, setModoEdicao] = useState(false);
+  const [salvandoCorrecao, setSalvandoCorrecao] = useState(false);
+
+  const carregar = useCallback(async () => {
+    const [insp, sol] = await Promise.all([
+      apiFetch("/api/inspecoes").then((r) => r.json()),
+      apiFetch("/api/atribuicoes/solicitacoes").then((r) => r.json()),
+    ]);
+    setSessoes(Array.isArray(insp) ? insp : []);
+    setSolicitacoes(Array.isArray(sol) ? sol : []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  async function decidir(assignmentId: string, aprovado: boolean) {
+    setDecidindo(assignmentId);
+    await apiFetch("/api/atribuicoes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "decidir_alteracao", assignmentId, aprovado }),
+    });
+    setDecidindo(null);
+    carregar();
+  }
+
+  async function salvarCorrecao() {
+    if (!inspecaoId) return;
+    setSalvandoCorrecao(true);
+
+    await Promise.all(
+      itens.map((item) =>
+        apiFetch("/api/inspecoes", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "avaliar_item",
+            inspecaoId,
+            itemId: item.id,
+            resultado: item.resultado,
+            tipoFalha: item.tipoFalha,
+          }),
+        })
+      )
+    );
+
+    await apiFetch("/api/inspecoes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "corrigir", inspecaoId }),
+    });
+
+    setSalvandoCorrecao(false);
+    setModoEdicao(false);
+    await carregar();
+    const insp = await apiFetch("/api/inspecoes").then((r) => r.json());
+    const sessaoFresca = (Array.isArray(insp) ? insp : []).find((s: Sessao) => s.id === sessaoAtiva?.id);
+    if (sessaoFresca) setSessaoAtiva(sessaoFresca);
+  }
+
+  async function iniciarInspecao(s: Sessao) {
+    setSessaoAtiva(s);
+    setModoEdicao(false);
+
+    if (s.inspection && !s.inspection.finalizadaEm) {
+      setInspecaoId(s.inspection.id);
+      setItens(s.inspection.itens);
+      setItemAtualIdx(0);
+    } else if (!s.inspection) {
+      const res = await apiFetch("/api/inspecoes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessaoId: s.id }),
+      });
+      const inspecao = await res.json();
+      setInspecaoId(inspecao.id);
+      setItens(inspecao.itens);
+      setItemAtualIdx(0);
+    } else {
+      setInspecaoId(s.inspection.id);
+      setItens(s.inspection.itens);
+      setItemAtualIdx(0);
+    }
+
+    setFase("inspecao");
+    await carregar();
+  }
+
+  async function avaliarItem(resultado: "OK" | "FALHA", tipoFalha?: "CAMAREIRA" | "GERENCIAL") {
+    const item = itens[itemAtualIdx];
+    if (!item || !inspecaoId) return;
+
+    setSalvando(true);
+    await apiFetch("/api/inspecoes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "avaliar_item",
+        inspecaoId,
+        itemId: item.id,
+        resultado,
+        tipoFalha: resultado === "FALHA" ? (tipoFalha || "CAMAREIRA") : "CAMAREIRA",
+      }),
+    });
+
+    setItens((prev) => prev.map((i) =>
+      i.id === item.id ? { ...i, resultado, tipoFalha: resultado === "FALHA" ? (tipoFalha || "CAMAREIRA") : "CAMAREIRA" } : i
+    ));
+    setSalvando(false);
+    setItemAtualIdx((i) => Math.min(i + 1, itens.length));
+  }
+
+  async function finalizarInspecao() {
+    if (!inspecaoId) return;
+    setFinalizando(true);
+    await apiFetch("/api/inspecoes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "finalizar", inspecaoId, comentarioGovernanta: comentarioGovernanta.trim() || null }),
+    });
+    setFinalizando(false);
+    setSessaoAtiva(null);
+    setComentarioGovernanta("");
+    setFase("lista");
+    await carregar();
+  }
+
+  const itemAtual = itens[itemAtualIdx];
+  const progresso = itens.length > 0 ? (itemAtualIdx / itens.length) * 100 : 0;
+  const falhasCamareira = itens.filter((i) => i.resultado === "FALHA" && i.tipoFalha === "CAMAREIRA").length;
+  const falhasGerenciais = itens.filter((i) => i.resultado === "FALHA" && i.tipoFalha === "GERENCIAL").length;
+  const totalFalhasAtual = falhasCamareira + falhasGerenciais;
+  const todosAvaliados = itens.length > 0 && itemAtualIdx >= itens.length;
+  const categorias = Array.from(new Set(itens.map((i) => i.categoria)));
+
+  if (loading) {
+    return <div className="p-4 text-gray-400">Carregando...</div>;
+  }
+
+  // ─── TELA DE INSPEÇÃO ────────────────────────────────────────────────────
+  if (fase === "inspecao" && sessaoAtiva) {
+    const jaFinalizada = sessaoAtiva.inspection?.finalizadaEm != null;
+
+    return (
+      <div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
+        <div className="bg-indigo-700 text-white p-5 sticky top-0 z-10">
+          <button onClick={() => setFase("lista")} className="flex items-center gap-1 text-sm opacity-80 hover:opacity-100 mb-2">
+            <ArrowLeft className="w-4 h-4" /> Voltar
+          </button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold">{sessaoAtiva.uh.numero}</h2>
+              <p className="text-sm opacity-80">Camareira: {sessaoAtiva.camareira.nome}</p>
+            </div>
+            {!jaFinalizada && (
+              <div className="text-right">
+                <p className="text-2xl font-bold text-red-300">{totalFalhasAtual}</p>
+                <p className="text-xs opacity-70">falha(s)</p>
+              </div>
+            )}
+          </div>
+          {!jaFinalizada && (
+            <>
+              <div className="mt-3 bg-indigo-600 rounded-full h-2">
+                <div className="bg-white rounded-full h-2 transition-all duration-300" style={{ width: `${progresso}%` }} />
+              </div>
+              <p className="text-xs opacity-70 mt-1">{Math.min(itemAtualIdx + 1, itens.length)} de {itens.length} itens</p>
+            </>
+          )}
+        </div>
+
+        <div className="p-4">
+          {jaFinalizada ? (
+            modoEdicao ? (
+              <div>
+                <p className="text-sm text-gray-500 mb-3">Toque em cada item para alterar o resultado.</p>
+                {categorias.map((cat) => (
+                  <div key={cat} className="mb-4">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                      {CATEGORIA_ICONS[cat]} {cat}
+                    </p>
+                    <div className="space-y-2">
+                      {itens.filter((i) => i.categoria === cat).map((item) => (
+                        <div key={item.id} className="card py-3">
+                          <p className="text-sm font-medium text-gray-800 mb-2">{item.item}</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "OK", tipoFalha: "CAMAREIRA" } : i))}
+                              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "OK" ? "bg-green-500 text-white" : "bg-gray-100 text-gray-500"}`}
+                            >
+                              ✓ OK
+                            </button>
+                            <button
+                              onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "FALHA", tipoFalha: "CAMAREIRA" } : i))}
+                              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "FALHA" && item.tipoFalha === "CAMAREIRA" ? "bg-red-500 text-white" : "bg-gray-100 text-gray-500"}`}
+                            >
+                              ✗ Camareira
+                            </button>
+                            <button
+                              onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "FALHA", tipoFalha: "GERENCIAL" } : i))}
+                              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "FALHA" && item.tipoFalha === "GERENCIAL" ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"}`}
+                            >
+                              ✗ Gerencial
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => { setModoEdicao(false); setItens(sessaoAtiva.inspection!.itens); }}
+                    className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-600 font-medium"
+                  >
+                    Cancelar
+                  </button>
+                  <button onClick={salvarCorrecao} disabled={salvandoCorrecao} className="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold">
+                    {salvandoCorrecao ? "Salvando..." : "Salvar correção"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {(() => {
+                  const insp = sessaoAtiva.inspection!;
+                  const fCam = insp.itens.filter((i) => i.resultado === "FALHA" && i.tipoFalha === "CAMAREIRA").length;
+                  const fGer = insp.itens.filter((i) => i.resultado === "FALHA" && i.tipoFalha === "GERENCIAL").length;
+                  const total = fCam + fGer;
+                  return (
+                    <div className={`card mb-4 text-center ${total === 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+                      {total === 0 ? (
+                        <>
+                          <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-2" />
+                          <p className="font-bold text-green-700">Sem falhas! Aprovada.</p>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-2" />
+                          <p className="font-bold text-red-700">{total} falha(s) encontrada(s)</p>
+                          <div className="flex justify-center gap-4 mt-1 text-xs">
+                            {fCam > 0 && <span className="text-red-600 font-medium">{fCam} camareira</span>}
+                            {fGer > 0 && <span className="text-orange-600 font-medium">{fGer} gerencial</span>}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {sessaoAtiva.inspection!.itens.filter((i) => i.resultado === "FALHA").map((item) => (
+                  <div key={item.id} className={`card mb-2 border-l-4 ${item.tipoFalha === "GERENCIAL" ? "border-l-orange-400" : "border-l-red-400"}`}>
+                    <div className="flex items-center gap-2">
+                      {item.tipoFalha === "GERENCIAL"
+                        ? <Building2 className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                        : <UserX className="w-4 h-4 text-red-500 flex-shrink-0" />}
+                      <div>
+                        <p className="text-xs text-gray-500">{CATEGORIA_ICONS[item.categoria]} {item.categoria}</p>
+                        <p className="text-sm font-medium">{item.item}</p>
+                        <p className={`text-xs ${item.tipoFalha === "GERENCIAL" ? "text-orange-600" : "text-red-500"}`}>
+                          {item.tipoFalha === "GERENCIAL" ? "Gerencial" : "Camareira"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {!somenteLeitura && (
+                  <button
+                    onClick={() => { setModoEdicao(true); setItens(sessaoAtiva.inspection!.itens); }}
+                    className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-indigo-300 text-indigo-600 font-medium text-sm"
+                  >
+                    <Pencil className="w-4 h-4" /> Corrigir inspeção
+                  </button>
+                )}
+              </div>
+            )
+          ) : todosAvaliados ? (
+            <div>
+              <div className={`card mb-4 text-center ${totalFalhasAtual === 0 ? "bg-green-50" : "bg-yellow-50"}`}>
+                <p className="text-lg font-bold mb-1">
+                  {totalFalhasAtual === 0 ? "🎉 Sem falhas!" : `⚠️ ${totalFalhasAtual} falha(s) encontrada(s)`}
+                </p>
+                {falhasCamareira > 0 && <p className="text-sm text-red-600 font-medium">{falhasCamareira} falha(s) da camareira</p>}
+                {falhasGerenciais > 0 && <p className="text-sm text-orange-600 font-medium">{falhasGerenciais} falha(s) gerencial(is)</p>}
+              </div>
+
+              {itens.filter((i) => i.resultado === "FALHA").map((item) => (
+                <div key={item.id} className={`card mb-2 border-l-4 ${item.tipoFalha === "GERENCIAL" ? "border-l-orange-400" : "border-l-red-400"}`}>
+                  <div className="flex items-center gap-2">
+                    {item.tipoFalha === "GERENCIAL"
+                      ? <Building2 className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                      : <UserX className="w-4 h-4 text-red-500 flex-shrink-0" />}
+                    <div>
+                      <p className="text-sm font-medium">{item.item}</p>
+                      <p className={`text-xs ${item.tipoFalha === "GERENCIAL" ? "text-orange-600" : "text-red-500"}`}>
+                        {item.tipoFalha === "GERENCIAL" ? "Falha gerencial" : "Falha camareira"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <div className="card mt-4">
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 font-medium mb-1.5">
+                  <MessageSquare className="w-3.5 h-3.5" /> Comentário da inspeção (opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Observações gerais sobre a limpeza desta UH..."
+                  value={comentarioGovernanta}
+                  onChange={(e) => setComentarioGovernanta(e.target.value)}
+                />
+              </div>
+
+              <button onClick={finalizarInspecao} disabled={finalizando} className="btn-primary w-full mt-4 py-4 text-base">
+                {finalizando ? "Salvando..." : "✓ Finalizar Inspeção"}
+              </button>
+            </div>
+          ) : (
+            <div>
+              {itemAtual && (
+                <div className="card mb-4">
+                  <div className="flex items-start gap-3 mb-4">
+                    <span className="text-2xl">{CATEGORIA_ICONS[itemAtual.categoria]}</span>
+                    <div>
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{itemAtual.categoria}</p>
+                      <h3 className="text-lg font-bold text-gray-900 mt-0.5">{itemAtual.item}</h3>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => avaliarItem("OK")}
+                      disabled={salvando}
+                      className="flex items-center justify-center gap-2 bg-green-100 text-green-700 font-bold py-4 rounded-xl hover:bg-green-200 transition-colors text-base w-full"
+                    >
+                      <CheckCircle2 className="w-5 h-5" /> OK — Aprovado
+                    </button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => avaliarItem("FALHA", "CAMAREIRA")}
+                        disabled={salvando}
+                        className="flex items-center justify-center gap-1.5 bg-red-100 text-red-700 font-bold py-4 rounded-xl hover:bg-red-200 transition-colors text-sm"
+                      >
+                        <UserX className="w-4 h-4" /> Falha Camareira
+                      </button>
+                      <button
+                        onClick={() => avaliarItem("FALHA", "GERENCIAL")}
+                        disabled={salvando}
+                        className="flex items-center justify-center gap-1.5 bg-orange-100 text-orange-700 font-bold py-4 rounded-xl hover:bg-orange-200 transition-colors text-sm"
+                      >
+                        <Building2 className="w-4 h-4" /> Falha Gerencial
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {itemAtualIdx > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">Já avaliados — toque para corrigir</p>
+                  <div className="space-y-1">
+                    {itens.slice(0, itemAtualIdx).map((i, idx) => (
+                      <button
+                        key={i.id}
+                        onClick={() => setItemAtualIdx(idx)}
+                        className="w-full flex items-center gap-2 text-sm py-2 px-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                      >
+                        {i.resultado === "OK" ? (
+                          <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                        )}
+                        <span className={i.resultado === "FALHA" ? "text-red-700 font-medium" : "text-gray-400"}>{i.item}</span>
+                        {i.resultado === "FALHA" && (
+                          <span className={`ml-auto text-xs ${i.tipoFalha === "GERENCIAL" ? "text-orange-500" : "text-red-500"}`}>
+                            {i.tipoFalha === "GERENCIAL" ? "gerencial" : "camareira"}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── LISTA ────────────────────────────────────────────────────────────────
+  const pendentes = sessoes.filter((s) => !s.inspection?.finalizadaEm);
+  const concluidas = sessoes.filter((s) => s.inspection?.finalizadaEm);
+
+  return (
+    <div className="p-4 md:p-6 max-w-2xl">
+      <div className="mb-4">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Controle de Inspeções</h1>
+        <p className="text-gray-500 text-sm mt-0.5">Acompanhe e realize as inspeções do dia</p>
+      </div>
+
+      {solicitacoes.length > 0 && (
+        <div className="mb-6">
+          <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
+            ⚠️ Solicitações de alteração ({solicitacoes.length})
+          </p>
+          <div className="space-y-2">
+            {solicitacoes.map((s) => (
+              <div key={s.id} className="card border-l-4 border-l-orange-400">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-800">UH {s.uh.numero} <span className="font-normal text-gray-500 text-sm">— {s.camareira.nome}</span></p>
+                    <p className="text-sm text-gray-600 mt-0.5 italic">"{s.solicitacaoMensagem}"</p>
+                  </div>
+                  {!somenteLeitura && (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => decidir(s.id, true)}
+                        disabled={decidindo === s.id}
+                        className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200"
+                      >
+                        <ThumbsUp className="w-3 h-3" /> Aprovar
+                      </button>
+                      <button
+                        onClick={() => decidir(s.id, false)}
+                        disabled={decidindo === s.id}
+                        className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200"
+                      >
+                        <ThumbsDown className="w-3 h-3" /> Rejeitar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="card text-center">
+          <p className="text-3xl font-bold text-indigo-600">{pendentes.length}</p>
+          <p className="text-sm text-gray-500">Aguardando inspeção</p>
+        </div>
+        <div className="card text-center">
+          <p className="text-3xl font-bold text-green-600">{concluidas.length}</p>
+          <p className="text-sm text-gray-500">Inspecionadas</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {pendentes.length > 0 && <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Aguardando inspeção</p>}
+        {pendentes.map((s) => (
+          <div key={s.id} className="card border-l-4 border-l-indigo-400 cursor-pointer hover:shadow-md transition-shadow" onClick={() => iniciarInspecao(s)}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold">{s.uh.numero}</h3>
+                <p className="text-sm text-gray-500">por {s.camareira.nome}</p>
+                {s.inspection && !s.inspection.finalizadaEm && <p className="text-xs text-blue-600">▶ Inspeção em andamento</p>}
+              </div>
+              <ChevronRight className="w-5 h-5 text-indigo-400" />
+            </div>
+          </div>
+        ))}
+
+        {concluidas.length > 0 && <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-4">Inspecionadas hoje</p>}
+        {concluidas.map((s) => (
+          <div
+            key={s.id}
+            className={`card cursor-pointer hover:shadow-md transition-shadow ${s.inspection!.totalFalhas > 0 ? "border-l-4 border-l-red-400" : "border-l-4 border-l-green-400"}`}
+            onClick={() => iniciarInspecao(s)}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold">{s.uh.numero}</h3>
+                <p className="text-sm text-gray-500">por {s.camareira.nome}</p>
+              </div>
+              {s.inspection!.totalFalhas === 0 ? (
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+              ) : (
+                <div className="flex items-center gap-1 text-red-500">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-sm font-bold">{s.inspection!.totalFalhas}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {sessoes.length === 0 && (
+          <div className="card text-center py-12 text-gray-400">
+            <ClipboardCheck className="w-12 h-12 mx-auto mb-3 text-gray-200" />
+            <p>Nenhuma UH pronta para inspeção ainda.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

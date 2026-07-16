@@ -5,10 +5,16 @@ import { getSession, hasModuleAccess } from "@praxis/core";
 // tile "Governança" do hub do gateway leva. Segue o mesmo padrão da v1
 // (ver apps/housekeeping/src/app/page.tsx lá): despacha por cargo.
 //
-// Só a fatia da camareira ("Minhas UHs") foi portada até agora — as telas
-// de gestão da governanta (criar/aprovar atribuições, inspeção) ainda não
-// existem nesta reconstrução. Então, por enquanto, todo mundo que não é
-// CAMAREIRA cai numa tela avisando isso, em vez de um 404 confuso.
+// O loop operacional diário (seleção/liberação, atribuição, inspeção) já
+// existe nesta reconstrução — falta só um menu/sidebar de verdade (fatia
+// própria, ver task). Enquanto isso não existe, a raiz mostra um hub simples
+// linkando pras 3 telas de gestão pra quem não é CAMAREIRA.
+const TELAS_GESTAO = [
+  { href: "/selecao", label: "Seleção e Liberação", desc: "Selecionar UHs do dia e liberar conforme ficam prontas" },
+  { href: "/atribuicao", label: "Atribuição", desc: "Distribuir UHs entre as camareiras" },
+  { href: "/governanta", label: "Inspeções", desc: "Inspecionar UHs concluídas e aprovar solicitações" },
+];
+
 export default async function GovernancaHome() {
   const session = await getSession();
   if (!session) {
@@ -38,11 +44,19 @@ export default async function GovernancaHome() {
       }}
     >
       <h1 style={{ fontSize: 20, fontWeight: 600 }}>Governança</h1>
-      <p style={{ color: "#6e6e73", maxWidth: 360 }}>
-        As telas de gestão (atribuições, inspeção) ainda estão em construção
-        nesta versão. Por enquanto só a visão da camareira ("Minhas UHs")
-        está disponível.
-      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 360 }}>
+        {TELAS_GESTAO.map((t) => (
+          <a
+            key={t.href}
+            href={t.href}
+            className="card"
+            style={{ textAlign: "left", textDecoration: "none", display: "block" }}
+          >
+            <p style={{ fontWeight: 600, color: "#1d1d1f" }}>{t.label}</p>
+            <p style={{ fontSize: 13, color: "#6e6e73", marginTop: 2 }}>{t.desc}</p>
+          </a>
+        ))}
+      </div>
       <a href={process.env.NEXT_PUBLIC_GATEWAY_URL || "/"} className="btn-secondary">
         Voltar ao hub
       </a>
