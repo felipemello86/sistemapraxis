@@ -1,0 +1,35 @@
+import { NextRequest, NextResponse } from "next/server";
+import { format } from "date-fns";
+import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+
+// Portado de apps/housekeeping/src/app/api/cobertura-folga/route.ts (v1) —
+// só o GET por enquanto (consulta se há cobertura ativa num dia, usado pelo
+// banner "Você está de folga hoje" na tela de Atribuição). POST/DELETE
+// (criar/cancelar cobertura, com link tokenizado + notificação Telegram pra
+// substituta) ficam pra uma fatia futura — sem eles, o fluxo de atribuição
+// funciona normalmente, só não existe ainda a tela de configurar a folga.
+
+export async function GET(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
+    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
+  }
+  const tenantId = session.tenantId;
+  const hoje = format(new Date(), "yyyy-MM-dd");
+
+  const data = req.nextUrl.searchParams.get("data") || hoje;
+  const cobertura = await prisma.coberturaFolga.findUnique({
+    where: { tenantId_data: { tenantId, data } },
+    select: { id: true, data: true, governantaId: true, substitutaId: true },
+  });
+
+  if (!cobertura) return NextResponse.json(null);
+
+  const [governanta, substituta] = await Promise.all([
+    prisma.user.findUnique({ where: { id: cobertura.governantaId }, select: { nome: true } }),
+    prisma.user.findUnique({ where: { id: cobertura.substitutaId }, select: { nome: true } }),
+  ]);
+
+  return NextResponse.json({ ...cobertura, governantaNome: governanta?.nome, substitutaNome: substituta?.nome });
+}
