@@ -20,6 +20,7 @@ export async function GET() {
       email: u.email,
       role: u.role,
       telegramChatId: u.telegramChatId,
+      whatsapp: u.whatsapp,
       ativo: u.ativo,
       modules: u.moduleAccess.map((m) => m.module),
     }))
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarUsuarios(session);
   if (bloqueado) return bloqueado;
 
-  const { nome, email, role, telegramChatId, password, modules } = await req.json();
+  const { nome, email, role, telegramChatId, whatsapp, password, modules } = await req.json();
   if (!nome || !role || !email || !password) {
     return NextResponse.json({ error: "Nome, email, cargo e senha são obrigatórios" }, { status: 400 });
   }
@@ -41,8 +42,13 @@ export async function POST(req: NextRequest) {
   // marcar nenhum módulo, o que dava origem a contas "fantasma" com
   // acesso zero e nenhum aviso — foi o suspeito nº1 de uma conta
   // duplicada e vazia descoberta em produção. Aqui isso é bloqueado de
-  // propósito.
-  if (moduleList.length === 0) {
+  // propósito — MAS só depois que o tenant tiver algum módulo de negócio
+  // de fato habilitado. Nesta fundação (v2, zero módulos portados ainda),
+  // exigir isso bloquearia a criação de qualquer usuário real sem motivo.
+  const tenantTemModulos = await prisma.tenantModule.count({
+    where: { tenantId: session!.tenantId, enabled: true },
+  });
+  if (tenantTemModulos > 0 && moduleList.length === 0) {
     return NextResponse.json({ error: "Selecione ao menos um módulo pra essa pessoa acessar." }, { status: 400 });
   }
 
@@ -56,12 +62,13 @@ export async function POST(req: NextRequest) {
         email: String(email).trim().toLowerCase(),
         role,
         telegramChatId: telegramChatId || null,
+        whatsapp: whatsapp || null,
         passwordHash,
         moduleAccess: {
           create: moduleList.map((module) => ({ module: module as any, enabled: true })),
         },
       },
-      select: { id: true, nome: true, email: true, role: true, telegramChatId: true },
+      select: { id: true, nome: true, email: true, role: true, telegramChatId: true, whatsapp: true },
     });
     return NextResponse.json(user, { status: 201 });
   } catch (e: any) {
@@ -90,7 +97,7 @@ export async function PUT(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarUsuarios(session);
   if (bloqueado) return bloqueado;
 
-  const { id, nome, email, role, telegramChatId, password, ativo, modules } = await req.json();
+  const { id, nome, email, role, telegramChatId, whatsapp, password, ativo, modules } = await req.json();
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
 
   if (Array.isArray(modules)) {
@@ -109,10 +116,11 @@ export async function PUT(req: NextRequest) {
       email: email ? String(email).trim().toLowerCase() : undefined,
       role,
       telegramChatId,
+      whatsapp,
       ativo,
       ...(passwordHash ? { passwordHash } : {}),
     },
-    select: { id: true, nome: true, email: true, role: true, telegramChatId: true, ativo: true },
+    select: { id: true, nome: true, email: true, role: true, telegramChatId: true, whatsapp: true, ativo: true },
   });
   return NextResponse.json(user);
 }

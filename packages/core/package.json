@@ -11,7 +11,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "typecheck": "tsc --noEmit",
     "tenant:create": "tsx scripts/create-tenant.ts",
-    "seed:test": "tsx scripts/seed-test-tenant.ts"
+    "seed:test": "tsx scripts/seed-test-tenant.ts",
+    "import:bnbflex-users": "tsx scripts/import-bnbflex-users.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

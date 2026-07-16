@@ -8,6 +8,7 @@ type User = {
   email: string | null;
   role: string;
   telegramChatId: string | null;
+  whatsapp: string | null;
   ativo: boolean;
   modules?: string[];
 };
@@ -115,13 +116,13 @@ function ModuleCheckboxes({
   );
 }
 
-const emptyNewForm = { nome: "", email: "", role: "CAMAREIRA", telegramChatId: "", password: "", modules: [] as string[] };
+const emptyNewForm = { nome: "", email: "", role: "CAMAREIRA", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[] };
 
 export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ nome: "", email: "", role: "", telegramChatId: "", password: "", modules: [] as string[] });
+  const [editForm, setEditForm] = useState({ nome: "", email: "", role: "", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[] });
   const [newForm, setNewForm] = useState(emptyNewForm);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -220,6 +221,15 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
               />
             </label>
             <label style={labelStyle}>
+              WhatsApp / telefone (opcional)
+              <input
+                style={inputStyle}
+                placeholder="ex: 5581999999999"
+                value={newForm.whatsapp}
+                onChange={(e) => setNewForm({ ...newForm, whatsapp: e.target.value.trim() })}
+              />
+            </label>
+            <label style={labelStyle}>
               Telegram Chat ID (opcional)
               <input
                 style={{ ...inputStyle, fontFamily: "monospace" }}
@@ -266,6 +276,14 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
                 <label style={labelStyle}>
                   Nova senha (deixe em branco para manter)
                   <input style={inputStyle} type="password" value={editForm.password} onChange={(e) => setEditForm({ ...editForm, password: e.target.value })} />
+                </label>
+                <label style={labelStyle}>
+                  WhatsApp / telefone
+                  <input
+                    style={inputStyle}
+                    value={editForm.whatsapp}
+                    onChange={(e) => setEditForm({ ...editForm, whatsapp: e.target.value.trim() })}
+                  />
                 </label>
                 <label style={labelStyle}>
                   Telegram Chat ID
@@ -326,6 +344,7 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
                           email: u.email || "",
                           role: u.role,
                           telegramChatId: u.telegramChatId || "",
+                          whatsapp: u.whatsapp || "",
                           password: "",
                           modules: u.modules || [],
                         });
