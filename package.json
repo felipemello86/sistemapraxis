@@ -1,0 +1,13 @@
+{
+  "name": "praxis-v2",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Praxis Systems — fundação nova (monorepo real, multi-tenant desde o início). Ver README.md nesta pasta para o contexto completo.",
+  "scripts": {
+    "dev": "pnpm --filter @praxis/gateway dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": ["apps/*", "packages/*"]
+}

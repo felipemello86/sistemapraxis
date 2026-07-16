@@ -1,0 +1,103 @@
+// Schema suite_core — identidade e licenciamento por módulo da suíte Praxis.
+//
+// Diferença crítica em relação à v1 (../../../packages/suite-core e as 4
+// cópias vendorizadas em apps/*/prisma/suite-core): este é o ÚNICO lugar
+// onde "usuário" existe. Nenhum app desta v2 deve ter sua própria tabela
+// User local — todo dado operacional de qualquer módulo referencia
+// User.id diretamente. Foi a mistura de dois espaços de id (local vs.
+// suite_core) que causou a maior parte dos bugs de produção da v1.
+//
+// binaryTargets lista os alvos de forma EXPLÍCITA (não só "native") porque
+// "native" resolve pra plataforma de quem RODA `prisma generate`, não de
+// quem RODA o app — isso já mordeu tanto a v1 (faltava rhel-openssl-3.0.x
+// pra Vercel) quanto a v2 (client gerado num sandbox Linux não tinha o
+// engine pra Mac). Com os 3 alvos fixos, `prisma generate` sempre produz
+// os binários certos pra dev local (Mac), dev/CI Linux, e produção Vercel.
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "darwin-arm64"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Neon: DATABASE_URL usa o endpoint com pooler (pgbouncer) pro runtime da
+  // aplicação; migrações precisam de conexão direta (sem pooler), senão
+  // falham por causa de prepared statements que o pgbouncer não suporta.
+  directUrl = env("DIRECT_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  modules TenantModule[]
+  users   User[]
+}
+
+enum SuiteModule {
+  HOUSEKEEPING
+  MAINTENANCE
+  BOOKING_REVIEWS
+}
+
+// Licenciamento por módulo: um tenant só enxerga um módulo se houver uma
+// linha aqui com enabled = true. Independente do acesso individual por
+// usuário (ver UserModuleAccess) — as duas checagens precisam passar.
+model TenantModule {
+  id       String      @id @default(cuid())
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module   SuiteModule
+  enabled  Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, module])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  nome         String
+  email        String
+  passwordHash String?
+  role         String // MASTER, GERENTE, GOVERNANTA, CAMAREIRA, LAVANDERIA, MANUTENCAO, ATENDIMENTO
+  ativo        Boolean  @default(true)
+  telegramChatId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  moduleAccess UserModuleAccess[]
+
+  // Constraint real — a v1 declarava isso no schema mas uma checagem
+  // direta no Postgres de produção mostrou que ela nunca foi de fato
+  // criada (schema drift), o que permitiu contas duplicadas silenciosas.
+  // Aqui a migração inicial já cria de verdade.
+  @@unique([tenantId, email])
+}
+
+// Acesso por módulo, por pessoa — independente do cargo. Uma GOVERNANTA
+// pode não ter acesso a MAINTENANCE, por exemplo. `enabled = true` aqui E
+// TenantModule.enabled = true pro mesmo módulo, as duas precisam ser
+// verdadeiras.
+model UserModuleAccess {
+  id      String      @id @default(cuid())
+  userId  String
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module  SuiteModule
+  enabled Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, module])
+}
