@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, Clock, Camera, ChevronRight, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
+import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/components/camareira/CamareiraView.tsx (v1).
 // Mesma UI, mesmo comportamento. Diferença: o v1 aceitava uma prop `token`
@@ -67,7 +68,7 @@ export default function CamareiraView() {
   async function solicitarAlteracao(assignmentId: string) {
     if (!solicitacaoMsg.trim()) return;
     setEnviandoSolicitacao(true);
-    await fetch("/api/atribuicoes", {
+    await apiFetch("/api/atribuicoes", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "solicitar_alteracao", assignmentId, mensagem: solicitacaoMsg.trim() }),
@@ -79,7 +80,7 @@ export default function CamareiraView() {
   }
 
   const carregar = useCallback(async () => {
-    const res = await fetch("/api/sessoes");
+    const res = await apiFetch("/api/sessoes");
     const json = await res.json();
     setData(json);
     setLoading(false);
@@ -113,7 +114,7 @@ export default function CamareiraView() {
       setInicioTime(new Date(a.cleaningSession.iniciadaEm));
     } else {
       // Criar nova sessão
-      const res = await fetch("/api/sessoes", {
+      const res = await apiFetch("/api/sessoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assignmentId: a.id }),
@@ -137,11 +138,11 @@ export default function CamareiraView() {
 
     // Tenta marcar o step como concluído no banco — mas nunca bloqueia a UI nisto
     try {
-      const json = await fetch("/api/sessoes").then((r) => r.json());
+      const json = await apiFetch("/api/sessoes").then((r) => r.json());
       const sessao = json.assignments?.find((a: Assignment) => a.id === assignmentAtivo.id)?.cleaningSession;
       const stepPendente = sessao?.steps?.find((s: any) => !s.finalizadoEm);
       if (stepPendente) {
-        await fetch("/api/sessoes", {
+        await apiFetch("/api/sessoes", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "concluir_step", sessaoId, stepId: stepPendente.id }),
@@ -208,7 +209,7 @@ export default function CamareiraView() {
       fd.append("sessaoId", sessaoId);
       fd.append("tipo", tipo);
 
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Erro ${res.status}`);
@@ -231,7 +232,7 @@ export default function CamareiraView() {
       fd.append("file", fileComprimido);
       fd.append("tipo", "lavanderia");
       fd.append("pasta", "lavanderia");
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
       const data = await res.json();
       if (data.url) setFotoLavanderia(data.url);
     } catch {}
@@ -241,7 +242,7 @@ export default function CamareiraView() {
   async function reportarFalhaLavanderia() {
     if (!descricaoLavanderia.trim() || !assignmentAtivo) return;
     setEnviandoLavanderia(true);
-    await fetch("/api/falha-lavanderia", {
+    await apiFetch("/api/falha-lavanderia", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ uhNumero: assignmentAtivo.uh.numero, descricao: descricaoLavanderia.trim(), fotoUrl: fotoLavanderia }),
@@ -255,7 +256,7 @@ export default function CamareiraView() {
   async function solicitarBloqueio() {
     if (!motivoBloqueio.trim() || !assignmentAtivo) return;
     setEnviandoBloqueio(true);
-    await fetch("/api/bloqueio", {
+    await apiFetch("/api/bloqueio", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ uhId: assignmentAtivo.uh.id, motivo: motivoBloqueio.trim() }),
@@ -270,7 +271,7 @@ export default function CamareiraView() {
     setConcluindo(true);
 
     const fotoUrls = Object.values(fotos).flat();
-    await fetch("/api/sessoes", {
+    await apiFetch("/api/sessoes", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "finalizar", sessaoId, fotos: fotoUrls, comentarioCamareira: comentarioCamareira.trim() || null }),
