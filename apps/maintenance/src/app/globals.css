@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ----------------------------------------------------------------------------
+   Apple / iCloud inspired light theme.
+   Off-white canvas, pure-white cards, Apple blue accent, soft shadows,
+   generous corner radius. Single light scheme only.
+   (Portado de Tailwind 4 @theme para Tailwind 3 — os valores das variáveis
+   continuam aqui, o mapeamento pras classes utilitárias agora vive em
+   tailwind.config.ts.)
+---------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --background: oklch(0.971 0.001 286);
+  --foreground: oklch(0.21 0.006 286);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.006 286);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 286);
+
+  /* Apple blue */
+  --primary: oklch(0.588 0.182 256);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.967 0.002 286);
+  --secondary-foreground: oklch(0.27 0.006 286);
+
+  --muted: oklch(0.967 0.002 286);
+  --muted-foreground: oklch(0.553 0.006 286);
+
+  --accent: oklch(0.948 0.012 256);
+  --accent-foreground: oklch(0.42 0.12 256);
+
+  --destructive: oklch(0.585 0.222 27);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --success: oklch(0.62 0.17 150);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.76 0.15 75);
+  --warning-foreground: oklch(0.27 0.04 75);
+
+  --border: oklch(0.916 0.003 286);
+  --input: oklch(0.916 0.003 286);
+  --ring: oklch(0.588 0.182 256);
+
+  /* Apple system palette for charts */
+  --chart-1: oklch(0.588 0.182 256); /* blue */
+  --chart-2: oklch(0.62 0.17 150); /* green */
+  --chart-3: oklch(0.76 0.15 75); /* amber */
+  --chart-4: oklch(0.65 0.2 25); /* red/orange */
+  --chart-5: oklch(0.6 0.13 300); /* indigo */
+
+  --radius: 0.875rem;
+
+  --sidebar: oklch(0.985 0.001 286);
+  --sidebar-foreground: oklch(0.21 0.006 286);
+  --sidebar-primary: oklch(0.588 0.182 256);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.948 0.012 256);
+  --sidebar-accent-foreground: oklch(0.42 0.12 256);
+  --sidebar-border: oklch(0.916 0.003 286);
+  --sidebar-ring: oklch(0.588 0.182 256);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Frosted glass utility (Apple-style translucency) — portado do @utility do
+   Tailwind 4 pra uma classe normal em @layer utilities. */
+@layer utilities {
+  .glass {
+    background-color: color-mix(in oklch, var(--card) 72%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+}

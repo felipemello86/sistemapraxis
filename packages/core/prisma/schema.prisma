@@ -65,6 +65,10 @@ model Tenant {
   reviewAlerts         Alert[]
   pendingAirbnbImports PendingAirbnbImport[]
   performanceMeetings  PerformanceMeeting[]
+
+  // Manutenção (Upkeep)
+  maintenanceChecklistItems MaintenanceChecklistItem[]
+  maintenanceInspections    MaintenanceInspection[]
 }
 
 enum SuiteModule {
@@ -134,6 +138,10 @@ model User {
   meetingNotes          PerformanceMeetingNote[]
   meetingAttachments    PerformanceMeetingAttachment[]
   meetingLogs           PerformanceMeetingLog[]
+
+  // Manutenção (Upkeep) — inspetor que realizou a inspeção (opcional: a v1
+  // permite registrar sem inspetor definido).
+  maintenanceInspections MaintenanceInspection[] @relation("MaintenanceInspector")
 
   // Constraint real — a v1 declarava isso no schema mas uma checagem
   // direta no Postgres de produção mostrou que ela nunca foi de fato
@@ -254,6 +262,12 @@ model UH {
   cleaningSessions CleaningSession[]
   inspections      InspectionSession[]
   selecoes         DailyUHSelection[]
+
+  // Manutenção (Upkeep) — cadastro de UH continua centralizado aqui (gateway),
+  // o módulo Manutenção referencia via FK em vez de ter seu próprio model
+  // "Unit" duplicado (era assim na v1 — mesmo problema de duplicação de
+  // usuário que já foi corrigido em todo o resto da suíte).
+  maintenanceInspections MaintenanceInspection[]
 
   @@unique([tenantId, numero])
 }
@@ -789,4 +803,83 @@ model PerformanceMeetingLog {
   createdAt DateTime           @default(now())
 
   @@index([meetingId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MANUTENÇÃO (Upkeep) — checklist de itens + inspeções periódicas por UH.
+//
+// Vindo de apps/maintenance (v1: um Express standalone com schema Postgres
+// próprio "maintenance", multiSchema, ligado a Tenant só por valor de id —
+// sem FK real — mais um frontend Next.js parcialmente migrado). Descartado
+// nesse port, por decisão explícita: toda a infra de SaaS do backend antigo
+// (Stripe/planos, hotsite público, painel admin, e-mail via Resend, cron de
+// WhatsApp via Twilio) — nunca chegou a ser usada de verdade. O compartilhar
+// manual de rota via wa.me (RotaManutencao) é client-side puro e não depende
+// de nada disso, então foi mantido.
+//
+// Duas simplificações em relação à v1, mesma filosofia do resto da suíte:
+//   - Sem model "Unit" próprio — reaproveita o UH já centralizado no gateway
+//     (ver comentário em UH.maintenanceInspections acima).
+//   - checklistItemId é FK de verdade pro catálogo (onDelete: SetNull), no
+//     lugar do "itemLegacyId" solto (Int, sem FK) que a v1 usava só porque
+//     tinha nascido de um schema legado sem cuid — aqui não tem esse motivo.
+//   - Sem model de log por item (InspectionItemLogEntry, da v1): nenhuma tela
+//     do frontend v1 lê ou escreve nele hoje — é campo morto no domínio
+//     atual. Fácil de adicionar depois se aparecer um fluxo de "correção"
+//     de fato.
+//   - Sem tabela de config (a v1 tinha "MaintenanceAccount.maxDaysBetween
+//     Inspections", mas nenhuma tela atual lê esse valor — RotaManutencao usa
+//     um limite fixo de 90 dias direto no componente).
+// ═══════════════════════════════════════════════════════════════════════════
+
+model MaintenanceChecklistItem {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name           String
+  category       String // texto livre (ex: "Elétrica", "Hidráulica") — sem lista fixa, igual v1
+  subDescription String?
+
+  inspectionItems MaintenanceInspectionItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model MaintenanceInspection {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  inspectorId String?
+  inspector   User?   @relation("MaintenanceInspector", fields: [inspectorId], references: [id])
+
+  date DateTime @default(now())
+
+  items MaintenanceInspectionItem[]
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, date])
+  @@index([uhId])
+}
+
+model MaintenanceInspectionItem {
+  id           String                @id @default(cuid())
+  inspectionId String
+  inspection   MaintenanceInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  checklistItemId String?
+  checklistItem   MaintenanceChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+
+  status  String // CONFORME | NAO_CONFORME
+  comment String?
+
+  @@index([inspectionId])
 }
