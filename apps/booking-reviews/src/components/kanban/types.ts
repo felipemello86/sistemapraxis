@@ -1,10 +1,15 @@
 // Portado de apps/booking-reviews/src/components/kanban/types.ts (v1).
-// propertyId/propertyLabel → uhId/uhNumero; PropertyOption → UHOption (a UI
-// continua chamando de "propriedade" no texto visível — é o termo que a
-// Booking/Airbnb usam — mas o dado por trás é a UH cadastrada no gateway,
-// não um cadastro próprio deste app). `reworkRequests` removido: o model
-// ReworkRequest do v1 já estava marcado como legado (substituído por
-// reopenAnalysisAction) e a UI do CardDetailDrawer nunca chegou a usá-lo.
+// `reworkRequests` removido: o model ReworkRequest do v1 já estava marcado
+// como legado (substituído por reopenAnalysisAction) e a UI do
+// CardDetailDrawer nunca chegou a usá-lo.
+//
+// IMPORTANTE (descoberto rodando a coleta real do Airbnb em produção): a
+// avaliação se associa a uma Property (propriedade/prédio, ex: "Bnb Flex
+// Suites"), não a uma UH específica — Booking/Airbnb nunca informam qual UH
+// o hóspede ficou, só o nome do anúncio/propriedade. Um passo anterior desta
+// migração tinha ligado Review a UH diretamente (uhId/uhNumero) — corrigido
+// aqui pra propertyId/propertyNome, com Property sendo agora um cadastro de
+// primeira classe no gateway (não mais texto livre como no v1).
 
 export type KanbanReview = {
   id: string;
@@ -15,8 +20,8 @@ export type KanbanReview = {
   ratingRaw: number;
   ratingScaleMax: number;
   guestSubmittedAt: string;
-  uhId: string;
-  uhNumero: string | null;
+  propertyId: string;
+  propertyNome: string | null;
   checkInDate: string | null;
   stage: string;
   skippedToFinal: boolean;
@@ -66,7 +71,7 @@ export type KanbanReview = {
 
 export type Attendant = { id: string; name: string };
 export type CategoryOption = { id: string; name: string };
-export type UHOption = { id: string; numero: string };
+export type PropertyOption = { id: string; nome: string };
 
 export type PendingAirbnbImportItem = {
   id: string;

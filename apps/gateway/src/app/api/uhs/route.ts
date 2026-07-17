@@ -18,7 +18,15 @@ export async function GET() {
 
   const uhs = await prisma.uH.findMany({
     where: { tenantId: session.tenantId, ativo: true },
-    select: { id: true, numero: true, tipo: true, ordem: true, ativo: true },
+    select: {
+      id: true,
+      numero: true,
+      tipo: true,
+      ordem: true,
+      ativo: true,
+      propertyId: true,
+      property: { select: { nome: true } },
+    },
     orderBy: { ordem: "asc" },
   });
   return NextResponse.json(uhs);
@@ -29,12 +37,19 @@ export async function POST(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarCadastros(session);
   if (bloqueado) return bloqueado;
 
-  const { numero, tipo, ordem } = await req.json();
+  const { numero, tipo, ordem, propertyId } = await req.json();
   if (!numero) return NextResponse.json({ error: "Número obrigatório" }, { status: 400 });
+  if (!propertyId) return NextResponse.json({ error: "Propriedade obrigatória" }, { status: 400 });
 
   try {
     const uh = await prisma.uH.create({
-      data: { tenantId: session!.tenantId, numero, tipo: tipo || "Standard", ordem: ordem || 0 },
+      data: {
+        tenantId: session!.tenantId,
+        numero,
+        tipo: tipo || "Standard",
+        ordem: ordem || 0,
+        propertyId,
+      },
     });
     return NextResponse.json(uh, { status: 201 });
   } catch {
@@ -47,10 +62,10 @@ export async function PUT(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarCadastros(session);
   if (bloqueado) return bloqueado;
 
-  const { id, numero, tipo, ordem, ativo } = await req.json();
+  const { id, numero, tipo, ordem, ativo, propertyId } = await req.json();
   const uh = await prisma.uH.update({
     where: { id },
-    data: { numero, tipo, ordem, ativo },
+    data: { numero, tipo, ordem, ativo, ...(propertyId ? { propertyId } : {}) },
   });
   return NextResponse.json(uh);
 }

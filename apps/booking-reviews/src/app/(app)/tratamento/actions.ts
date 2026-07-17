@@ -10,18 +10,24 @@ import { logAlert } from "@/lib/alerts";
 import { safeAction } from "@/lib/safeAction";
 
 // Portado de apps/booking-reviews/src/app/(app)/tratamento/actions.ts (v1).
-// Mudanças estruturais (além de companyId→tenantId / session.name→
-// session.nome / propertyId→uhId em todo canto):
-//   - `findOrCreateProperty` virou `findUHByNumero`: só BUSCA uma UH já
-//     cadastrada (comparação sem diferenciar maiúsculas/minúsculas), NUNCA
-//     cria uma nova — UH é cadastro centralizado no gateway (ver comentário
-//     no model UH do schema). Quando não encontra, a avaliação vira
-//     PendingAirbnbImport igual ao caso de "e-mail não trouxe nome nenhum".
+// Mudanças estruturais (além de companyId→tenantId / session.name→session.nome):
+//   - `findOrCreateProperty` virou `findPropertyByNome`: só BUSCA uma
+//     Property já cadastrada (comparação sem diferenciar maiúsculas/
+//     minúsculas), NUNCA cria uma nova — Property é cadastro centralizado no
+//     gateway, igual UH (ver model Property no schema). Quando não encontra,
+//     a avaliação vira PendingAirbnbImport igual ao caso de "e-mail não
+//     trouxe nome nenhum".
 //   - `company.airbnbLastCollectedAt` virou `ReviewsConfig.airbnbLastCollectedAt`
 //     (tenantId-keyed), já que não existe mais model Company.
 //   - `AIRBNB_INTEGRATION_COMPANY_ID` virou `AIRBNB_INTEGRATION_TENANT_ID`
 //     (comparado contra session.tenantId).
-//   - `updateReviewPropertyAction` foi renomeado pra `updateReviewUHAction`.
+//   - IMPORTANTE (descoberto rodando a coleta real em produção):
+//     Review.propertyId aponta pra Property (agrupamento de UHs, ex: "Bnb
+//     Flex Suites"), NÃO pra UH — Booking/Airbnb só informam a propriedade/
+//     anúncio na notificação, nunca a UH específica onde o hóspede ficou.
+//     Uma passada anterior desta migração tinha ligado a UH diretamente
+//     (uhId) — corrigida aqui pra propertyId, com `updateReviewPropertyAction`
+//     mantendo o mesmo nome do v1 (fazia sentido nele, faz sentido de novo).
 
 const FINAL_THRESHOLD = 4.75; // nota (normalizada 0-5) a partir da qual pode ir direto p/ Finalizadas
 const MAX_ATTACHMENT_BYTES = 4.5 * 1024 * 1024; // limite de body do Vercel (Hobby) pra Server Actions
@@ -35,12 +41,12 @@ const STAGE_LABEL: Record<string, string> = {
 };
 
 // Usado pela coleta automática do Airbnb: o nome da propriedade vem do corpo
-// do e-mail (parseAirbnbBody). Busca apenas — nunca cria uma UH nova. Se não
-// achar nenhuma UH ativa com esse número/nome, quem chamou deve tratar como
+// do e-mail (parseAirbnbBody). Busca apenas — nunca cria uma Property nova.
+// Se não achar nenhuma Property com esse nome, quem chamou deve tratar como
 // pendência manual (ver runAirbnbCollectionAction).
-async function findUHByNumero(tenantId: string, numero: string): Promise<string | null> {
-  const existing = await prisma.uH.findFirst({
-    where: { tenantId, ativo: true, numero: { equals: numero, mode: "insensitive" } },
+async function findPropertyByNome(tenantId: string, nome: string): Promise<string | null> {
+  const existing = await prisma.property.findFirst({
+    where: { tenantId, nome: { equals: nome, mode: "insensitive" } },
   });
   return existing?.id ?? null;
 }
@@ -734,7 +740,7 @@ export async function triggerCollectionRunAction() {
 
 export type RegisterBookingReviewInput = {
   guestName: string;
-  uhId: string;
+  propertyId: string;
   checkInDate: string; // data da hospedagem (YYYY-MM-DD)
   ratingRaw: number; // nota na escala 0-10 da Booking
   comment: string;
@@ -743,14 +749,15 @@ export type RegisterBookingReviewInput = {
 // Registro manual de avaliação da Booking. Não lê a extranet de forma
 // nenhuma — a Booking proíbe acesso automatizado à extranet em seus termos
 // de uso (risco de suspensão da conta), então aqui é sempre uma pessoa que
-// olha a extranet e digita o que viu. UH é obrigatória, igual à coleta do
-// Airbnb — todo card precisa estar associado a uma UH já cadastrada.
+// olha a extranet e digita o que viu. Property é obrigatória, igual à coleta
+// do Airbnb — todo card precisa estar associado a uma propriedade já
+// cadastrada.
 async function registerBookingReviewActionImpl(input: RegisterBookingReviewInput) {
   const session = await requireRole("GERENTE", "MASTER");
 
   const guestName = input.guestName?.trim();
   if (!guestName) throw new Error("Informe o nome do hóspede.");
-  if (!input.uhId) throw new Error("Selecione a propriedade.");
+  if (!input.propertyId) throw new Error("Selecione a propriedade.");
   if (!input.checkInDate) throw new Error("Informe a data da hospedagem.");
   if (
     input.ratingRaw === undefined ||
@@ -762,8 +769,8 @@ async function registerBookingReviewActionImpl(input: RegisterBookingReviewInput
     throw new Error("Informe uma nota válida entre 0 e 10.");
   }
 
-  const uh = await prisma.uH.findFirstOrThrow({
-    where: { id: input.uhId, tenantId: session.tenantId },
+  const property = await prisma.property.findFirstOrThrow({
+    where: { id: input.propertyId, tenantId: session.tenantId },
   });
 
   const ratingNormalized = normalizeToFiveStars(input.ratingRaw, 10);
@@ -773,7 +780,7 @@ async function registerBookingReviewActionImpl(input: RegisterBookingReviewInput
       tenantId: session.tenantId,
       platform: "BOOKING",
       guestName,
-      uhId: uh.id,
+      propertyId: property.id,
       comment: input.comment?.trim() || null,
       ratingRaw: input.ratingRaw,
       ratingScaleMax: 10,
@@ -792,32 +799,32 @@ async function registerBookingReviewActionImpl(input: RegisterBookingReviewInput
   return review.id;
 }
 
-// Master/Gerente pode corrigir a UH de um card a qualquer momento (ex:
-// e-mail do Airbnb identificou a propriedade errada, ou o card veio de uma
-// pendência resolvida com um palpite provisório).
-async function updateReviewUHActionImpl(reviewId: string, uhId: string) {
+// Master/Gerente pode corrigir a propriedade de um card a qualquer momento
+// (ex: e-mail do Airbnb identificou a propriedade errada, ou o card veio de
+// uma pendência resolvida com um palpite provisório).
+async function updateReviewPropertyActionImpl(reviewId: string, propertyId: string) {
   const session = await requireRole("GERENTE", "MASTER");
-  if (!uhId) throw new Error("Selecione a propriedade.");
+  if (!propertyId) throw new Error("Selecione a propriedade.");
 
   const review = await prisma.review.findFirstOrThrow({
     where: { id: reviewId, tenantId: session.tenantId },
-    include: { uh: true },
+    include: { property: true },
   });
-  const uh = await prisma.uH.findFirstOrThrow({
-    where: { id: uhId, tenantId: session.tenantId },
+  const property = await prisma.property.findFirstOrThrow({
+    where: { id: propertyId, tenantId: session.tenantId },
   });
 
   await prisma.review.update({
     where: { id: review.id },
-    data: { uhId: uh.id },
+    data: { propertyId: property.id },
   });
 
-  if (review.uhId !== uh.id) {
+  if (review.propertyId !== property.id) {
     await logReviewEvent(
       review.id,
       session.userId,
       "PROPRIEDADE_ALTERADA",
-      `Propriedade alterada de "${review.uh?.numero ?? "—"}" para "${uh.numero}".`
+      `Propriedade alterada de "${review.property?.nome ?? "—"}" para "${property.nome}".`
     );
   }
 
@@ -861,20 +868,21 @@ export async function runAirbnbCollectionAction(): Promise<{
       reviewsConfig?.airbnbLastCollectedAt ?? null
     );
 
-    // UH é obrigatória em todo card — quando o e-mail permite identificar
-    // uma UH já cadastrada, o card já nasce completo. Quando não permite
-    // (nenhum nome de propriedade no e-mail, ou nome não bate com nenhuma UH
-    // ativa), a avaliação fica pendente pra alguém atribuir a UH manualmente
-    // antes dela virar card de verdade no Kanban (ver
-    // resolvePendingAirbnbImportAction) — esta rotina NUNCA cria uma UH nova.
+    // Property é obrigatória em todo card — quando o e-mail permite
+    // identificar uma propriedade já cadastrada, o card já nasce completo.
+    // Quando não permite (nenhum nome de propriedade no e-mail, ou o nome
+    // não bate com nenhuma Property cadastrada), a avaliação fica pendente
+    // pra alguém atribuir a propriedade manualmente antes dela virar card de
+    // verdade no Kanban (ver resolvePendingAirbnbImportAction) — esta
+    // rotina NUNCA cria uma Property nova.
     let createdCount = 0;
     let pendingCount = 0;
     for (const item of items) {
-      const uhId = item.propertyName
-        ? await findUHByNumero(session.tenantId, item.propertyName)
+      const propertyId = item.propertyName
+        ? await findPropertyByNome(session.tenantId, item.propertyName)
         : null;
 
-      if (uhId) {
+      if (propertyId) {
         const ratingNormalized = normalizeToFiveStars(item.ratingRaw, 5);
         await prisma.review.create({
           data: {
@@ -886,7 +894,7 @@ export async function runAirbnbCollectionAction(): Promise<{
             ratingNormalized,
             guestSubmittedAt: item.guestSubmittedAt,
             checkInDate: item.checkInDate ?? undefined,
-            uhId,
+            propertyId,
             analysisDueAt: addBusinessDays(new Date(), 2),
           },
         });
@@ -960,18 +968,18 @@ export async function runAirbnbCollectionAction(): Promise<{
   }
 }
 
-// Gerente/Master atribui a UH a uma avaliação do Airbnb que ficou pendente
-// (e-mail não permitiu identificar automaticamente uma UH já cadastrada) —
-// só então ela vira um card de verdade no Kanban.
-async function resolvePendingAirbnbImportActionImpl(pendingId: string, uhId: string) {
+// Gerente/Master atribui a propriedade a uma avaliação do Airbnb que ficou
+// pendente (e-mail não permitiu identificar automaticamente uma propriedade
+// já cadastrada) — só então ela vira um card de verdade no Kanban.
+async function resolvePendingAirbnbImportActionImpl(pendingId: string, propertyId: string) {
   const session = await requireRole("GERENTE", "MASTER");
-  if (!uhId) throw new Error("Selecione a propriedade.");
+  if (!propertyId) throw new Error("Selecione a propriedade.");
 
   const pending = await prisma.pendingAirbnbImport.findFirstOrThrow({
     where: { id: pendingId, tenantId: session.tenantId },
   });
-  const uh = await prisma.uH.findFirstOrThrow({
-    where: { id: uhId, tenantId: session.tenantId },
+  const property = await prisma.property.findFirstOrThrow({
+    where: { id: propertyId, tenantId: session.tenantId },
   });
 
   const ratingNormalized = normalizeToFiveStars(pending.ratingRaw, 5);
@@ -987,7 +995,7 @@ async function resolvePendingAirbnbImportActionImpl(pendingId: string, uhId: str
         ratingNormalized,
         guestSubmittedAt: pending.guestSubmittedAt,
         checkInDate: pending.checkInDate ?? undefined,
-        uhId: uh.id,
+        propertyId: property.id,
         analysisDueAt: addBusinessDays(new Date(), 2),
       },
     }),
@@ -998,7 +1006,7 @@ async function resolvePendingAirbnbImportActionImpl(pendingId: string, uhId: str
     createdReview.id,
     session.userId,
     "CRIADA",
-    `Avaliação do Airbnb — propriedade atribuída manualmente (${uh.numero}).`
+    `Avaliação do Airbnb — propriedade atribuída manualmente (${property.nome}).`
   );
 
   revalidatePath("/tratamento");
@@ -1197,11 +1205,11 @@ export async function finalizeReviewAction(reviewId: string) {
 export async function registerBookingReviewAction(input: RegisterBookingReviewInput) {
   return safeAction(registerBookingReviewActionImpl)(input);
 }
-export async function updateReviewUHAction(reviewId: string, uhId: string) {
-  return safeAction(updateReviewUHActionImpl)(reviewId, uhId);
+export async function updateReviewPropertyAction(reviewId: string, propertyId: string) {
+  return safeAction(updateReviewPropertyActionImpl)(reviewId, propertyId);
 }
-export async function resolvePendingAirbnbImportAction(pendingId: string, uhId: string) {
-  return safeAction(resolvePendingAirbnbImportActionImpl)(pendingId, uhId);
+export async function resolvePendingAirbnbImportAction(pendingId: string, propertyId: string) {
+  return safeAction(resolvePendingAirbnbImportActionImpl)(pendingId, propertyId);
 }
 export async function dismissPendingAirbnbImportAction(pendingId: string) {
   return safeAction(dismissPendingAirbnbImportActionImpl)(pendingId);

@@ -12,11 +12,13 @@ import { normalizeToFiveStars, addBusinessDays } from "@/lib/scoring";
 // precisa ser atualizado no script Python quando ele for portado pra v2 —
 // já ia precisar mudar de qualquer forma pro novo domínio). `propertyLabel`
 // continua com esse nome no contrato externo (é a label como o script/
-// pessoa identificou a propriedade), mas por trás não cria mais uma
-// propriedade nova — resolve por busca contra as UHs já cadastradas
-// (UH.numero, mesmo padrão de findUHByNumero em tratamento/actions.ts). Se
-// não achar nenhuma UH com esse número, a ingestão falha com erro 400 em vez
-// de criar um cadastro solto — cadastro de UH é centralizado no gateway.
+// pessoa identificou a propriedade), e por trás resolve por busca contra as
+// Properties já cadastradas (Property.nome, mesmo padrão de
+// findPropertyByNome em tratamento/actions.ts — NÃO contra UH: Booking/
+// Airbnb só informam a propriedade/anúncio, nunca a UH específica). Se não
+// achar nenhuma Property com esse nome, a ingestão falha com erro 400 em vez
+// de criar um cadastro solto — cadastro de Property é centralizado no
+// gateway.
 
 type IngestBody = {
   tenantId: string;
@@ -25,14 +27,14 @@ type IngestBody = {
   comment?: string;
   ratingRaw: number;
   ratingScaleMax?: number; // default 10
-  propertyLabel: string; // obrigatório — precisa bater com o número/nome de uma UH já cadastrada
+  propertyLabel: string; // obrigatório — precisa bater com o nome de uma Property já cadastrada
   checkInDate?: string;
   guestSubmittedAt: string; // data em que a avaliação chegou na OTA
 };
 
-async function resolveUHId(tenantId: string, label: string): Promise<string | null> {
-  const existing = await prisma.uH.findFirst({
-    where: { tenantId, ativo: true, numero: { equals: label, mode: "insensitive" } },
+async function resolvePropertyId(tenantId: string, label: string): Promise<string | null> {
+  const existing = await prisma.property.findFirst({
+    where: { tenantId, nome: { equals: label, mode: "insensitive" } },
   });
   return existing?.id ?? null;
 }
@@ -55,11 +57,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const uhId = await resolveUHId(item.tenantId, item.propertyLabel.trim());
-    if (!uhId) {
+    const propertyId = await resolvePropertyId(item.tenantId, item.propertyLabel.trim());
+    if (!propertyId) {
       return NextResponse.json(
         {
-          error: `Nenhuma UH cadastrada com o número/nome "${item.propertyLabel}" (avaliação de ${item.guestName}). Cadastre a UH no gateway antes de tentar novamente.`,
+          error: `Nenhuma propriedade cadastrada com o nome "${item.propertyLabel}" (avaliação de ${item.guestName}). Cadastre a propriedade no gateway antes de tentar novamente.`,
         },
         { status: 400 }
       );
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
         ratingRaw: item.ratingRaw,
         ratingScaleMax,
         ratingNormalized,
-        uhId,
+        propertyId,
         checkInDate: item.checkInDate ? new Date(item.checkInDate) : undefined,
         guestSubmittedAt,
         collectedAt: new Date(),

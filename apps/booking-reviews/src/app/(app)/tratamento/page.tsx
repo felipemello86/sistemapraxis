@@ -3,9 +3,10 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 import { KanbanBoard } from "@/components/kanban/KanbanBoard";
 
 // Portado de apps/booking-reviews/src/app/(app)/tratamento/page.tsx (v1).
-// companyId→tenantId; property→uh (include na query, FK real em vez de
-// match de texto); propertyId/propertyLabel→uhId/uhNumero na serialização;
-// bloco reworkRequests removido (model não existe mais — ver comentário no
+// companyId→tenantId; Property agora é FK real (não match de texto) — a
+// review se associa a Property, não a UH (Booking/Airbnb só informam a
+// propriedade/anúncio, nunca a UH específica onde o hóspede ficou); bloco
+// reworkRequests removido (model não existe mais — ver comentário no
 // schema). Adicionado hasModuleAccess (v1 não tinha, mas o resto da suíte v2
 // checa em toda página por defesa em profundidade, além do check no
 // layout/nas próprias Server Actions).
@@ -16,12 +17,12 @@ export default async function TratamentoPage() {
   const podeAcessar = await hasModuleAccess(session, "BOOKING_REVIEWS");
   if (!podeAcessar) redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
 
-  const [reviews, attendants, categories, uhs, pendingImports] = await Promise.all([
+  const [reviews, attendants, categories, properties, pendingImports] = await Promise.all([
     prisma.review.findMany({
       where: { tenantId: session.tenantId },
       orderBy: { guestSubmittedAt: "desc" },
       include: {
-        uh: true,
+        property: true,
         attendants: { include: { attendant: true } },
         categories: { include: { category: true } },
         actionPlan: { include: { items: { include: { completedBy: true } } } },
@@ -45,9 +46,9 @@ export default async function TratamentoPage() {
       where: { tenantId: session.tenantId, active: true },
       orderBy: { name: "asc" },
     }),
-    prisma.uH.findMany({
-      where: { tenantId: session.tenantId, ativo: true },
-      orderBy: { numero: "asc" },
+    prisma.property.findMany({
+      where: { tenantId: session.tenantId },
+      orderBy: { nome: "asc" },
     }),
     prisma.pendingAirbnbImport.findMany({
       where: { tenantId: session.tenantId },
@@ -64,8 +65,8 @@ export default async function TratamentoPage() {
     ratingRaw: r.ratingRaw,
     ratingScaleMax: r.ratingScaleMax,
     guestSubmittedAt: r.guestSubmittedAt.toISOString(),
-    uhId: r.uhId,
-    uhNumero: r.uh?.numero ?? null,
+    propertyId: r.propertyId,
+    propertyNome: r.property?.nome ?? null,
     checkInDate: r.checkInDate?.toISOString() ?? null,
     stage: r.stage,
     skippedToFinal: r.skippedToFinal,
@@ -123,7 +124,7 @@ export default async function TratamentoPage() {
       reviews={serialized}
       attendants={attendants.map((a) => ({ id: a.id, name: a.nome }))}
       categories={categories.map((c) => ({ id: c.id, name: c.name }))}
-      uhs={uhs.map((u) => ({ id: u.id, numero: u.numero }))}
+      properties={properties.map((p) => ({ id: p.id, nome: p.nome }))}
       pendingImports={pendingImports.map((p) => ({
         id: p.id,
         guestName: p.guestName,

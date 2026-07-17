@@ -3,20 +3,21 @@
 import { useState, useTransition } from "react";
 import { registerBookingReviewAction } from "@/app/(app)/tratamento/actions";
 import { unwrapSafeAction } from "@/lib/safeAction";
-import type { UHOption } from "./types";
+import type { PropertyOption } from "./types";
 
 // Portado de apps/booking-reviews/src/components/kanban/BookingReviewModal.tsx
-// (v1) — propertyId/PropertyOption → uhId/UHOption. Texto da UI continua
-// falando "propriedade" (termo que a Booking usa), só o dado por trás mudou.
+// (v1) — uhs/uhId (UHOption) → properties/propertyId (PropertyOption), agora
+// que Review se associa a Property (não a UH — Booking só informa a
+// propriedade/anúncio, nunca a UH específica).
 export function BookingReviewModal({
-  uhs,
+  properties,
   onClose,
 }: {
-  uhs: UHOption[];
+  properties: PropertyOption[];
   onClose: () => void;
 }) {
   const [guestName, setGuestName] = useState("");
-  const [uhId, setUhId] = useState("");
+  const [propertyId, setPropertyId] = useState("");
   const [checkInDate, setCheckInDate] = useState("");
   const [ratingRaw, setRatingRaw] = useState("");
   const [comment, setComment] = useState("");
@@ -27,7 +28,7 @@ export function BookingReviewModal({
     e.preventDefault();
     setError(null);
 
-    if (!uhId) {
+    if (!propertyId) {
       setError("Selecione a propriedade.");
       return;
     }
@@ -42,7 +43,7 @@ export function BookingReviewModal({
         unwrapSafeAction(
           await registerBookingReviewAction({
             guestName,
-            uhId,
+            propertyId,
             checkInDate,
             ratingRaw: rating,
             comment,
@@ -89,20 +90,20 @@ export function BookingReviewModal({
             <label className="block text-xs font-medium text-slate-600 mb-1">Propriedade</label>
             <select
               required
-              value={uhId}
-              onChange={(e) => setUhId(e.target.value)}
+              value={propertyId}
+              onChange={(e) => setPropertyId(e.target.value)}
               className="w-full text-sm border border-slate-300 rounded-md px-2 py-1.5"
             >
               <option value="">Selecione...</option>
-              {uhs.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.numero}
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
                 </option>
               ))}
             </select>
-            {uhs.length === 0 && (
+            {properties.length === 0 && (
               <p className="text-xs text-amber-600 mt-1">
-                Nenhuma UH cadastrada. Cadastre em Configurações (gateway) antes de registrar.
+                Nenhuma propriedade cadastrada. Cadastre em Configurações (gateway) antes de registrar.
               </p>
             )}
           </div>

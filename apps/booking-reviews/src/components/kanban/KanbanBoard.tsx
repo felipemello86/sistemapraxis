@@ -8,7 +8,7 @@ import {
   type CategoryOption,
   type KanbanReview,
   type PendingAirbnbImportItem,
-  type UHOption,
+  type PropertyOption,
 } from "./types";
 import { ReviewCard } from "./ReviewCard";
 import { CardDetailDrawer } from "./CardDetailDrawer";
@@ -17,12 +17,14 @@ import { PendingAirbnbImportsBanner } from "./PendingAirbnbImportsBanner";
 import { runAirbnbCollectionAction } from "@/app/(app)/tratamento/actions";
 
 // Portado de apps/booking-reviews/src/components/kanban/KanbanBoard.tsx (v1)
-// — properties/propertyId → uhs/uhId (UHOption).
+// — uhs/uhId (UHOption) → properties/propertyId (PropertyOption). Review se
+// associa a Property, não a UH (Booking/Airbnb só informam a
+// propriedade/anúncio, nunca a UH específica onde o hóspede ficou).
 export function KanbanBoard({
   reviews,
   attendants,
   categories,
-  uhs,
+  properties,
   pendingImports,
   currentUserRole,
   currentUserId,
@@ -30,7 +32,7 @@ export function KanbanBoard({
   reviews: KanbanReview[];
   attendants: Attendant[];
   categories: CategoryOption[];
-  uhs: UHOption[];
+  properties: PropertyOption[];
   pendingImports: PendingAirbnbImportItem[];
   currentUserRole: string;
   currentUserId: string;
@@ -41,7 +43,7 @@ export function KanbanBoard({
   const [airbnbMessage, setAirbnbMessage] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<string>("");
-  const [uhFilter, setUhFilter] = useState<string>("");
+  const [propertyFilter, setPropertyFilter] = useState<string>("");
   const canManage = currentUserRole === "GERENTE" || currentUserRole === "MASTER";
 
   useEffect(() => {
@@ -54,9 +56,9 @@ export function KanbanBoard({
       reviews.filter(
         (r) =>
           (!platformFilter || r.platform === platformFilter) &&
-          (!uhFilter || r.uhId === uhFilter)
+          (!propertyFilter || r.propertyId === propertyFilter)
       ),
-    [reviews, platformFilter, uhFilter]
+    [reviews, platformFilter, propertyFilter]
   );
 
   const byStage = useMemo(() => {
@@ -117,23 +119,23 @@ export function KanbanBoard({
         <div>
           <label className="block text-[11px] text-slate-400 mb-0.5">Propriedade</label>
           <select
-            value={uhFilter}
-            onChange={(e) => setUhFilter(e.target.value)}
+            value={propertyFilter}
+            onChange={(e) => setPropertyFilter(e.target.value)}
             className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white"
           >
             <option value="">Todas as propriedades</option>
-            {uhs.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.numero}
+            {properties.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
               </option>
             ))}
           </select>
         </div>
-        {(platformFilter || uhFilter) && (
+        {(platformFilter || propertyFilter) && (
           <button
             onClick={() => {
               setPlatformFilter("");
-              setUhFilter("");
+              setPropertyFilter("");
             }}
             className="text-xs text-blue-600 hover:underline self-end mb-1.5"
           >
@@ -149,11 +151,11 @@ export function KanbanBoard({
       )}
 
       {canManage && pendingImports.length > 0 && (
-        <PendingAirbnbImportsBanner pendingImports={pendingImports} uhs={uhs} />
+        <PendingAirbnbImportsBanner pendingImports={pendingImports} properties={properties} />
       )}
 
       {showBookingModal && (
-        <BookingReviewModal uhs={uhs} onClose={() => setShowBookingModal(false)} />
+        <BookingReviewModal properties={properties} onClose={() => setShowBookingModal(false)} />
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-start">
@@ -188,7 +190,7 @@ export function KanbanBoard({
           review={selectedReview}
           attendants={attendants}
           categories={categories}
-          uhs={uhs}
+          properties={properties}
           currentUserRole={currentUserRole}
           currentUserId={currentUserId}
           onClose={() => setSelectedId(null)}

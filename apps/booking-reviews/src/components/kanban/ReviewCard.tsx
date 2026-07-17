@@ -4,7 +4,8 @@ import { formatDateOnlyBR, isDateOnlyPast } from "@/lib/dateOnly";
 import type { KanbanReview } from "./types";
 
 // Portado de apps/booking-reviews/src/components/kanban/ReviewCard.tsx (v1)
-// — só propertyLabel → uhNumero.
+// — propertyLabel → propertyNome (Property agora é cadastro real, não texto
+// livre).
 export function ReviewCard({
   review,
   onClick,
@@ -25,7 +26,7 @@ export function ReviewCard({
         <div>
           <div className="text-sm font-medium text-slate-700">{review.guestName}</div>
           <div className="text-xs text-slate-400">
-            {review.uhNumero ?? "—"} · {review.platform}
+            {review.propertyNome ?? "—"} · {review.platform}
             {review.checkInDate && <> · check-in {formatDateOnlyBR(review.checkInDate)}</>}
           </div>
         </div>

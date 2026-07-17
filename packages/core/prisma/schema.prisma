@@ -42,6 +42,7 @@ model Tenant {
   // Governança (Housekeeping)
   hkConfig            HkConfig?
   inspectionTemplates InspectionTemplate[]
+  properties          Property[]
   uhs                 UH[]
   cleaningPrograms    CleaningProgram[]
   falhasLavanderia    FalhaLavanderia[]
@@ -184,10 +185,38 @@ model PushToken {
   @@index([userId])
 }
 
+// Propriedade = agrupamento de UHs (ex: "Bnb Flex Suites", "Bnb Flex Comfort",
+// "Bnb Flex Premium" — prédios/empreendimentos diferentes da mesma operação,
+// cada um com seu próprio grupo de UHs). Cadastro centralizado no gateway,
+// igual UH. Existe porque as notificações de avaliação (Booking/Airbnb) só
+// identificam a propriedade/anúncio — nunca a UH específica onde o hóspede
+// ficou — então Review se associa a Property, não a UH (ver model Review na
+// seção AVALIAÇÕES mais abaixo; descoberto só depois de rodar a coleta real
+// do Airbnb em produção e ver que o e-mail manda "Bnb Flex Suites", não
+// "201-V").
+model Property {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome String // ex: "Bnb Flex Suites"
+
+  uhs     UH[]
+  reviews Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, nome])
+}
+
 model UH {
   id       String @id @default(cuid())
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
 
   numero String // ex: "101", "CHALÉ 3"
   tipo   String  @default("Standard")
@@ -206,15 +235,6 @@ model UH {
   cleaningSessions CleaningSession[]
   inspections      InspectionSession[]
   selecoes         DailyUHSelection[]
-
-  // Avaliações (Booking-Reviews) — Review.uhId aponta pra cá com FK de
-  // verdade (ver seção AVALIAÇÕES mais abaixo). No v1 esse app tinha seu
-  // próprio model `Property` com id solto, sem FK real pra UH — cada review
-  // era casado com a UH por match de texto (label). Aqui não existe mais
-  // model de propriedade duplicado: uma UH é uma UH, cadastrada uma vez só
-  // no gateway, e todo módulo (Governança, Manutenção, Avaliações) referencia
-  // o mesmo UH.id.
-  reviews Review[]
 
   @@unique([tenantId, numero])
 }
@@ -397,10 +417,12 @@ model FalhaLavanderia {
 //     ligada só por um `tenantId String? @unique` solto, sem FK real.
 //   - Não existe mais model `User` local — era sincronizado por upsert
 //     best-effort a cada login (mesmo padrão de bug já corrigido).
-//   - Não existe mais model `Property` — v1 resolvia a UH de cada review por
-//     match de texto (`Property.label` contra o nome extraído do e-mail/
-//     digitado manualmente), sem FK real. Aqui `Review.uhId` aponta direto
-//     pra `UH.id` (cadastro único do gateway, ver model UH acima).
+//   - O `Property` do v1 tinha id solto, sem FK real pra nada (era resolvido
+//     por match de texto contra o nome extraído do e-mail/digitado
+//     manualmente). Aqui `Property` é um model de primeira classe do
+//     gateway (ver acima, junto de UH) — Review.propertyId é FK de verdade.
+//     IMPORTANTE: Review associa a Property, não a UH — Booking/Airbnb só
+//     informam a propriedade/anúncio na notificação, nunca a UH específica.
 //   - `Role` (enum local do v1, com o par legado ATENDENTE/ATENDIMENTO) não
 //     existe mais — usa o `role: String` do User compartilhado, como todo
 //     resto da suíte.
@@ -476,12 +498,15 @@ model Review {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Toda avaliação precisa estar associada a uma UH — obrigatório tanto na
-  // coleta automática do Airbnb (se o e-mail não permitir extrair a
-  // propriedade, o card fica pendente em PendingAirbnbImport até alguém
-  // atribuir manualmente) quanto no cadastro manual da Booking.
-  uhId String
-  uh   UH     @relation(fields: [uhId], references: [id])
+  // Toda avaliação precisa estar associada a uma Property — obrigatório
+  // tanto na coleta automática do Airbnb (se o e-mail não permitir extrair
+  // a propriedade, o card fica pendente em PendingAirbnbImport até alguém
+  // atribuir manualmente) quanto no cadastro manual da Booking. NÃO é FK
+  // pra UH: Booking/Airbnb só identificam a propriedade/anúncio na
+  // notificação (ex: "Bnb Flex Suites"), nunca a UH específica onde o
+  // hóspede ficou — essa granularidade não existe na origem do dado.
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id])
 
   platform  ReviewPlatform
   guestName String

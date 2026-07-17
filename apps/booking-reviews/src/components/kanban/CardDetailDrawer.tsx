@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { formatDateOnlyBR, isDateOnlyPast, localDayFromDateOnly } from "@/lib/dateOnly";
-import type { Attendant, CategoryOption, KanbanReview, UHOption } from "./types";
+import type { Attendant, CategoryOption, KanbanReview, PropertyOption } from "./types";
 import {
   addEfficacyCheckAction,
   addManagerialNoteAction,
@@ -24,17 +24,18 @@ import {
   toggleActionItemAction,
   updateEfficacyCheckAction,
   updateManagerialNoteAction,
-  updateReviewUHAction,
+  updateReviewPropertyAction,
 } from "@/app/(app)/tratamento/actions";
 import { rejectIfSafeActionFailed, unwrapSafeAction } from "@/lib/safeAction";
 
 // Portado de apps/booking-reviews/src/components/kanban/CardDetailDrawer.tsx
-// (v1) — únicas mudanças são as renomeações de propriedade → UH
-// (propertyId→uhId, propertyLabel→uhNumero, PropertyOption→UHOption,
-// updateReviewPropertyAction→updateReviewUHAction) e o texto do log
-// PROPRIEDADE_ALTERADA (mantido igual, é só rótulo de exibição). O resto do
-// fluxo (estágios, plano de ação, eficácia, anexos, observações) é idêntico
-// ao v1 — nada de ReworkRequest aqui, a UI nunca chegou a usar esse model.
+// (v1). Review se associa a Property (não a UH — Booking/Airbnb só informam
+// a propriedade/anúncio, nunca a UH específica), então usa propertyId/
+// propertyNome/PropertyOption/updateReviewPropertyAction — nomes que batem
+// exatamente com os do v1 (o texto do log PROPRIEDADE_ALTERADA nunca mudou,
+// é só rótulo de exibição). O resto do fluxo (estágios, plano de ação,
+// eficácia, anexos, observações) é idêntico ao v1 — nada de ReworkRequest
+// aqui, a UI nunca chegou a usar esse model.
 
 const FINAL_THRESHOLD = 4.75;
 
@@ -67,7 +68,7 @@ export function CardDetailDrawer({
   review,
   attendants,
   categories,
-  uhs,
+  properties,
   currentUserRole,
   currentUserId,
   onClose,
@@ -75,7 +76,7 @@ export function CardDetailDrawer({
   review: KanbanReview;
   attendants: Attendant[];
   categories: CategoryOption[];
-  uhs: UHOption[];
+  properties: PropertyOption[];
   currentUserRole: string;
   currentUserId: string;
   onClose: () => void;
@@ -243,19 +244,19 @@ export function CardDetailDrawer({
             <p className="text-sm text-slate-500">
               {canManagePlan ? (
                 <select
-                  value={review.uhId}
+                  value={review.propertyId}
                   disabled={isPending}
-                  onChange={(e) => run(() => updateReviewUHAction(review.id, e.target.value))}
+                  onChange={(e) => run(() => updateReviewPropertyAction(review.id, e.target.value))}
                   className="text-sm border border-slate-200 rounded-md px-1 py-0.5 -ml-1 bg-transparent"
                 >
-                  {uhs.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.numero}
+                  {properties.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome}
                     </option>
                   ))}
                 </select>
               ) : (
-                review.uhNumero ?? "—"
+                review.propertyNome ?? "—"
               )}{" "}
               · {review.platform} · {new Date(review.guestSubmittedAt).toLocaleDateString("pt-BR")}
               {review.checkInDate && <> · check-in {formatDateOnlyBR(review.checkInDate)}</>}

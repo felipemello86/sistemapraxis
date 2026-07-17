@@ -7,20 +7,20 @@ import {
 } from "@/app/(app)/tratamento/actions";
 import { formatDateOnlyBR } from "@/lib/dateOnly";
 import { unwrapSafeAction } from "@/lib/safeAction";
-import type { PendingAirbnbImportItem, UHOption } from "./types";
+import type { PendingAirbnbImportItem, PropertyOption } from "./types";
 
 // Portado de apps/booking-reviews/src/components/kanban/PendingAirbnbImportsBanner.tsx
-// (v1) — propertyId/PropertyOption → uhId/UHOption. Avaliações do Airbnb
-// coletadas automaticamente, mas cujo e-mail não deixou claro qual a UH —
-// como UH é obrigatória em todo card, elas ficam aqui até Gerente/Master
-// atribuir manualmente (a uma UH já cadastrada — esta tela nunca cria UH
-// nova).
+// (v1) — uhId/UHOption → propertyId/PropertyOption. Avaliações do Airbnb
+// coletadas automaticamente, mas cujo e-mail não bateu com nenhuma
+// propriedade cadastrada — como Property é obrigatória em todo card, elas
+// ficam aqui até Gerente/Master atribuir manualmente (a uma propriedade já
+// cadastrada — esta tela nunca cria propriedade nova).
 export function PendingAirbnbImportsBanner({
   pendingImports,
-  uhs,
+  properties,
 }: {
   pendingImports: PendingAirbnbImportItem[];
-  uhs: UHOption[];
+  properties: PropertyOption[];
 }) {
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
@@ -35,7 +35,7 @@ export function PendingAirbnbImportsBanner({
       </div>
       <div className="space-y-2">
         {pendingImports.map((item) => (
-          <PendingRow key={item.id} item={item} uhs={uhs} />
+          <PendingRow key={item.id} item={item} properties={properties} />
         ))}
       </div>
     </div>
@@ -44,24 +44,24 @@ export function PendingAirbnbImportsBanner({
 
 function PendingRow({
   item,
-  uhs,
+  properties,
 }: {
   item: PendingAirbnbImportItem;
-  uhs: UHOption[];
+  properties: PropertyOption[];
 }) {
-  const [uhId, setUhId] = useState("");
+  const [propertyId, setPropertyId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleResolve() {
-    if (!uhId) {
+    if (!propertyId) {
       setError("Selecione a propriedade.");
       return;
     }
     setError(null);
     startTransition(async () => {
       try {
-        unwrapSafeAction(await resolvePendingAirbnbImportAction(item.id, uhId));
+        unwrapSafeAction(await resolvePendingAirbnbImportAction(item.id, propertyId));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Erro ao atribuir propriedade.");
       }
@@ -90,14 +90,14 @@ function PendingRow({
         </div>
       </div>
       <select
-        value={uhId}
-        onChange={(e) => setUhId(e.target.value)}
+        value={propertyId}
+        onChange={(e) => setPropertyId(e.target.value)}
         className="text-sm border border-slate-300 rounded-md px-2 py-1.5"
       >
         <option value="">Selecione a propriedade...</option>
-        {uhs.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.numero}
+        {properties.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.nome}
           </option>
         ))}
       </select>
