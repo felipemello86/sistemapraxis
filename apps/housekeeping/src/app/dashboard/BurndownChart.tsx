@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   ResponsiveContainer, ReferenceLine, Customized,
 } from "recharts";
-import { ChevronLeft, ChevronRight, Flag, Timer, ArrowLeftRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, Timer, ArrowLeftRight, Send } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/dashboard/BurndownChart.tsx (v1).
@@ -13,8 +13,9 @@ import { apiFetch } from "@/lib/apiFetch";
 //   - `role` chega via prop (não next-auth useSession) — mesmo padrão das
 //     outras views portadas nesta reconstrução.
 //   - fetch("/api/burndown...") → apiFetch(...) (basePath do módulo).
-//   - Botão "Enviar Relatório" (Telegram, /api/relatorio-diario) removido —
-//     depende de infra de relatório/PDF ainda não portada (fatia futura).
+//   - Botão "Enviar Relatório" (Telegram, /api/relatorio-diario) reintroduzido
+//     junto com o porte do bloco Relatórios (gera PDF + envia via Telegram
+//     pra quem tem telegramChatId cadastrado).
 //   - `atorFoto`/`foto` sempre chegam `null` da API v2 (User v2 não tem
 //     campo foto) — o componente já cai pra iniciais nesse caso, sem
 //     mudança de lógica necessária.
@@ -330,6 +331,9 @@ export default function BurndownChart({ role }: { role: string }) {
   const [expandedLogKey, setExpandedLogKey] = useState<string | null>(null);
   const [filteredUH, setFilteredUH] = useState<string | null>(null);
   const [logFilterCamId, setLogFilterCamId] = useState<string | null>(null);
+  const [enviandoRelatorio, setEnviandoRelatorio] = useState(false);
+  const [relatorioMsg, setRelatorioMsg] = useState<string | null>(null);
+  const isGerente = ["MASTER", "GERENTE"].includes(role);
 
   // Telas estreitas (mobile): os cards de camareira não cabem sobrepostos no
   // canto do gráfico (viram um amontoado ilegível sobre as linhas). Nesse caso
@@ -343,6 +347,26 @@ export default function BurndownChart({ role }: { role: string }) {
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
+
+  const enviarRelatorio = async () => {
+    setEnviandoRelatorio(true);
+    setRelatorioMsg(null);
+    try {
+      const res = await apiFetch("/api/relatorio-diario", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: dataSel }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erro ao enviar");
+      setRelatorioMsg(`✓ Enviado para ${json.enviados} destinatário(s)`);
+    } catch (e: any) {
+      setRelatorioMsg(`✗ ${e.message}`);
+    } finally {
+      setEnviandoRelatorio(false);
+      setTimeout(() => setRelatorioMsg(null), 5000);
+    }
+  };
 
   const hojeStr = new Date().toLocaleDateString("en-CA");
   const isHoje = dataSel === hojeStr;
@@ -572,6 +596,24 @@ export default function BurndownChart({ role }: { role: string }) {
               className="p-1 rounded hover:bg-gray-100 text-gray-500 disabled:opacity-30 transition-colors">
               <ChevronRight className="w-4 h-4" />
             </button>
+            {isGerente && (
+              <div className="flex items-center gap-2 ml-2">
+                <button
+                  onClick={enviarRelatorio}
+                  disabled={enviandoRelatorio}
+                  title="Enviar Relatório Gerencial via Telegram"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                >
+                  <Send className="w-3 h-3" />
+                  {enviandoRelatorio ? "Enviando…" : "Relatório"}
+                </button>
+                {relatorioMsg && (
+                  <span className={`text-xs font-medium ${relatorioMsg.startsWith("✓") ? "text-green-600" : "text-red-600"}`}>
+                    {relatorioMsg}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         {/* Legenda de eventos */}
