@@ -45,6 +45,14 @@ model Tenant {
   uhs                 UH[]
   cleaningPrograms    CleaningProgram[]
   falhasLavanderia    FalhaLavanderia[]
+
+  // Avaliações (Booking-Reviews)
+  reviewsConfig        ReviewsConfig?
+  reviewCategories     Category[]
+  reviews              Review[]
+  reviewCollectionRuns CollectionRun[]
+  reviewAlerts         Alert[]
+  pendingAirbnbImports PendingAirbnbImport[]
 }
 
 enum SuiteModule {
@@ -70,16 +78,16 @@ model TenantModule {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  nome         String
-  email        String
-  passwordHash String?
-  role         String // MASTER, GERENTE, GOVERNANTA, CAMAREIRA, LAVANDERIA, MANUTENCAO, ATENDIMENTO
-  ativo        Boolean  @default(true)
+  id             String  @id @default(cuid())
+  tenantId       String
+  tenant         Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  nome           String
+  email          String
+  passwordHash   String?
+  role           String // MASTER, GERENTE, GOVERNANTA, CAMAREIRA, LAVANDERIA, MANUTENCAO, ATENDIMENTO
+  ativo          Boolean @default(true)
   telegramChatId String?
-  whatsapp     String?
+  whatsapp       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -90,10 +98,22 @@ model User {
   // apontavam pra um User LOCAL do app housekeeping (tabela duplicada,
   // id diferente do suite_core). Aqui é o mesmo User de sempre, com FK de
   // verdade — não tem mais espaço pra "local id vs suite_core id" divergir.
-  hkAssignments      DailyAssignment[]    @relation("HkCamareira")
-  hkCleaningSessions CleaningSession[]    @relation("HkCamareira")
-  hkInspections      InspectionSession[]  @relation("HkGovernanta")
+  hkAssignments      DailyAssignment[]   @relation("HkCamareira")
+  hkCleaningSessions CleaningSession[]   @relation("HkCamareira")
+  hkInspections      InspectionSession[] @relation("HkGovernanta")
   hkPushTokens       PushToken[]
+
+  // Relações do módulo Avaliações (Booking-Reviews) — mesmo raciocínio: FK
+  // real pro User único, sem User local duplicado (v1 tinha um User próprio
+  // deste app, sincronizado por upsert best-effort a cada login — mesmo
+  // padrão de bug já corrigido em Governança).
+  reviewsAnalyzed       Review[]           @relation("ReviewAnalyzedBy")
+  reviewActionItemsDone ActionItem[]       @relation("ReviewActionItemCompletedBy")
+  reviewCollectionRuns  CollectionRun[]    @relation("ReviewCollectionRunTriggeredBy")
+  reviewAttendantScores ReviewAttendant[]  @relation("ReviewAttendantOnReview")
+  reviewManagerialNotes ManagerialNote[]
+  reviewAttachments     ReviewAttachment[]
+  reviewLogs            ReviewLog[]
 
   // Constraint real — a v1 declarava isso no schema mas uma checagem
   // direta no Postgres de produção mostrou que ela nunca foi de fato
@@ -135,7 +155,7 @@ model HkConfig {
   tenantId String @unique
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  notificationTime String @default("08:00")
+  notificationTime  String @default("08:00")
   targetMinutes     Int    @default(25)
   photoRequirements String @default("[\"cozinha\",\"cama\",\"toalhas\",\"banheiro\"]")
 }
@@ -187,13 +207,22 @@ model UH {
   inspections      InspectionSession[]
   selecoes         DailyUHSelection[]
 
+  // Avaliações (Booking-Reviews) — Review.uhId aponta pra cá com FK de
+  // verdade (ver seção AVALIAÇÕES mais abaixo). No v1 esse app tinha seu
+  // próprio model `Property` com id solto, sem FK real pra UH — cada review
+  // era casado com a UH por match de texto (label). Aqui não existe mais
+  // model de propriedade duplicado: uma UH é uma UH, cadastrada uma vez só
+  // no gateway, e todo módulo (Governança, Manutenção, Avaliações) referencia
+  // o mesmo UH.id.
+  reviews Review[]
+
   @@unique([tenantId, numero])
 }
 
 model DailyUHSelection {
   id              String    @id @default(cuid())
   tenantId        String
-  data            String    // YYYY-MM-DD
+  data            String // YYYY-MM-DD
   uhId            String
   uh              UH        @relation(fields: [uhId], references: [id], onDelete: Cascade)
   liberada        Boolean   @default(false)
@@ -207,7 +236,7 @@ model DailyUHSelection {
 model CoberturaFolga {
   id           String   @id @default(cuid())
   tenantId     String
-  data         String   // YYYY-MM-DD (dia da folga)
+  data         String // YYYY-MM-DD (dia da folga)
   governantaId String
   substitutaId String
   createdAt    DateTime @default(now())
@@ -249,13 +278,13 @@ model ProgramStep {
 }
 
 model DailyAssignment {
-  id          String @id @default(cuid())
+  id          String           @id @default(cuid())
   tenantId    String
   data        String // YYYY-MM-DD
   uhId        String
-  uh          UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+  uh          UH               @relation(fields: [uhId], references: [id], onDelete: Cascade)
   camareiraId String
-  camareira   User   @relation("HkCamareira", fields: [camareiraId], references: [id], onDelete: Cascade)
+  camareira   User             @relation("HkCamareira", fields: [camareiraId], references: [id], onDelete: Cascade)
   programId   String?
   program     CleaningProgram? @relation(fields: [programId], references: [id])
 
@@ -286,12 +315,12 @@ model CleaningSession {
   iniciadaEm      DateTime
   finalizadaEm    DateTime?
   duracaoSegundos Int?
-  fotos           String  @default("[]") // JSON array de URLs (Cloudinary)
+  fotos           String    @default("[]") // JSON array de URLs (Cloudinary)
   observacoes     String?
 
-  comentarioCamareira    String?
-  excluidoDoScore        Boolean @default(false)
-  justificativaExclusao  String?
+  comentarioCamareira   String?
+  excluidoDoScore       Boolean @default(false)
+  justificativaExclusao String?
 
   createdAt DateTime @default(now())
 
@@ -322,8 +351,8 @@ model InspectionSession {
 
   iniciadaEm            DateTime
   finalizadaEm          DateTime?
-  totalFalhas           Int     @default(0) // conta apenas falhas tipo CAMAREIRA
-  totalFalhasGerenciais Int     @default(0)
+  totalFalhas           Int       @default(0) // conta apenas falhas tipo CAMAREIRA
+  totalFalhasGerenciais Int       @default(0)
   comentarioGovernanta  String?
   observacoes           String?
 
@@ -339,8 +368,8 @@ model InspectionItem {
   categoria    String // CAMA | BANHEIRO | QUARTO | COZINHA | GERAL
   item         String
   ordem        Int
-  resultado    String  @default("OK") // OK | FALHA | NAO_APLICAVEL
-  tipoFalha    String  @default("CAMAREIRA") // CAMAREIRA | GERENCIAL
+  resultado    String            @default("OK") // OK | FALHA | NAO_APLICAVEL
+  tipoFalha    String            @default("CAMAREIRA") // CAMAREIRA | GERENCIAL
   observacao   String?
 }
 
@@ -348,11 +377,293 @@ model FalhaLavanderia {
   id               String   @id @default(cuid())
   tenantId         String
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  data             String   // YYYY-MM-DD
+  data             String // YYYY-MM-DD
   uhNumero         String
   descricao        String
   reportadoPorNome String
   reportadoPorRole String // CAMAREIRA | GOVERNANTA
   fotoUrl          String?
   createdAt        DateTime @default(now())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AVALIAÇÕES (Booking-Reviews) — gestão/tratativa de avaliações já publicadas
+// no Booking.com e Airbnb (não é pesquisa de satisfação preenchida pelo
+// hóspede — o hóspede nunca interage com este sistema).
+//
+// Vindo de apps/booking-reviews/prisma/schema.prisma (v1), com as mesmas
+// correções estruturais já aplicadas em Governança:
+//   - Não existe mais model `Company` — era uma tabela paralela a Tenant,
+//     ligada só por um `tenantId String? @unique` solto, sem FK real.
+//   - Não existe mais model `User` local — era sincronizado por upsert
+//     best-effort a cada login (mesmo padrão de bug já corrigido).
+//   - Não existe mais model `Property` — v1 resolvia a UH de cada review por
+//     match de texto (`Property.label` contra o nome extraído do e-mail/
+//     digitado manualmente), sem FK real. Aqui `Review.uhId` aponta direto
+//     pra `UH.id` (cadastro único do gateway, ver model UH acima).
+//   - `Role` (enum local do v1, com o par legado ATENDENTE/ATENDIMENTO) não
+//     existe mais — usa o `role: String` do User compartilhado, como todo
+//     resto da suíte.
+//   - `ReworkRequest` (v1) não foi portado — já estava marcado como legado
+//     no código do v1, substituído pelo fluxo `reopenAnalysisAction`
+//     (reabertura direta do card, sem aprovação em separado).
+//   - Módulo "Reuniões de Performance" (PerformanceMeeting e afins) fica
+//     pra um bloco de porte seguinte — schema próprio, sem dependência do
+//     domínio de avaliações abaixo.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum ReviewPlatform {
+  BOOKING
+  AIRBNB
+}
+
+enum ReviewStage {
+  RECEBIDA
+  ANALISE_PLANEJAMENTO
+  EXECUCAO
+  AVALIACAO_EFICACIA
+  FINALIZADA
+}
+
+enum ReviewAlertChannel {
+  EMAIL
+  WHATSAPP
+  TELEGRAM
+}
+
+enum ReviewAlertType {
+  COLETA_NAO_REALIZADA
+  ANALISE_NAO_REALIZADA
+  ACAO_VENCIDA
+  ANALISE_PLANEJAMENTO_CONCLUIDA
+  EXECUCAO_CONCLUIDA
+  DATA_EFICACIA_CHEGOU
+  CARD_FINALIZADO
+  AVALIACAO_ATENDIMENTO_RECEBIDA
+  PLANEJAMENTO_REABERTO
+  CARD_EXCLUIDO
+  PROPRIEDADE_PENDENTE
+  PLANEJAMENTO_REJEITADO
+}
+
+model ReviewsConfig {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  targetScore Float @default(4.8) // "Valor Meta" do dashboard
+
+  // Marca d'água da última avaliação do Airbnb já coletada via integração
+  // automática (Microsoft Graph) — evita reimportar a mesma avaliação.
+  airbnbLastCollectedAt DateTime?
+}
+
+model Category {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name   String // Limpeza, Manutenção, Atendimento, Check-in...
+  active Boolean @default(true)
+
+  reviews ReviewCategory[]
+
+  @@unique([tenantId, name])
+}
+
+model Review {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Toda avaliação precisa estar associada a uma UH — obrigatório tanto na
+  // coleta automática do Airbnb (se o e-mail não permitir extrair a
+  // propriedade, o card fica pendente em PendingAirbnbImport até alguém
+  // atribuir manualmente) quanto no cadastro manual da Booking.
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id])
+
+  platform  ReviewPlatform
+  guestName String
+  comment   String?        @db.Text
+
+  ratingRaw        Float // nota como veio da OTA
+  ratingScaleMax   Float @default(10) // Airbnb=5 (regra de três); Booking=10
+  ratingNormalized Float // sempre em escala 0-5, calculada na ingestão
+
+  checkInDate      DateTime?
+  guestSubmittedAt DateTime // data em que a avaliação chegou na OTA (eixo do dashboard)
+  collectedAt      DateTime  @default(now()) // data em que o sistema coletou
+
+  stage          ReviewStage @default(RECEBIDA)
+  skippedToFinal Boolean     @default(false) // nota alta movida direto pra Finalizadas
+
+  analysisDueAt       DateTime? // prazo de 2 dias úteis para iniciar análise
+  analyzedById        String?
+  analyzedBy          User?     @relation("ReviewAnalyzedBy", fields: [analyzedById], references: [id])
+  analysisCompletedAt DateTime?
+
+  attendants      ReviewAttendant[]
+  categories      ReviewCategory[]
+  actionPlan      ActionPlan?
+  efficacyChecks  EfficacyCheck[]
+  managerialNotes ManagerialNote[]
+  attachments     ReviewAttachment[]
+  logs            ReviewLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, guestSubmittedAt])
+  @@index([tenantId, stage])
+}
+
+// Anexos livres (imagens, documentos etc) num card de avaliação — qualquer
+// usuário autenticado pode subir (Cloudinary, mesmo padrão de fotos da
+// camareira em Governança — só a referência fica no banco).
+model ReviewAttachment {
+  id           String   @id @default(cuid())
+  reviewId     String
+  review       Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  fileName     String
+  fileUrl      String
+  fileSize     Int?
+  contentType  String?
+  createdAt    DateTime @default(now())
+
+  @@index([reviewId])
+}
+
+// Log automático (não editável por usuários) da história de tratativa de
+// cada card — toda mudança relevante de estágio (iniciar análise, concluir
+// análise, reabrir/rejeitar planejamento, concluir execução, finalizar etc)
+// grava uma entrada aqui, visível a qualquer papel.
+model ReviewLog {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User     @relation(fields: [actorId], references: [id])
+  action    String
+  detail    String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([reviewId])
+}
+
+model ReviewAttendant {
+  id          String @id @default(cuid())
+  reviewId    String
+  review      Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  attendantId String
+  attendant   User   @relation("ReviewAttendantOnReview", fields: [attendantId], references: [id])
+  score       Float // 0 a 5 (estrelas)
+  observation String @db.Text // obrigatório
+
+  @@unique([reviewId, attendantId])
+}
+
+model ReviewCategory {
+  id         String   @id @default(cuid())
+  reviewId   String
+  review     Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([reviewId, categoryId])
+}
+
+model ActionPlan {
+  id        String   @id @default(cuid())
+  reviewId  String   @unique
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  items ActionItem[]
+}
+
+model ActionItem {
+  id            String     @id @default(cuid())
+  actionPlanId  String
+  actionPlan    ActionPlan @relation(fields: [actionPlanId], references: [id], onDelete: Cascade)
+  description   String
+  dueDate       DateTime
+  completedAt   DateTime?
+  completedById String?
+  completedBy   User?      @relation("ReviewActionItemCompletedBy", fields: [completedById], references: [id])
+
+  @@index([dueDate])
+  @@index([actionPlanId])
+}
+
+model EfficacyCheck {
+  id            String    @id @default(cuid())
+  reviewId      String
+  review        Review    @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  scheduledDate DateTime
+  description   String?   @db.Text
+  completedAt   DateTime?
+  wasEffective  Boolean?
+  notes         String?   @db.Text
+
+  @@index([scheduledDate])
+  @@index([reviewId])
+}
+
+// Avaliação do Airbnb coletada automaticamente, mas cujo e-mail não permitiu
+// extrair a UH (layout do e-mail mudou, nome não bateu com nenhuma UH
+// cadastrada etc). Como UH é obrigatória em todo card, esses casos ficam
+// aqui até um Gerente/Master atribuir a UH manualmente — só então viram um
+// Review de verdade.
+model PendingAirbnbImport {
+  id               String    @id @default(cuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guestName        String
+  ratingRaw        Float
+  guestSubmittedAt DateTime
+  checkInDate      DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([tenantId])
+}
+
+model CollectionRun {
+  id               String   @id @default(cuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  triggeredById    String
+  triggeredBy      User     @relation("ReviewCollectionRunTriggeredBy", fields: [triggeredById], references: [id])
+  triggeredAt      DateTime @default(now())
+  status           String   @default("PENDING") // PENDING | DONE | FAILED
+  reviewsCollected Int?
+  notes            String?
+}
+
+model Alert {
+  id            String             @id @default(cuid())
+  tenantId      String
+  tenant        Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type          ReviewAlertType
+  channel       ReviewAlertChannel
+  message       String
+  targetUserIds String[]
+  reviewId      String?
+  sentAt        DateTime           @default(now())
+}
+
+// Observações gerenciais: histórico de anotações livres num card, feitas por
+// qualquer papel, visível em qualquer estágio do Kanban.
+model ManagerialNote {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([reviewId])
 }
