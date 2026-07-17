@@ -17,7 +17,14 @@ import { Home } from "lucide-react";
 //     Dashboard, Compromissos, Performance, Reuniões e Configurações entram
 //     conforme forem portados (ver tasks da suíte Avaliações).
 
-const NAV_ITEMS = [{ href: "/tratamento", label: "Tratamento" }];
+const NAV_ITEMS = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/tratamento", label: "Tratamento" },
+  { href: "/compromissos", label: "Compromissos" },
+  { href: "/desempenho", label: "Performance" },
+  { href: "/reunioes", label: "Reuniões" },
+  { href: "/configuracoes", label: "Configurações" },
+];
 
 function hubUrl(tenantSlug: string) {
   const base = process.env.NEXT_PUBLIC_GATEWAY_URL || "https://sistemaspraxis.com.br";

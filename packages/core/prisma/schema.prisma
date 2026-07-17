@@ -54,6 +54,7 @@ model Tenant {
   reviewCollectionRuns CollectionRun[]
   reviewAlerts         Alert[]
   pendingAirbnbImports PendingAirbnbImport[]
+  performanceMeetings  PerformanceMeeting[]
 }
 
 enum SuiteModule {
@@ -115,6 +116,14 @@ model User {
   reviewManagerialNotes ManagerialNote[]
   reviewAttachments     ReviewAttachment[]
   reviewLogs            ReviewLog[]
+
+  // Reuniões de Performance (ver bloco de models no fim do arquivo).
+  coordinatedMeetings   PerformanceMeeting[]            @relation("MeetingCoordinator")
+  createdMeetings       PerformanceMeeting[]            @relation("MeetingCreatedBy")
+  meetingParticipations PerformanceMeetingParticipant[]
+  meetingNotes          PerformanceMeetingNote[]
+  meetingAttachments    PerformanceMeetingAttachment[]
+  meetingLogs           PerformanceMeetingLog[]
 
   // Constraint real — a v1 declarava isso no schema mas uma checagem
   // direta no Postgres de produção mostrou que ela nunca foi de fato
@@ -429,9 +438,9 @@ model FalhaLavanderia {
 //   - `ReworkRequest` (v1) não foi portado — já estava marcado como legado
 //     no código do v1, substituído pelo fluxo `reopenAnalysisAction`
 //     (reabertura direta do card, sem aprovação em separado).
-//   - Módulo "Reuniões de Performance" (PerformanceMeeting e afins) fica
-//     pra um bloco de porte seguinte — schema próprio, sem dependência do
-//     domínio de avaliações abaixo.
+//   - Módulo "Reuniões de Performance" (PerformanceMeeting e afins) tem
+//     schema próprio, sem dependência do domínio de avaliações abaixo — ver
+//     bloco de models no fim do arquivo.
 // ═══════════════════════════════════════════════════════════════════════════
 
 enum ReviewPlatform {
@@ -691,4 +700,83 @@ model ManagerialNote {
   createdAt DateTime @default(now())
 
   @@index([reviewId])
+}
+
+// Tela "Reuniões de Performance" — bloco de porte próprio (ver comentário no
+// topo da seção AVALIAÇÕES), sem dependência do domínio de reviews acima:
+// reunião com coordenador (único) e participantes (vários), observações e
+// anexos livres (qualquer usuário) e um log automático de atividades. Criar
+// reunião / definir coordenador e participantes é restrito a Master/Gerente.
+// companyId (v1) → tenantId, mesma troca do resto do schema.
+model PerformanceMeeting {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  date          DateTime // dia da reunião (mostrado no calendário)
+  coordinatorId String
+  coordinator   User     @relation("MeetingCoordinator", fields: [coordinatorId], references: [id])
+  createdById   String
+  createdBy     User     @relation("MeetingCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  participants PerformanceMeetingParticipant[]
+  notes        PerformanceMeetingNote[]
+  attachments  PerformanceMeetingAttachment[]
+  logs         PerformanceMeetingLog[]
+
+  @@index([tenantId, date])
+}
+
+model PerformanceMeetingParticipant {
+  id        String             @id @default(cuid())
+  meetingId String
+  meeting   PerformanceMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User               @relation(fields: [userId], references: [id])
+
+  @@unique([meetingId, userId])
+}
+
+model PerformanceMeetingNote {
+  id        String             @id @default(cuid())
+  meetingId String
+  meeting   PerformanceMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User               @relation(fields: [authorId], references: [id])
+  text      String             @db.Text
+  createdAt DateTime           @default(now())
+
+  @@index([meetingId])
+}
+
+model PerformanceMeetingAttachment {
+  id           String             @id @default(cuid())
+  meetingId    String
+  meeting      PerformanceMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User               @relation(fields: [uploadedById], references: [id])
+  fileName     String
+  fileUrl      String
+  fileSize     Int?
+  contentType  String?
+  createdAt    DateTime           @default(now())
+
+  @@index([meetingId])
+}
+
+// Histórico automático (não editável por usuários) do que aconteceu na
+// reunião: criação, troca de coordenador, participantes adicionados/
+// removidos, observação e anexo adicionados/removidos.
+model PerformanceMeetingLog {
+  id        String             @id @default(cuid())
+  meetingId String
+  meeting   PerformanceMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?              @relation(fields: [actorId], references: [id])
+  action    String
+  detail    String?
+  createdAt DateTime           @default(now())
+
+  @@index([meetingId])
 }
