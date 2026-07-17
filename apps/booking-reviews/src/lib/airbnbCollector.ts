@@ -77,17 +77,29 @@ function htmlToLines(body: string): string[] {
 
 // Extrai nome da propriedade e data de check-in do corpo do e-mail de
 // avaliação do Airbnb. O padrão do e-mail mostra o nome da propriedade numa
-// linha e, logo abaixo, sozinho, o período da estadia (ex: "9 – 10 de jul.
-// de 2026") — usamos o primeiro dia desse intervalo como check-in. Se o
-// Airbnb mudar o layout do e-mail e o padrão não bater, simplesmente não
-// preenche esses dois campos — não bloqueia a coleta do nome/nota, que
-// continua vindo só do assunto.
+// linha e, logo abaixo, sozinho, o período da estadia — em dois formatos
+// possíveis:
+//   - mesmo mês: "9 – 10 de jul. de 2026"
+//   - atravessando o mês: "30 de jun.–3 de jul. de 2026" (o mês do primeiro
+//     dia aparece explícito, já que é diferente do segundo)
+// A regex original só reconhecia o primeiro formato — estadias que
+// atravessam o mês (ex: fim de junho a início de julho) nunca tinham a
+// propriedade extraída, mesmo estando presente no e-mail (descoberto rodando
+// a coleta real em produção: ~136 de ~264 avaliações caíram em pendência por
+// causa disso). Usamos sempre o primeiro dia do intervalo como check-in.
+// Se o Airbnb mudar o layout do e-mail e nenhum dos dois padrões bater,
+// simplesmente não preenche esses dois campos — não bloqueia a coleta do
+// nome/nota, que continua vindo só do assunto.
 export function parseAirbnbBody(body: string): {
   propertyName: string | null;
   checkInDate: Date | null;
 } {
   const lines = htmlToLines(body);
-  const dateRangeRe = /(\d{1,2})\s*[–—-]\s*\d{1,2}\s*de\s*([a-zçã]{3,4})\.?\s*de\s*(\d{4})/i;
+  // Grupo 2 (mês do primeiro dia) é opcional — só aparece quando a estadia
+  // atravessa o mês. Quando ausente, o primeiro dia usa o mesmo mês do
+  // segundo (grupo 4).
+  const dateRangeRe =
+    /(\d{1,2})\s*(?:de\s*([a-zçã]{3,4})\.?\s*)?[–—-]\s*(\d{1,2})\s*de\s*([a-zçã]{3,4})\.?\s*de\s*(\d{4})/i;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -96,8 +108,9 @@ export function parseAirbnbBody(body: string): {
     if (line.replace(m[0], "").trim().length > 0) continue; // linha tem mais coisa além da data
 
     const day = parseInt(m[1], 10);
-    const month = MONTH_ABBR[m[2].toLowerCase().slice(0, 3)];
-    const year = parseInt(m[3], 10);
+    const monthAbbr = (m[2] ?? m[4]).toLowerCase().slice(0, 3);
+    const month = MONTH_ABBR[monthAbbr];
+    const year = parseInt(m[5], 10);
     if (month === undefined || Number.isNaN(day) || Number.isNaN(year)) continue;
 
     const prevLine = i > 0 ? lines[i - 1] : null;

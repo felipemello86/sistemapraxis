@@ -875,9 +875,33 @@ export async function runAirbnbCollectionAction(): Promise<{
     // pra alguém atribuir a propriedade manualmente antes dela virar card de
     // verdade no Kanban (ver resolvePendingAirbnbImportAction) — esta
     // rotina NUNCA cria uma Property nova.
+    //
+    // Checagem de duplicata (guestName + guestSubmittedAt, único par estável
+    // que o Airbnb nos dá — não existe id externo da avaliação): necessária
+    // porque, sempre que o watermark `airbnbLastCollectedAt` precisa ser
+    // resetado (ex: corrigir um bug no parser e reprocessar e-mails antigos
+    // — foi exatamente o que aconteceu ao corrigir o parseAirbnbBody pra
+    // reconhecer estadias que atravessam o mês), a coleta rebusca e-mails já
+    // processados antes. Sem isso, um reset de watermark duplicaria toda
+    // avaliação já importada com sucesso.
     let createdCount = 0;
     let pendingCount = 0;
+    let duplicateCount = 0;
     for (const item of items) {
+      const jaExiste = await prisma.review.findFirst({
+        where: {
+          tenantId: session.tenantId,
+          platform: "AIRBNB",
+          guestName: item.guestName,
+          guestSubmittedAt: item.guestSubmittedAt,
+        },
+        select: { id: true },
+      });
+      if (jaExiste) {
+        duplicateCount++;
+        continue;
+      }
+
       const propertyId = item.propertyName
         ? await findPropertyByNome(session.tenantId, item.propertyName)
         : null;
@@ -900,6 +924,14 @@ export async function runAirbnbCollectionAction(): Promise<{
         });
         createdCount++;
       } else {
+        const pendenteJaExiste = await prisma.pendingAirbnbImport.findFirst({
+          where: { tenantId: session.tenantId, guestName: item.guestName, guestSubmittedAt: item.guestSubmittedAt },
+          select: { id: true },
+        });
+        if (pendenteJaExiste) {
+          duplicateCount++;
+          continue;
+        }
         await prisma.pendingAirbnbImport.create({
           data: {
             tenantId: session.tenantId,
@@ -946,14 +978,15 @@ export async function runAirbnbCollectionAction(): Promise<{
         ? ` (${unmatchedSubjects.length} e-mail(s) com assunto não reconhecido foram ignorados)`
         : "";
     const pendingNote = pendingCount > 0 ? ` (${pendingCount} aguardando propriedade manual)` : "";
+    const duplicateNote = duplicateCount > 0 ? ` (${duplicateCount} já existentes, ignoradas)` : "";
 
     return {
       success: true,
       created: createdCount,
       message:
         createdCount > 0 || pendingCount > 0
-          ? `${createdCount} avaliação(ões) nova(s) do Airbnb importada(s).${pendingNote}${unmatchedNote}`
-          : `Nenhuma avaliação nova do Airbnb encontrada.${unmatchedNote}`,
+          ? `${createdCount} avaliação(ões) nova(s) do Airbnb importada(s).${pendingNote}${duplicateNote}${unmatchedNote}`
+          : `Nenhuma avaliação nova do Airbnb encontrada.${duplicateNote}${unmatchedNote}`,
     };
   } catch (err) {
     await prisma.collectionRun.update({
