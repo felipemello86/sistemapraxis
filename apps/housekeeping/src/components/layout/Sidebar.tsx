@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   BarChart3,
   Settings,
+  ScrollText,
 } from "lucide-react";
 
 // Portado de apps/housekeeping/src/components/layout/Sidebar.tsx (v1).
@@ -23,8 +24,8 @@ import {
 //   - Sem "Sair" — login/logout ficam centralizados só no gateway (mesma
 //     decisão de arquitetura de todo o resto da suíte); aqui só tem "Home"
 //     pra voltar ao hub, onde a pessoa pode sair se quiser.
-//   - Nav lista só as telas que já existem nesta reconstrução. Relatórios e
-//     Logs ainda não foram portados — ver task própria.
+//   - Nav lista só as telas que já existem nesta reconstrução. Relatórios
+//     ainda não foi portado — ver task própria.
 //   - hotelNome vira tenantSlug (não busca /api/configuracoes, que não
 //     existe em v2 ainda).
 
@@ -35,6 +36,7 @@ const navItems = [
   { href: "/atribuicao", icon: ClipboardList, label: "Atribuição Diária" },
   { href: "/governanta", icon: ShieldCheck,   label: "Inspeções" },
   { href: "/movimentos", icon: BarChart3,     label: "Performance" },
+  { href: "/logs",       icon: ScrollText,    label: "Log do Sistema" },
   { href: "/configuracoes", icon: Settings,   label: "Configurações" },
 ];
 

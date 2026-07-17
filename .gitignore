@@ -7,3 +7,5 @@ generated/
 *.tsbuildinfo
 .DS_Store
 _tmp_*
+.vercel
+.env*
