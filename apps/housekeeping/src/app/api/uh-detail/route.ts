@@ -32,6 +32,9 @@ export async function GET(req: NextRequest) {
         },
       },
     },
+    // relationJoins ligado no schema compartilhado (ver
+    // packages/core/prisma/schema.prisma).
+    relationLoadStrategy: "join",
   });
 
   if (!assignment) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });

@@ -38,10 +38,12 @@ export async function GET(req: NextRequest) {
     prisma.dailyUHSelection.findMany({
       where: { tenantId, data },
       include: { uh: { select: { id: true, numero: true, emManutencao: true, manutencaoDescricao: true } } },
+      relationLoadStrategy: "join",
     }),
     prisma.dailyAssignment.findMany({
       where: { tenantId, data },
       include: { camareira: { select: { id: true, nome: true, telegramChatId: true } } },
+      relationLoadStrategy: "join",
     }),
   ]);
 

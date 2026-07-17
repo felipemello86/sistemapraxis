@@ -131,6 +131,11 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
           },
         },
       },
+      // relationJoins ligado no schema compartilhado (ver comentário no
+      // generator, packages/core/prisma/schema.prisma) — essa é a query mais
+      // pesada da suíte (5 níveis de relação aninhada), então é onde o join
+      // mais compensa: colapsa várias idas ao banco numa única query.
+      relationLoadStrategy: "join",
     }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId, data },
@@ -148,6 +153,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
         program: { select: { tipo: true } },
         cleaningSession: { select: { duracaoSegundos: true, excluidoDoScore: true, inspection: { select: { totalFalhas: true } } } },
       },
+      relationLoadStrategy: "join",
     }),
   ]);
 

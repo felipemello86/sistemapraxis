@@ -74,6 +74,11 @@ export async function GET(req: NextRequest) {
         },
       },
     },
+    // relationJoins ligado no schema compartilhado (ver
+    // packages/core/prisma/schema.prisma) — essa tela é a mais consultada
+    // (polling do dashboard "Tempo Real"), então o join reduz bastante o
+    // número de idas ao banco por requisição.
+    relationLoadStrategy: "join",
   });
 
   const selecoes = await prisma.dailyUHSelection.findMany({

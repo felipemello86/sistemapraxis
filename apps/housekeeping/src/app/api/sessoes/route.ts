@@ -33,6 +33,11 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { uh: { ordem: "asc" } },
+      // relationJoins ligado no schema compartilhado (ver
+      // packages/core/prisma/schema.prisma) — "Minhas UHs" é bem polida
+      // pela camareira, então o join reduz bastante o número de idas ao
+      // banco por requisição.
+      relationLoadStrategy: "join",
     }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId: session.tenantId, data: dateStr },

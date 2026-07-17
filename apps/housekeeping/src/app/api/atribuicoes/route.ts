@@ -41,6 +41,10 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { uh: { ordem: "asc" } },
+      // relationJoins ligado no schema compartilhado (ver
+      // packages/core/prisma/schema.prisma) — alimenta a tela de Atribuição
+      // Diária, 5 relações aninhadas por linha.
+      relationLoadStrategy: "join",
     }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId, data },

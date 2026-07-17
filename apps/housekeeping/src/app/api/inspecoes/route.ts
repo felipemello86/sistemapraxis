@@ -70,6 +70,9 @@ export async function GET() {
       },
     },
     orderBy: { finalizadaEm: "asc" },
+    // relationJoins ligado no schema compartilhado (ver
+    // packages/core/prisma/schema.prisma).
+    relationLoadStrategy: "join",
   });
 
   return NextResponse.json(sessions);

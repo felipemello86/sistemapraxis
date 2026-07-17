@@ -9,6 +9,12 @@ import { calcularScoreUH } from "@/lib/scoring";
 // hotelConfig → HkConfig. O caminho de "criadoPorNome via token de
 // substituta" foi removido em v2 (ver atribuicoes/route.ts) — aqui só lê o
 // campo, já sempre preenchido a partir de session.nome.
+// `relationLoadStrategy: "join"` ligado nas 3 queries com include (preview
+// feature `relationJoins`, ver packages/core/prisma/schema.prisma). NÃO
+// mexi no `prisma.inspectionSession.findUnique` dentro do for-loop (~linha
+// 136) — isso é um N+1 de verdade (uma query por sessão com inspeção, não
+// só relações), pré-existente do v1, fora do escopo desta otimização
+// pontual; vale revisitar se este endpoint continuar pesado.
 
 export type LogEvento = {
   id: string;
@@ -56,6 +62,7 @@ export async function GET(req: NextRequest) {
       camareira: { select: { nome: true } },
       program: { select: { nome: true } },
     },
+    relationLoadStrategy: "join",
   });
 
   for (const a of atribuicoes) {
@@ -100,6 +107,7 @@ export async function GET(req: NextRequest) {
         select: { finalizadaEm: true, totalFalhas: true, governanta: { select: { nome: true, id: true } } },
       },
     },
+    relationLoadStrategy: "join",
   });
 
   const config = await prisma.hkConfig.findUnique({ where: { tenantId } });
@@ -169,6 +177,7 @@ export async function GET(req: NextRequest) {
   const selecoes = await prisma.dailyUHSelection.findMany({
     where: { tenantId, data: dataParam, liberada: true, liberadaEm: { not: null } },
     include: { uh: { select: { numero: true } } },
+    relationLoadStrategy: "join",
   });
 
   for (const sel of selecoes) {

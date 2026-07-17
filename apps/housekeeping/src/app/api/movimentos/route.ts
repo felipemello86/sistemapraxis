@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       assignment: assignmentWhere,
     },
     select: { id: true, camareiraId: true, camareira: { select: { nome: true } } },
+    relationLoadStrategy: "join",
   });
 
   if (sessoesValidas.length === 0) {
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
       step: { select: { titulo: true, ordem: true } },
     },
     orderBy: { step: { ordem: "asc" } },
+    relationLoadStrategy: "join",
   });
 
   if (sessionSteps.length === 0) {

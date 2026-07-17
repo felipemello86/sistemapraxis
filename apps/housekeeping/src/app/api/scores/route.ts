@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
       assignment: { select: { data: true } },
       uh: { select: { numero: true } },
     },
+    relationLoadStrategy: "join",
   });
 
   const config = await prisma.hkConfig.findUnique({ where: { tenantId } });

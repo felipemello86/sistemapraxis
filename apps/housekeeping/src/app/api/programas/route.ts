@@ -13,6 +13,7 @@ export async function GET() {
     where: { tenantId: session.tenantId, ativo: true },
     include: { steps: { orderBy: { ordem: "asc" } } },
     orderBy: { nome: "asc" },
+    relationLoadStrategy: "join",
   });
   return NextResponse.json(programs);
 }
