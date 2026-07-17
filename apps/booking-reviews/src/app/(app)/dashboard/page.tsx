@@ -6,6 +6,9 @@ import { DashboardClient } from "@/components/dashboard/DashboardClient";
 // company.targetScore → prisma.reviewsConfig (model próprio no v2, em vez de
 // campo solto em Company — ver ReviewsConfig no schema); companyId→tenantId;
 // Property já é FK real (não precisa de match de texto).
+// `relationLoadStrategy: "join"` ligado (preview feature `relationJoins`
+// habilitada no schema compartilhado — ver comentário no generator e em
+// tratamento/page.tsx).
 export default async function DashboardPage() {
   const session = await getSession();
   if (!session) redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
@@ -26,6 +29,7 @@ export default async function DashboardPage() {
         categories: { include: { category: true } },
       },
       take: 500,
+      relationLoadStrategy: "join",
     }),
     prisma.property.findMany({
       where: { tenantId: session.tenantId },

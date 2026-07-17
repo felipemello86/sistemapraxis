@@ -6,8 +6,9 @@ import { AttendantCard } from "@/components/desempenho/AttendantCard";
 // companyId→tenantId; role "ATENDENTE" (v1) → "ATENDIMENTO" (v2, mesmo ajuste
 // já feito em tratamento/actions.ts); relação attendantScores → chama
 // reviewAttendantScores no schema compartilhado (nome do relation field em
-// User, ver ReviewAttendant no schema). Removido `relationLoadStrategy:
-// "join"` (mesmo motivo documentado em tratamento/page.tsx).
+// User, ver ReviewAttendant no schema). `relationLoadStrategy: "join"`
+// ligado (preview feature `relationJoins` habilitada no schema compartilhado
+// — ver comentário no generator e em tratamento/page.tsx).
 export default async function DesempenhoPage() {
   const session = await getSession();
   if (!session) redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
@@ -21,6 +22,7 @@ export default async function DesempenhoPage() {
       reviewAttendantScores: { include: { review: true }, orderBy: { id: "desc" } },
     },
     orderBy: { nome: "asc" },
+    relationLoadStrategy: "join",
   });
 
   return (

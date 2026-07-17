@@ -4,9 +4,9 @@ import { MeetingsBoard } from "@/components/reunioes/MeetingsBoard";
 import type { Meeting } from "@/components/reunioes/types";
 
 // Portado de apps/booking-reviews/src/app/(app)/reunioes/page.tsx (v1).
-// companyId→tenantId; user.name→user.nome; removido `relationLoadStrategy:
-// "join"` (mesmo motivo documentado em tratamento/page.tsx — preview
-// feature não habilitada no schema compartilhado).
+// companyId→tenantId; user.name→user.nome; `relationLoadStrategy: "join"`
+// ligado (preview feature `relationJoins` habilitada no schema compartilhado
+// — ver comentário no generator e em tratamento/page.tsx).
 export default async function ReunioesPage() {
   const session = await getSession();
   if (!session) redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
@@ -28,6 +28,7 @@ export default async function ReunioesPage() {
         },
         logs: { include: { actor: { select: { nome: true } } }, orderBy: { createdAt: "asc" } },
       },
+      relationLoadStrategy: "join",
     }),
     prisma.user.findMany({
       where: { tenantId: session.tenantId, ativo: true },

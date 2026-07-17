@@ -31,12 +31,13 @@ export default async function TratamentoPage() {
         attachments: { include: { uploadedBy: true }, orderBy: { createdAt: "desc" } },
         logs: { include: { actor: true }, orderBy: { createdAt: "desc" } },
       },
-      // Nota: o v1 usava `relationLoadStrategy: "join"` aqui (preview feature
-      // "relationJoins" do Prisma) pra reduzir de ~9 idas ao banco pra 1. O
-      // schema compartilhado do v2 não tem essa preview feature habilitada
-      // no generator (nenhum outro app da suíte usa) — não vale habilitar só
-      // por causa desta consulta. Sem o join, o Prisma resolve as inclusions
-      // com queries separadas (comportamento padrão), só um pouco mais lento.
+      // `relationJoins` (preview feature do Prisma) foi ligado no generator
+      // do schema compartilhado depois de medir direto contra o banco de
+      // produção: essas 8 relações sem join viram ~9 idas separadas ao
+      // Neon, 740ms-1.4s mesmo com poucas dezenas de reviews (custo é
+      // latência de rede por ida, não trabalho do Postgres). Com o join,
+      // vira 1 query só — 76-237ms na mesma massa de dados.
+      relationLoadStrategy: "join",
     }),
     prisma.user.findMany({
       where: { tenantId: session.tenantId, role: "ATENDIMENTO", ativo: true },

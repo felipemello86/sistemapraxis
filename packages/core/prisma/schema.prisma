@@ -15,9 +15,19 @@
 // os binários certos pra dev local (Mac), dev/CI Linux, e produção Vercel.
 
 generator client {
-  provider      = "prisma-client-js"
-  output        = "../generated"
-  binaryTargets = ["native", "rhel-openssl-3.0.x", "darwin-arm64"]
+  provider        = "prisma-client-js"
+  output          = "../generated"
+  binaryTargets   = ["native", "rhel-openssl-3.0.x", "darwin-arm64"]
+  // Habilitado depois de medir direto contra o banco de produção: queries
+  // com várias relações (ex: Review em tratamento/page.tsx, 8 relações)
+  // sem isso viram ~10 idas separadas ao Neon, uma por relação — 740ms a
+  // 1.4s mesmo com poucas dezenas de linhas, porque o custo é dominado por
+  // latência de rede (round-trip), não pelo trabalho do Postgres em si.
+  // Com relationJoins + `relationLoadStrategy: "join"` na query, vira 1
+  // query só com LEFT JOIN: 76-237ms na mesma massa de dados (>10x mais
+  // rápido). Rode `npx prisma generate` de novo depois de puxar essa
+  // mudança (mesmo passo manual de sempre, client não regenera no sandbox).
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
