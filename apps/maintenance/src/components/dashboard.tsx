@@ -50,6 +50,12 @@ function hubUrl(tenantSlug?: string) {
   return tenantSlug ? `${base}/${tenantSlug}` : base
 }
 
+// Marca Praxis — path absoluto com o basePath deste app embutido de
+// propósito: Next.js não prefixa sozinho <img src="/..."> com o basePath
+// (só faz isso pra assets gerados pelo próprio build), mesma razão do
+// apiFetch.ts hardcodar BASE_PATH nos outros módulos.
+const MARK_SRC = '/upkeep/praxis-mark.png'
+
 const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'gerencial', label: 'Visão Gerencial', icon: LayoutDashboard },
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
@@ -101,11 +107,10 @@ export function Dashboard({
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         <div className="flex h-16 items-center gap-3 px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background">
-            <span className="text-sm font-semibold tracking-tight">PX</span>
-          </div>
-          <div className="leading-tight">
-            <p className="text-sm font-semibold tracking-tight">Praxis</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={MARK_SRC} alt="Praxis" className="h-8 w-8 shrink-0 object-contain" />
+          <div className="leading-tight min-w-0">
+            <p className="truncate text-sm font-semibold tracking-tight">{user.tenantSlug || 'Praxis'}</p>
             <p className="text-xs text-muted-foreground">Manutenção</p>
           </div>
         </div>

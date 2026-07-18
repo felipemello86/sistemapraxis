@@ -25,34 +25,41 @@
 }
 
 .header {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   margin-bottom: 14px;
   flex-shrink: 0;
 }
 
 .logo {
   height: 30px;
-  width: auto;
+  width: 30px;
+  object-fit: contain;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .title {
   font-size: 20px;
   font-weight: 700;
-  margin: 6px 0 0;
+  margin: 0;
   color: #1d1d1f;
 }
 
 @media (min-width: 768px) {
   .header {
     margin-bottom: 10px;
+    gap: 14px;
   }
   .logo {
     height: 42px;
+    width: 42px;
   }
   .title {
     font-size: 28px;
-    margin-top: 12px;
+    margin-top: 0;
   }
 }
 

@@ -31,6 +31,12 @@ function hubUrl(tenantSlug: string) {
   return tenantSlug ? `${base}/${tenantSlug}` : base;
 }
 
+// Marca Praxis — path absoluto com o basePath deste app embutido de
+// propósito: Next.js não prefixa sozinho <img src="/..."> com o basePath
+// (só faz isso pra assets gerados pelo próprio build), mesma razão do
+// apiFetch.ts hardcodar BASE_PATH nos outros módulos.
+const MARK_SRC = "/reviews/praxis-mark.png";
+
 export function Header({ nome, role, tenantSlug }: { nome: string; role: string; tenantSlug: string }) {
   const pathname = usePathname();
 
@@ -42,7 +48,14 @@ export function Header({ nome, role, tenantSlug }: { nome: string; role: string;
     <header className="border-b border-slate-200 bg-white" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-8 min-w-0">
-          <span className="font-semibold text-slate-800">Controle de Avaliações</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={MARK_SRC} alt="Praxis" className="w-6 h-6 object-contain flex-shrink-0" />
+            <div className="leading-tight min-w-0">
+              <p className="font-semibold text-slate-800 text-sm truncate">{tenantSlug}</p>
+              <p className="text-xs text-slate-400">Avaliações</p>
+            </div>
+          </div>
           <nav className="flex flex-wrap gap-1 -mx-1">
             {NAV_ITEMS.map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");
