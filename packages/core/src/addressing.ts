@@ -6,12 +6,14 @@ export const MODULE_SLUGS: Record<SuiteModule, string> = {
   HOUSEKEEPING: "governance",
   MAINTENANCE: "upkeep",
   BOOKING_REVIEWS: "reviews",
+  STOCK: "estoque",
 };
 
 export const MODULE_LABELS: Record<SuiteModule, string> = {
   HOUSEKEEPING: "Governança",
   MAINTENANCE: "Manutenção",
   BOOKING_REVIEWS: "Avaliações",
+  STOCK: "Estoque",
 };
 
 const SLUG_TO_MODULE: Record<string, SuiteModule> = Object.fromEntries(

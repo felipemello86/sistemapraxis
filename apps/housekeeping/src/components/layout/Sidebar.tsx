@@ -117,7 +117,11 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
 
   return (
     <>
-      <aside className={`hidden md:flex bg-blue-900 text-white flex-col min-h-screen flex-shrink-0 transition-all duration-200 ${collapsed ? "w-14" : "w-60"}`}>
+      {/* sticky + h-screen (em vez de min-h-screen) prende a sidebar no
+          topo da viewport durante a rolagem — sem isso ela era só mais um
+          item do flex, então rolava junto com o <main> quando a lista de
+          UHs era mais alta que a tela. */}
+      <aside className={`hidden md:flex sticky top-0 bg-blue-900 text-white flex-col h-screen flex-shrink-0 transition-all duration-200 ${collapsed ? "w-14" : "w-60"}`}>
         {collapsed ? (
           <div className="flex flex-col h-full">
             <div className="p-2 flex justify-center border-b border-blue-800">

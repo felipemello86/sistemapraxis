@@ -34,6 +34,18 @@ export function IconStar({ size = 28 }: IconProps) {
   );
 }
 
+// Novo — módulo Estoque. Segue o mesmo estilo (stroke, sem preenchimento)
+// dos demais ícones desta suíte.
+export function IconBox({ size = 28 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8l9-5 9 5-9 5-9-5z" />
+      <path d="M3 8v8l9 5 9-5V8" />
+      <line x1="12" y1="13" x2="12" y2="21" />
+    </svg>
+  );
+}
+
 export function IconGear({ size = 28 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

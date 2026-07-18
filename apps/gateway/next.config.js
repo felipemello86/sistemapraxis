@@ -45,6 +45,15 @@ const nextConfig = {
       );
     }
 
+    if (process.env.ESTOQUE_APP_URL) {
+      rules.push(
+        { source: "/:cliente/estoque", destination: `${process.env.ESTOQUE_APP_URL}/estoque` },
+        { source: "/:cliente/estoque/:path*", destination: `${process.env.ESTOQUE_APP_URL}/estoque/:path*` },
+        { source: "/estoque", destination: `${process.env.ESTOQUE_APP_URL}/estoque` },
+        { source: "/estoque/:path*", destination: `${process.env.ESTOQUE_APP_URL}/estoque/:path*` }
+      );
+    }
+
     return rules;
   },
 };
