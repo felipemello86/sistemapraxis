@@ -74,11 +74,29 @@ export async function GET(req: NextRequest) {
   const config = await prisma.hkConfig.findUnique({ where: { tenantId } });
   const targetMinutos = config?.targetMinutes ?? 25;
 
+  // UHs com mais de uma camareira atribuída no mesmo dia (mutirão/"a duas")
+  // não pontuam pra ninguém — tempo e inspeção deixam de ser individualmente
+  // atribuíveis. Detectado dinamicamente (não persistido): conta quantas
+  // DailyAssignment existem por (data, uhId) dentro do período consultado.
+  const atribuicoesDoPeriodo = await prisma.dailyAssignment.findMany({
+    where: { tenantId, ...(Object.keys(whereData).length > 0 ? whereData : {}) },
+    select: { data: true, uhId: true },
+  });
+  const contagemPorUHData = new Map<string, number>();
+  for (const a of atribuicoesDoPeriodo) {
+    const chave = `${a.data}|${a.uhId}`;
+    contagemPorUHData.set(chave, (contagemPorUHData.get(chave) ?? 0) + 1);
+  }
+  const isMultiplaCamareira = (data: string, uhId: string) =>
+    (contagemPorUHData.get(`${data}|${uhId}`) ?? 0) > 1;
+
   // Calcular scores por camareira
   const scores = camareiras.map((cam) => {
     const minhasSessoes = sessoes.filter((s) => s.camareiraId === cam.id);
-    // Para o score, só conta as não excluídas
-    const sessoesValidas = minhasSessoes.filter((s) => !s.excluidoDoScore);
+    // Para o score, só conta as não excluídas e sem múltiplas camareiras na UH
+    const sessoesValidas = minhasSessoes.filter(
+      (s) => !s.excluidoDoScore && !isMultiplaCamareira(s.assignment.data, s.uhId)
+    );
 
     if (minhasSessoes.length === 0) return { ...cam, foto: null, mediaScore: null, totalUHs: 0, totalFalhas: 0, detalhes: [] };
 
@@ -87,11 +105,14 @@ export async function GET(req: NextRequest) {
 
     // Monta detalhes com TODAS as sessões (incluindo excluídas para o MASTER ver)
     const detalhes = minhasSessoes.map((s) => {
+      const multiplaCamareira = isMultiplaCamareira(s.assignment.data, s.uhId);
       const falhas = s.inspection?.totalFalhas ?? 0;
-      const score = s.assignment.program?.tipo === "SUPER_LIMPEZA"
-        ? calcularScoreSuperLimpeza(falhas)
-        : calcularScoreUH(s.duracaoSegundos ?? 0, falhas, targetMinutos);
-      if (!s.excluidoDoScore) {
+      const score = multiplaCamareira
+        ? 0
+        : s.assignment.program?.tipo === "SUPER_LIMPEZA"
+          ? calcularScoreSuperLimpeza(falhas)
+          : calcularScoreUH(s.duracaoSegundos ?? 0, falhas, targetMinutos);
+      if (!s.excluidoDoScore && !multiplaCamareira) {
         totalFalhas += falhas;
         totalScore += score;
       }
@@ -104,6 +125,7 @@ export async function GET(req: NextRequest) {
         falhas,
         score,
         excluidoDoScore: s.excluidoDoScore,
+        multiplaCamareira,
       };
     });
 

@@ -379,7 +379,12 @@ model DailyAssignment {
 
   cleaningSession CleaningSession?
 
-  @@unique([data, uhId])
+  // Relaxado de @@unique([data, uhId]) — agora é possível ter mais de uma
+  // DailyAssignment (uma por camareira) pra mesma UH no mesmo dia, pra
+  // suportar "Super Limpeza a duas" / mutirão. Quando há >1 linha pra o
+  // mesmo (data, uhId), NINGUÉM pontua por aquela UH naquele dia (checado
+  // dinamicamente em api/scores/route.ts, não persistido aqui).
+  @@unique([data, uhId, camareiraId])
 }
 
 model CleaningSession {

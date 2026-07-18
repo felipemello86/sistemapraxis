@@ -57,7 +57,7 @@ function AvatarTick({ x, y, payload, chartData, prefix }: any) {
 
 const hoje = () => new Date().toLocaleDateString("en-CA");
 
-type DetalheUH = { sessaoId: string; assignmentId: string; uhNumero: string; data: string; duracaoSegundos: number; falhas: number; score: number; excluidoDoScore: boolean };
+type DetalheUH = { sessaoId: string; assignmentId: string; uhNumero: string; data: string; duracaoSegundos: number; falhas: number; score: number; excluidoDoScore: boolean; multiplaCamareira?: boolean };
 type Score = { id: string; nome: string; foto?: string | null; mediaScore: number | null; totalUHs: number; totalFalhas: number; detalhes?: DetalheUH[] };
 
 function Avatar({ foto, nome }: { foto?: string | null; nome: string }) {
@@ -261,7 +261,7 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">UHs processadas</p>
                       <div className="space-y-1.5">
                         {cam.detalhes.map((d) => (
-                          <div key={d.sessaoId} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors ${d.excluidoDoScore ? "bg-red-50 opacity-60" : "bg-gray-50"}`}
+                          <div key={d.sessaoId} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors ${d.excluidoDoScore || d.multiplaCamareira ? "bg-red-50 opacity-60" : "bg-gray-50"}`}
                             onClick={() => setDetalheAssignmentId(d.assignmentId)}>
                             <span className="font-medium w-16 flex-shrink-0">{d.uhNumero}</span>
                             <span className="text-gray-400 text-xs flex-1">{d.data}</span>
@@ -269,11 +269,12 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                             <span className={`flex-shrink-0 ${d.falhas > 0 ? "text-red-500" : "text-green-600"}`}>
                               {d.falhas > 0 ? `${d.falhas} falha(s)` : "Sem falhas"}
                             </span>
-                            <span className={`font-bold flex-shrink-0 ${d.excluidoDoScore ? "line-through text-gray-400" : text}`}>
+                            <span className={`font-bold flex-shrink-0 ${d.excluidoDoScore || d.multiplaCamareira ? "line-through text-gray-400" : text}`}>
                               {d.score} pts
                             </span>
                             {d.excluidoDoScore && <span className="text-xs text-red-400 flex-shrink-0">excluído</span>}
-                            {isMaster && (
+                            {d.multiplaCamareira && <span title="Mais de uma camareira nesta UH — ninguém pontua" className="text-xs text-amber-500 flex-shrink-0">2+ camareiras</span>}
+                            {isMaster && !d.multiplaCamareira && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); toggleExcluir(d.sessaoId); }}
                                 disabled={toggling === d.sessaoId}

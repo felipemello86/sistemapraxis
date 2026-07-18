@@ -51,7 +51,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 function AssignmentCard({
-  a, onRemover, programs, onChangeProgram, onChangeObservacoes, temReserva,
+  a, onRemover, programs, onChangeProgram, onChangeObservacoes, temReserva, outrasCamareiras,
 }: {
   a: Assignment;
   onRemover?: (id: string) => void;
@@ -59,6 +59,7 @@ function AssignmentCard({
   onChangeProgram?: (id: string, programId: string) => void;
   onChangeObservacoes?: (id: string, obs: string) => void;
   temReserva?: boolean;
+  outrasCamareiras?: string[];
 }) {
   const st = STATUS_LABELS[a.status] ?? { label: a.status, color: "bg-gray-100 text-gray-600" };
   const estaAtivo = a.status === "EM_ANDAMENTO";
@@ -67,6 +68,7 @@ function AssignmentCard({
   const podeEditarPrograma = !!onChangeProgram && !estaAtivo && !concluido;
   const isEspecifica = a.program?.tipo === "LIMPEZA_COMPLETA";
   const podeEditarObs = !!onChangeObservacoes && isEspecifica && !concluido;
+  const temMultiplasCamareiras = !!outrasCamareiras && outrasCamareiras.length > 0;
 
   return (
     <div className="card flex items-center gap-4">
@@ -80,6 +82,11 @@ function AssignmentCard({
         {a.uh.emManutencao && a.uh.manutencaoDescricao && (
           <p className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded-lg px-2 py-1 mt-1">
             {a.uh.manutencaoDescricao}
+          </p>
+        )}
+        {temMultiplasCamareiras && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1">
+            ⚠️ UH também atribuída a {outrasCamareiras!.join(", ")} — com mais de uma camareira, ninguém pontua por esta UH.
           </p>
         )}
         <p className="text-sm text-gray-600 mt-0.5">→ {a.camareira.nome}</p>
@@ -276,11 +283,23 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
     alert("Notificações enviadas!");
   }
 
+  // Quantas atribuições cada UH já tem hoje (pode ser mais de uma — mutirão
+  // com mais de uma camareira, que faz a UH ficar sem pontuação pra ninguém,
+  // ver aviso no AssignmentCard e a exclusão em api/scores/route.ts).
+  const contagemPorUH = assignments.reduce<Record<string, number>>((acc, a) => {
+    acc[a.uh.id] = (acc[a.uh.id] ?? 0) + 1;
+    return acc;
+  }, {});
   const uhsAtribuidas = new Set(assignments.map((a) => a.uh.id));
-  const uhsDisponiveis = uhs.filter((u) => !uhsAtribuidas.has(u.id));
+  // O seletor de "Adicionar atribuição" continua mostrando TODAS as UHs do
+  // dia (não só as sem atribuição) — permite atribuir uma segunda camareira
+  // à mesma UH quando necessário. UHs já atribuídas ganham um badge com a
+  // contagem de camareiras.
+  const uhsDisponiveis = uhs;
+  const uhsSemAtribuicao = uhs.filter((u) => !uhsAtribuidas.has(u.id));
 
   const totalHoje    = uhs.length;
-  const aAtribuir    = uhsDisponiveis.length;
+  const aAtribuir    = uhsSemAtribuicao.length;
   const atribuidas   = assignments.length;
   const bloqueadas   = assignments.filter((a) => a.status === "PENDENTE").length;
   const liberadas    = assignments.filter((a) => a.status === "LIBERADO").length;
@@ -409,12 +428,14 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
                   const programaSelecionado = programs.find((p) => p.id === novoPrograma);
                   const bloqueadaManutencao = u.emManutencao && programaSelecionado?.tipo === "ARRUMACAO";
                   const temReserva = reservaMap[u.id] ?? false;
+                  const jaAtribuida = contagemPorUH[u.id] ?? 0;
                   return (
                     <button
                       key={u.id}
                       type="button"
                       onClick={() => !bloqueadaManutencao && toggleUH(u.id)}
                       disabled={bloqueadaManutencao}
+                      title={jaAtribuida > 0 ? `Já atribuída a ${jaAtribuida} camareira${jaAtribuida > 1 ? "s" : ""} hoje` : undefined}
                       className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition-all flex items-center gap-1.5 ${
                         bloqueadaManutencao
                           ? "bg-orange-50 border-orange-200 text-orange-400 cursor-not-allowed opacity-75"
@@ -426,6 +447,11 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
                       {u.emManutencao && <Wrench className="w-3 h-3 flex-shrink-0" />}
                       {temReserva && !u.emManutencao && <BedDouble className="w-3 h-3 flex-shrink-0" />}
                       {u.numero}
+                      {jaAtribuida > 0 && (
+                        <span className={`text-[10px] font-bold rounded-full px-1 ${sel ? "bg-white/25" : "bg-amber-100 text-amber-700"}`}>
+                          {jaAtribuida}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -566,6 +592,9 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
                         onChangeProgram={somenteLeitura ? undefined : alterarPrograma}
                         onChangeObservacoes={somenteLeitura ? undefined : alterarObservacoes}
                         temReserva={reservaMap[a.uh.id] ?? false}
+                        outrasCamareiras={assignments
+                          .filter((o) => o.uh.id === a.uh.id && o.camareira.id !== a.camareira.id)
+                          .map((o) => o.camareira.nome)}
                       />
                     ))}
                   </div>

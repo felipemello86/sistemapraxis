@@ -100,9 +100,14 @@ export async function POST(req: NextRequest) {
     });
     const statusInicial = selecao?.liberada ? "LIBERADO" : "PENDENTE";
 
+    // Chave composta agora inclui camareiraId (ver comentário no schema) —
+    // permite mais de uma camareira na mesma UH/dia. Se a mesma camareira já
+    // tinha uma atribuição aqui, isso atualiza (troca de programa/obs); se é
+    // uma camareira nova pra essa UH/dia, cria uma segunda linha em vez de
+    // sobrescrever a atribuição existente.
     const assignment = await prisma.dailyAssignment.upsert({
-      where: { data_uhId: { data, uhId } },
-      update: { camareiraId, programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
+      where: { data_uhId_camareiraId: { data, uhId, camareiraId } },
+      update: { programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
       create: { tenantId, data, uhId, camareiraId, programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
       include: { uh: true, camareira: true },
     });
