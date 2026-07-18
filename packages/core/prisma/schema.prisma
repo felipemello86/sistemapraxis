@@ -330,7 +330,7 @@ model CleaningProgram {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   nome  String
-  tipo  String  @default("ARRUMACAO") // ARRUMACAO | LIMPEZA_COMPLETA
+  tipo  String  @default("ARRUMACAO") // ARRUMACAO | LIMPEZA_COMPLETA | SUPER_LIMPEZA
   ativo Boolean @default(true)
 
   steps       ProgramStep[]
@@ -365,6 +365,14 @@ model DailyAssignment {
   observacoes         String?
   solicitacaoMensagem String?
   solicitacaoStatus   String? // null | PENDENTE | APROVADO | REJEITADO
+  // Tipo da solicitação em curso (só é relevante enquanto solicitacaoStatus
+  // não for null) — distingue a troca-pra-limpeza-completa original da
+  // Super Limpeza ⭐️ (pedido da camareira, com fotos, que a governanta
+  // aprova/indefere; some 120 pts fixos sem monitoramento de tempo, só com
+  // desconto de -10/falha na inspeção — ver src/lib/scoring.ts). Null nas
+  // solicitações antigas == TROCA_PROGRAMA, pra não quebrar dado existente.
+  solicitacaoTipo  String? // TROCA_PROGRAMA | SUPER_LIMPEZA
+  solicitacaoFotos String  @default("[]") // JSON array de URLs (Cloudinary) — opcional, só usado em SUPER_LIMPEZA
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

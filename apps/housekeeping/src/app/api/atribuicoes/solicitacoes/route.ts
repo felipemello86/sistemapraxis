@@ -19,6 +19,8 @@ export async function GET() {
       id: true,
       data: true,
       solicitacaoMensagem: true,
+      solicitacaoTipo: true,
+      solicitacaoFotos: true,
       uh: { select: { numero: true } },
       camareira: { select: { nome: true } },
     },

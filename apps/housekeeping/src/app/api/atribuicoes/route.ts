@@ -163,19 +163,47 @@ export async function PATCH(req: NextRequest) {
   }
 
   // ── Solicitar alteração (chamado pela camareira via sessão) ──────────
+  // tipo: "TROCA_PROGRAMA" (padrão, pede pra virar Limpeza Específica) ou
+  // "SUPER_LIMPEZA" (pede a Super Limpeza ⭐️ — aceita fotos junto).
   if (action === "solicitar_alteracao") {
-    const { mensagem } = body;
+    const { mensagem, tipo, fotos } = body;
+    const tipoSolicitacao = tipo === "SUPER_LIMPEZA" ? "SUPER_LIMPEZA" : "TROCA_PROGRAMA";
 
-    const assignment = await prisma.dailyAssignment.findUnique({ where: { id: assignmentId } });
+    const assignment = await prisma.dailyAssignment.findUnique({
+      where: { id: assignmentId },
+      include: { uh: true, camareira: { select: { nome: true } } },
+    });
     if (!assignment || assignment.tenantId !== tenantId) {
       return NextResponse.json({ error: "Atribuição não encontrada" }, { status: 404 });
     }
 
     await prisma.dailyAssignment.update({
       where: { id: assignmentId },
-      data: { solicitacaoMensagem: mensagem, solicitacaoStatus: "PENDENTE" },
+      data: {
+        solicitacaoMensagem: mensagem,
+        solicitacaoStatus: "PENDENTE",
+        solicitacaoTipo: tipoSolicitacao,
+        solicitacaoFotos: JSON.stringify(Array.isArray(fotos) ? fotos : []),
+      },
     });
-    // TODO: notificar governantas via Telegram com link pra aprovar/rejeitar
+
+    // Notifica as governantas do tenant (best-effort, não bloqueia a resposta).
+    const governantas = await prisma.user.findMany({
+      where: { tenantId, role: "GOVERNANTA", ativo: true },
+      select: { id: true },
+    });
+    const titulo = tipoSolicitacao === "SUPER_LIMPEZA"
+      ? "⭐️ Pedido de Super Limpeza"
+      : "Solicitação de alteração";
+    const corpo = `UH ${assignment.uh.numero} — ${assignment.camareira.nome}: "${mensagem}"`;
+    for (const g of governantas) {
+      void sendPushToUser(g.id, {
+        title: titulo,
+        body: corpo,
+        data: { tipo: "solicitacao_alteracao", assignmentId, solicitacaoTipo: tipoSolicitacao },
+      });
+    }
+
     return NextResponse.json({ ok: true });
   }
 
@@ -183,28 +211,47 @@ export async function PATCH(req: NextRequest) {
   if (action === "decidir_alteracao") {
     const { aprovado } = body;
 
-    const programaEspecifica = await prisma.cleaningProgram.findFirst({
-      where: { tenantId, tipo: "LIMPEZA_COMPLETA" },
-    });
-
     const atual = await prisma.dailyAssignment.findUnique({
       where: { id: assignmentId },
-      select: { solicitacaoMensagem: true },
+      select: { solicitacaoMensagem: true, solicitacaoTipo: true },
+    });
+    if (!atual) return NextResponse.json({ error: "Atribuição não encontrada" }, { status: 404 });
+
+    // TROCA_PROGRAMA (fluxo original) sempre mira "Limpeza Específica";
+    // SUPER_LIMPEZA mira o programa Super Limpeza ⭐️ — cada solicitação
+    // troca só o programa correspondente ao seu próprio tipo.
+    const tipoAlvo = atual.solicitacaoTipo === "SUPER_LIMPEZA" ? "SUPER_LIMPEZA" : "LIMPEZA_COMPLETA";
+    const programaAlvo = await prisma.cleaningProgram.findFirst({
+      where: { tenantId, tipo: tipoAlvo },
     });
 
     const assignment = await prisma.dailyAssignment.update({
       where: { id: assignmentId },
       data: {
         solicitacaoStatus: aprovado ? "APROVADO" : "REJEITADO",
-        ...(aprovado && programaEspecifica ? {
-          programId: programaEspecifica.id,
-          observacoes: atual?.solicitacaoMensagem ?? null,
+        ...(aprovado && programaAlvo ? {
+          programId: programaAlvo.id,
+          observacoes: atual.solicitacaoMensagem ?? null,
         } : {}),
       },
       include: { uh: true, camareira: true, program: true },
     });
 
-    // TODO: notificar camareira via Telegram sobre a decisão
+    const ehSuperLimpeza = atual.solicitacaoTipo === "SUPER_LIMPEZA";
+    const tituloDecisao = aprovado
+      ? (ehSuperLimpeza ? "⭐️ Super Limpeza aprovada" : "Alteração aprovada")
+      : (ehSuperLimpeza ? "Super Limpeza indeferida" : "Alteração não aprovada");
+    const corpoDecisao = aprovado
+      ? (ehSuperLimpeza
+          ? `UH ${assignment.uh.numero} agora vale 120 pts, sem controle de tempo (falhas na inspeção ainda descontam).`
+          : `UH ${assignment.uh.numero} — sua solicitação foi aprovada.`)
+      : `UH ${assignment.uh.numero} — pedido indeferido. O programa de arrumação continua o mesmo.`;
+    void sendPushToUser(assignment.camareiraId, {
+      title: tituloDecisao,
+      body: corpoDecisao,
+      data: { tipo: "decisao_alteracao", assignmentId, aprovado: String(aprovado) },
+    });
+
     return NextResponse.json({ ok: true, assignment });
   }
 

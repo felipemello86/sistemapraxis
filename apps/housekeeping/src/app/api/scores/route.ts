@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
-import { calcularScoreUH } from "@/lib/scoring";
+import { calcularScoreUH, calcularScoreSuperLimpeza } from "@/lib/scoring";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 // Portado de apps/housekeeping/src/app/api/scores/route.ts (v1).
@@ -63,7 +63,9 @@ export async function GET(req: NextRequest) {
     where: sessionWhere,
     include: {
       inspection: { select: { totalFalhas: true } },
-      assignment: { select: { data: true } },
+      // program.tipo decide a fórmula de score usada abaixo (Super Limpeza
+      // ⭐️ é fixo 120 - 10/falha, sem entrar tempo na conta).
+      assignment: { select: { data: true, program: { select: { tipo: true } } } },
       uh: { select: { numero: true } },
     },
     relationLoadStrategy: "join",
@@ -86,7 +88,9 @@ export async function GET(req: NextRequest) {
     // Monta detalhes com TODAS as sessões (incluindo excluídas para o MASTER ver)
     const detalhes = minhasSessoes.map((s) => {
       const falhas = s.inspection?.totalFalhas ?? 0;
-      const score = calcularScoreUH(s.duracaoSegundos ?? 0, falhas, targetMinutos);
+      const score = s.assignment.program?.tipo === "SUPER_LIMPEZA"
+        ? calcularScoreSuperLimpeza(falhas)
+        : calcularScoreUH(s.duracaoSegundos ?? 0, falhas, targetMinutos);
       if (!s.excluidoDoScore) {
         totalFalhas += falhas;
         totalScore += score;

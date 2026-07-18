@@ -42,6 +42,17 @@ export function calcularScoreUH(
   return Math.round((vel * 0.5 + qual * 0.5) * 10) / 10;
 }
 
+/**
+ * Super Limpeza ⭐️ — pedido da camareira, aprovado pela governanta, pra UHs
+ * que precisam de mais trabalho que o normal (muita louça, quarto deplorável
+ * etc). Sem monitoramento de tempo: pontuação fixa de 120 (mesmo teto de
+ * bônus da fórmula normal, ver calcularScoreVelocidade), só descontada por
+ * falha na inspeção — que continua correndo do mesmo jeito, -10pts cada.
+ */
+export function calcularScoreSuperLimpeza(totalFalhas: number): number {
+  return Math.max(120 - totalFalhas * 10, 0);
+}
+
 export function scoreLabel(score: number): { label: string; cor: string } {
   if (score >= 90) return { label: "Excelente", cor: "text-green-600" };
   if (score >= 75) return { label: "Ótimo", cor: "text-blue-600" };

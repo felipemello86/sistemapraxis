@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Clock, Camera, ChevronRight, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine } from "lucide-react";
+import { CheckCircle2, Clock, Camera, ChevronRight, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -18,6 +18,7 @@ type Assignment = {
   observacoes: string | null;
   solicitacaoMensagem: string | null;
   solicitacaoStatus: string | null;
+  solicitacaoTipo: string | null;
   temReserva?: boolean;
   uh: { id: string; numero: string; tipo: string; status: string; emManutencao?: boolean; manutencaoDescricao?: string | null };
   program: { id: string; nome: string; tipo: string; steps: { id: string; titulo: string; descricao: string; ordem: number }[] } | null;
@@ -55,6 +56,11 @@ export default function CamareiraView() {
   const [solicitandoId, setSolicitandoId] = useState<string | null>(null);
   const [solicitacaoMsg, setSolicitacaoMsg] = useState("");
   const [enviandoSolicitacao, setEnviandoSolicitacao] = useState(false);
+  const [superLimpezaId, setSuperLimpezaId] = useState<string | null>(null);
+  const [superLimpezaMsg, setSuperLimpezaMsg] = useState("");
+  const [superLimpezaFotos, setSuperLimpezaFotos] = useState<string[]>([]);
+  const [enviandoSuperLimpeza, setEnviandoSuperLimpeza] = useState(false);
+  const [uploadandoSuperLimpeza, setUploadandoSuperLimpeza] = useState(false);
   const [erroUpload, setErroUpload] = useState<string | null>(null);
   const [bloqueandoUH, setBloqueandoUH] = useState(false);
   const [motivoBloqueio, setMotivoBloqueio] = useState("");
@@ -76,6 +82,51 @@ export default function CamareiraView() {
     setSolicitandoId(null);
     setSolicitacaoMsg("");
     setEnviandoSolicitacao(false);
+    carregar();
+  }
+
+  // Pedido de Super Limpeza ⭐️ — mesma mecânica de solicitar_alteracao, só
+  // que com tipo="SUPER_LIMPEZA" e fotos anexadas (a compressão de imagem é
+  // a mesma função usada nas fotos obrigatórias de finalização, ver abaixo).
+  async function handleFotoSuperLimpeza(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadandoSuperLimpeza(true);
+    try {
+      const fileComprimido = await comprimirImagem(file);
+      const fd = new FormData();
+      fd.append("file", fileComprimido);
+      fd.append("tipo", "super_limpeza");
+      fd.append("pasta", "super-limpeza");
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (json.url) setSuperLimpezaFotos((prev) => [...prev, json.url]);
+    } catch {
+      // Foto é opcional — falha silenciosa não impede o pedido.
+    } finally {
+      setUploadandoSuperLimpeza(false);
+    }
+  }
+
+  async function solicitarSuperLimpeza(assignmentId: string) {
+    if (!superLimpezaMsg.trim()) return;
+    setEnviandoSuperLimpeza(true);
+    await apiFetch("/api/atribuicoes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "solicitar_alteracao",
+        assignmentId,
+        mensagem: superLimpezaMsg.trim(),
+        tipo: "SUPER_LIMPEZA",
+        fotos: superLimpezaFotos,
+      }),
+    });
+    setSuperLimpezaId(null);
+    setSuperLimpezaMsg("");
+    setSuperLimpezaFotos([]);
+    setEnviandoSuperLimpeza(false);
     carregar();
   }
 
@@ -410,7 +461,16 @@ export default function CamareiraView() {
           </p>
         )}
 
-        <div className="mt-4 flex gap-2">
+        {(!assignmentAtivo?.solicitacaoStatus || assignmentAtivo.solicitacaoStatus === "REJEITADO") && assignmentAtivo?.program?.tipo !== "SUPER_LIMPEZA" && (
+          <button
+            onClick={() => { setSuperLimpezaId(assignmentAtivo!.id); setSuperLimpezaMsg(""); setSuperLimpezaFotos([]); }}
+            className="mt-3 w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-amber-400 bg-amber-50 text-amber-800 text-sm font-semibold hover:bg-amber-100"
+          >
+            <Star className="w-4 h-4 fill-current" /> Solicitar Super Limpeza
+          </button>
+        )}
+
+        <div className="mt-3 flex gap-2">
           <button
             onClick={() => { setReportandoLavanderia(true); setDescricaoLavanderia(""); }}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
@@ -425,6 +485,70 @@ export default function CamareiraView() {
           </button>
         </div>
       </div>
+
+      {/* Modal de Super Limpeza ⭐️ */}
+      {superLimpezaId && (
+        <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => setSuperLimpezaId(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-white w-full rounded-t-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-500 fill-current" />
+                  <h3 className="font-bold text-gray-800">Solicitar Super Limpeza</h3>
+                </div>
+                <button onClick={() => setSuperLimpezaId(null)}><X className="w-5 h-5 text-gray-400" /></button>
+              </div>
+              <p className="text-sm text-gray-500 mb-3">
+                Explique pra governanta por que essa UH precisa de Super Limpeza (muita louça, quarto muito sujo, etc.). Se aprovado, vale 120 pts fixos, sem controle de tempo.
+              </p>
+              <textarea
+                rows={4}
+                className="w-full border border-amber-300 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500 resize-none"
+                style={{ fontSize: "16px" }}
+                placeholder="Ex.: Muita louça acumulada, quarto muito sujo, hóspede deixou a UH deplorável..."
+                value={superLimpezaMsg}
+                onChange={(e) => setSuperLimpezaMsg(e.target.value)}
+              />
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 font-medium mb-1.5">Fotos (opcional)</p>
+                {superLimpezaFotos.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-2">
+                    {superLimpezaFotos.map((url, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={url} alt={`foto-${idx}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          onClick={() => setSuperLimpezaFotos((prev) => prev.filter((_, i) => i !== idx))}
+                          className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className={`flex items-center gap-2 cursor-pointer text-sm rounded-lg px-3 py-2.5 border ${uploadandoSuperLimpeza ? "opacity-50 border-gray-200 bg-gray-50 text-gray-400" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                  <Camera className="w-4 h-4 flex-shrink-0" />
+                  <span>{uploadandoSuperLimpeza ? "Enviando foto..." : "Adicionar foto"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleFotoSuperLimpeza}
+                    disabled={uploadandoSuperLimpeza}
+                  />
+                </label>
+              </div>
+              <button
+                onClick={() => solicitarSuperLimpeza(superLimpezaId)}
+                disabled={!superLimpezaMsg.trim() || enviandoSuperLimpeza}
+                className="mt-3 w-full py-3 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-50"
+              >
+                {enviandoSuperLimpeza ? "Enviando..." : "⭐️ Enviar solicitação"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de lavanderia */}
       {reportandoLavanderia && (
@@ -535,6 +659,18 @@ export default function CamareiraView() {
     const podeSolicitar =
       (!assignmentFresco.solicitacaoStatus || assignmentFresco.solicitacaoStatus === "REJEITADO") &&
       assignmentFresco.program?.tipo !== "LIMPEZA_COMPLETA";
+    // Super Limpeza ⭐️ pode ser pedida em qualquer fase da limpeza — só não
+    // se já tem uma solicitação em aberto (de qualquer tipo) ou se a UH já
+    // está em Super Limpeza.
+    const podeSuperLimpeza =
+      (!assignmentFresco.solicitacaoStatus || assignmentFresco.solicitacaoStatus === "REJEITADO") &&
+      assignmentFresco.program?.tipo !== "SUPER_LIMPEZA";
+    const superLimpezaPendente = assignmentFresco.solicitacaoStatus === "PENDENTE" && assignmentFresco.solicitacaoTipo === "SUPER_LIMPEZA";
+    const superLimpezaAprovada = assignmentFresco.solicitacaoStatus === "APROVADO" && assignmentFresco.solicitacaoTipo === "SUPER_LIMPEZA";
+    const superLimpezaRejeitada = assignmentFresco.solicitacaoStatus === "REJEITADO" && assignmentFresco.solicitacaoTipo === "SUPER_LIMPEZA";
+    const trocaPendente = assignmentFresco.solicitacaoStatus === "PENDENTE" && assignmentFresco.solicitacaoTipo !== "SUPER_LIMPEZA";
+    const trocaAprovada = assignmentFresco.solicitacaoStatus === "APROVADO" && assignmentFresco.solicitacaoTipo !== "SUPER_LIMPEZA";
+    const trocaRejeitada = assignmentFresco.solicitacaoStatus === "REJEITADO" && assignmentFresco.solicitacaoTipo !== "SUPER_LIMPEZA";
 
     const steps = assignmentFresco.program?.steps ?? assignmentAtivo.program?.steps ?? [];
     const totalSteps = steps.length;
@@ -611,14 +747,31 @@ export default function CamareiraView() {
                   <MessageSquarePlus className="w-3 h-3" /> Solicitar alteração
                 </button>
               )}
-              {assignmentFresco.solicitacaoStatus === "PENDENTE" && (
+              {podeSuperLimpeza && (
+                <button
+                  onClick={() => { setSuperLimpezaId(assignmentAtivo.id); setSuperLimpezaMsg(""); setSuperLimpezaFotos([]); }}
+                  className="flex items-center gap-1 text-xs bg-amber-400/90 hover:bg-amber-400 text-amber-950 font-semibold px-2 py-1 rounded-lg transition-colors"
+                >
+                  <Star className="w-3 h-3 fill-current" /> Super Limpeza
+                </button>
+              )}
+              {trocaPendente && (
                 <span className="text-xs bg-yellow-400/30 text-yellow-100 px-2 py-1 rounded-lg">⏳ Aguardando aprovação</span>
               )}
-              {assignmentFresco.solicitacaoStatus === "APROVADO" && (
+              {trocaAprovada && (
                 <span className="text-xs bg-green-400/30 text-green-100 px-2 py-1 rounded-lg">✅ Alteração aprovada</span>
               )}
-              {assignmentFresco.solicitacaoStatus === "REJEITADO" && (
+              {trocaRejeitada && (
                 <span className="text-xs bg-red-400/30 text-red-100 px-2 py-1 rounded-lg">❌ Não aprovada</span>
+              )}
+              {superLimpezaPendente && (
+                <span className="text-xs bg-amber-400/30 text-amber-100 px-2 py-1 rounded-lg">⭐️ Aguardando aprovação</span>
+              )}
+              {superLimpezaAprovada && (
+                <span className="text-xs bg-green-400/30 text-green-100 px-2 py-1 rounded-lg">⭐️ Super Limpeza aprovada</span>
+              )}
+              {superLimpezaRejeitada && (
+                <span className="text-xs bg-red-400/30 text-red-100 px-2 py-1 rounded-lg">❌ Super Limpeza indeferida</span>
               )}
               <button
                 onClick={() => { setBloqueandoUH(true); setMotivoBloqueio(""); }}
@@ -728,6 +881,70 @@ export default function CamareiraView() {
                 className="mt-3 w-full btn-primary"
               >
                 {enviandoSolicitacao ? "Enviando..." : "Enviar solicitação"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Super Limpeza ⭐️ */}
+      {superLimpezaId && (
+        <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => setSuperLimpezaId(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-white w-full rounded-t-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-500 fill-current" />
+                  <h3 className="font-bold text-gray-800">Solicitar Super Limpeza</h3>
+                </div>
+                <button onClick={() => setSuperLimpezaId(null)}><X className="w-5 h-5 text-gray-400" /></button>
+              </div>
+              <p className="text-sm text-gray-500 mb-3">
+                Explique pra governanta por que essa UH precisa de Super Limpeza (muita louça, quarto muito sujo, etc.). Se aprovado, vale 120 pts fixos, sem controle de tempo.
+              </p>
+              <textarea
+                rows={4}
+                className="w-full border border-amber-300 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500 resize-none"
+                style={{ fontSize: "16px" }}
+                placeholder="Ex.: Muita louça acumulada, quarto muito sujo, hóspede deixou a UH deplorável..."
+                value={superLimpezaMsg}
+                onChange={(e) => setSuperLimpezaMsg(e.target.value)}
+              />
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 font-medium mb-1.5">Fotos (opcional)</p>
+                {superLimpezaFotos.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-2">
+                    {superLimpezaFotos.map((url, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={url} alt={`foto-${idx}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          onClick={() => setSuperLimpezaFotos((prev) => prev.filter((_, i) => i !== idx))}
+                          className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className={`flex items-center gap-2 cursor-pointer text-sm rounded-lg px-3 py-2.5 border ${uploadandoSuperLimpeza ? "opacity-50 border-gray-200 bg-gray-50 text-gray-400" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                  <Camera className="w-4 h-4 flex-shrink-0" />
+                  <span>{uploadandoSuperLimpeza ? "Enviando foto..." : "Adicionar foto"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleFotoSuperLimpeza}
+                    disabled={uploadandoSuperLimpeza}
+                  />
+                </label>
+              </div>
+              <button
+                onClick={() => solicitarSuperLimpeza(superLimpezaId)}
+                disabled={!superLimpezaMsg.trim() || enviandoSuperLimpeza}
+                className="mt-3 w-full py-3 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-50"
+              >
+                {enviandoSuperLimpeza ? "Enviando..." : "⭐️ Enviar solicitação"}
               </button>
             </div>
           </div>
@@ -916,13 +1133,22 @@ export default function CamareiraView() {
                   {emAndamento && <p className="text-xs text-blue-600 mt-1">▶ Em andamento</p>}
                   {liberado && <p className="text-xs text-green-600 mt-1">🟢 Liberada — toque para iniciar</p>}
                   {concluido && <p className="text-xs text-green-600 mt-1">✓ Concluída</p>}
-                  {a.solicitacaoStatus === "PENDENTE" && (
+                  {a.solicitacaoStatus === "PENDENTE" && a.solicitacaoTipo === "SUPER_LIMPEZA" && (
+                    <p className="text-xs text-amber-600 mt-1">⭐️ Super Limpeza solicitada — aguardando aprovação</p>
+                  )}
+                  {a.solicitacaoStatus === "PENDENTE" && a.solicitacaoTipo !== "SUPER_LIMPEZA" && (
                     <p className="text-xs text-blue-600 mt-1">⏳ Solicitação enviada — aguardando aprovação</p>
                   )}
-                  {a.solicitacaoStatus === "APROVADO" && (
+                  {a.solicitacaoStatus === "APROVADO" && a.solicitacaoTipo === "SUPER_LIMPEZA" && (
+                    <p className="text-xs text-green-600 mt-1">⭐️ Super Limpeza aprovada</p>
+                  )}
+                  {a.solicitacaoStatus === "APROVADO" && a.solicitacaoTipo !== "SUPER_LIMPEZA" && (
                     <p className="text-xs text-green-600 mt-1">✅ Alteração aprovada</p>
                   )}
-                  {a.solicitacaoStatus === "REJEITADO" && (
+                  {a.solicitacaoStatus === "REJEITADO" && a.solicitacaoTipo === "SUPER_LIMPEZA" && (
+                    <p className="text-xs text-red-500 mt-1">❌ Super Limpeza indeferida</p>
+                  )}
+                  {a.solicitacaoStatus === "REJEITADO" && a.solicitacaoTipo !== "SUPER_LIMPEZA" && (
                     <p className="text-xs text-red-500 mt-1">❌ Alteração não aprovada</p>
                   )}
                 </div>
@@ -945,6 +1171,14 @@ export default function CamareiraView() {
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600"
                     >
                       <MessageSquarePlus className="w-3 h-3" /> Solicitar alteração
+                    </button>
+                  )}
+                  {liberado && (!a.solicitacaoStatus || a.solicitacaoStatus === "REJEITADO") && a.program?.tipo !== "SUPER_LIMPEZA" && (
+                    <button
+                      onClick={() => { setSuperLimpezaId(a.id); setSuperLimpezaMsg(""); setSuperLimpezaFotos([]); }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 font-medium"
+                    >
+                      <Star className="w-3 h-3 fill-current" /> Super Limpeza
                     </button>
                   )}
                 </div>
@@ -981,6 +1215,70 @@ export default function CamareiraView() {
                 className="mt-3 w-full btn-primary"
               >
                 {enviandoSolicitacao ? "Enviando..." : "Enviar solicitação"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Super Limpeza ⭐️ */}
+      {superLimpezaId && (
+        <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => setSuperLimpezaId(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-white w-full rounded-t-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-500 fill-current" />
+                  <h3 className="font-bold text-gray-800">Solicitar Super Limpeza</h3>
+                </div>
+                <button onClick={() => setSuperLimpezaId(null)}><X className="w-5 h-5 text-gray-400" /></button>
+              </div>
+              <p className="text-sm text-gray-500 mb-3">
+                Explique pra governanta por que essa UH precisa de Super Limpeza (muita louça, quarto muito sujo, etc.). Se aprovado, vale 120 pts fixos, sem controle de tempo.
+              </p>
+              <textarea
+                rows={4}
+                className="w-full border border-amber-300 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500 resize-none"
+                style={{ fontSize: "16px" }}
+                placeholder="Ex.: Muita louça acumulada, quarto muito sujo, hóspede deixou a UH deplorável..."
+                value={superLimpezaMsg}
+                onChange={(e) => setSuperLimpezaMsg(e.target.value)}
+              />
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 font-medium mb-1.5">Fotos (opcional)</p>
+                {superLimpezaFotos.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-2">
+                    {superLimpezaFotos.map((url, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={url} alt={`foto-${idx}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          onClick={() => setSuperLimpezaFotos((prev) => prev.filter((_, i) => i !== idx))}
+                          className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className={`flex items-center gap-2 cursor-pointer text-sm rounded-lg px-3 py-2.5 border ${uploadandoSuperLimpeza ? "opacity-50 border-gray-200 bg-gray-50 text-gray-400" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                  <Camera className="w-4 h-4 flex-shrink-0" />
+                  <span>{uploadandoSuperLimpeza ? "Enviando foto..." : "Adicionar foto"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleFotoSuperLimpeza}
+                    disabled={uploadandoSuperLimpeza}
+                  />
+                </label>
+              </div>
+              <button
+                onClick={() => solicitarSuperLimpeza(superLimpezaId)}
+                disabled={!superLimpezaMsg.trim() || enviandoSuperLimpeza}
+                className="mt-3 w-full py-3 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-50"
+              >
+                {enviandoSuperLimpeza ? "Enviando..." : "⭐️ Enviar solicitação"}
               </button>
             </div>
           </div>

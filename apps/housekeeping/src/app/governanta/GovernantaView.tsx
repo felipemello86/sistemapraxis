@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil, Star } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/g/[token]/GovernantaView.tsx (v1),
@@ -47,9 +47,20 @@ type Solicitacao = {
   id: string;
   data: string;
   solicitacaoMensagem: string;
+  solicitacaoTipo: string | null;
+  solicitacaoFotos: string; // JSON array — ver parseFotos abaixo
   uh: { numero: string };
   camareira: { nome: string };
 };
+
+function parseFotos(fotosJson: string): string[] {
+  try {
+    const arr = JSON.parse(fotosJson);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
 
 const CATEGORIA_ICONS: Record<string, string> = {
   CAMA: "🛏️", BANHEIRO: "🚿", QUARTO: "🏠", COZINHA: "🍳", GERAL: "✅",
@@ -478,37 +489,65 @@ export default function GovernantaView({ role }: { role: string }) {
       {solicitacoes.length > 0 && (
         <div className="mb-6">
           <p className="text-xs font-semibold text-orange-600 uppercase tracking-wide mb-2">
-            ⚠️ Solicitações de alteração ({solicitacoes.length})
+            ⚠️ Solicitações pendentes ({solicitacoes.length})
           </p>
           <div className="space-y-2">
-            {solicitacoes.map((s) => (
-              <div key={s.id} className="card border-l-4 border-l-orange-400">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-bold text-gray-800">UH {s.uh.numero} <span className="font-normal text-gray-500 text-sm">— {s.camareira.nome}</span></p>
-                    <p className="text-sm text-gray-600 mt-0.5 italic">"{s.solicitacaoMensagem}"</p>
-                  </div>
-                  {!somenteLeitura && (
-                    <div className="flex gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => decidir(s.id, true)}
-                        disabled={decidindo === s.id}
-                        className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200"
-                      >
-                        <ThumbsUp className="w-3 h-3" /> Aprovar
-                      </button>
-                      <button
-                        onClick={() => decidir(s.id, false)}
-                        disabled={decidindo === s.id}
-                        className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200"
-                      >
-                        <ThumbsDown className="w-3 h-3" /> Rejeitar
-                      </button>
+            {solicitacoes.map((s) => {
+              const ehSuperLimpeza = s.solicitacaoTipo === "SUPER_LIMPEZA";
+              const fotos = parseFotos(s.solicitacaoFotos);
+              return (
+                <div
+                  key={s.id}
+                  className={`card border-l-4 ${ehSuperLimpeza ? "border-l-amber-400 bg-amber-50/40" : "border-l-orange-400"}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-gray-800 flex items-center gap-1">
+                        {ehSuperLimpeza && <Star className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />}
+                        UH {s.uh.numero} <span className="font-normal text-gray-500 text-sm">— {s.camareira.nome}</span>
+                      </p>
+                      {ehSuperLimpeza && (
+                        <p className="text-[11px] font-semibold text-amber-600 uppercase tracking-wide mt-0.5">
+                          Pedido de Super Limpeza ⭐️
+                        </p>
+                      )}
+                      <p className="text-sm text-gray-600 mt-0.5 italic">"{s.solicitacaoMensagem}"</p>
+                      {fotos.length > 0 && (
+                        <div className="flex gap-1.5 mt-2 flex-wrap">
+                          {fotos.map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={url}
+                                alt={`Foto ${i + 1}`}
+                                className="w-14 h-14 object-cover rounded-lg border border-gray-200"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
+                    {!somenteLeitura && (
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => decidir(s.id, true)}
+                          disabled={decidindo === s.id}
+                          className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200"
+                        >
+                          <ThumbsUp className="w-3 h-3" /> Aprovar
+                        </button>
+                        <button
+                          onClick={() => decidir(s.id, false)}
+                          disabled={decidindo === s.id}
+                          className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200"
+                        >
+                          <ThumbsDown className="w-3 h-3" /> {ehSuperLimpeza ? "Indeferir" : "Rejeitar"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

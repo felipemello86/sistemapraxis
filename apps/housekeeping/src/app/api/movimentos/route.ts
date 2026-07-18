@@ -14,8 +14,12 @@ export async function GET(req: NextRequest) {
   const periodo = p.get("periodo") || "alltime";
   const dataCliente = p.get("data") || format(new Date(), "yyyy-MM-dd");
 
+  // Super Limpeza ⭐️ entra na mesma exclusão de LIMPEZA_COMPLETA: sem
+  // monitoramento de tempo (ver src/lib/scoring.ts), então a duração dos
+  // steps não é comparável com o resto — incluir aqui distorceria a média
+  // "tempo por etapa" das demais camareiras.
   let assignmentWhere: Record<string, unknown> = {
-    program: { tipo: { not: "LIMPEZA_COMPLETA" } },
+    program: { tipo: { notIn: ["LIMPEZA_COMPLETA", "SUPER_LIMPEZA"] } },
   };
 
   if (periodo === "hoje") {
