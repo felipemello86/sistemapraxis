@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma, getSession, moduleToSlug, MODULE_LABELS, type SuiteModule } from "@praxis/core";
 import { logoutAction } from "./actions";
 import { LoginForm } from "./LoginForm";
+import PushRegistration from "./PushRegistration";
 import { IconBed, IconWrench, IconStar, IconGear } from "@/lib/icons";
 import styles from "./page.module.css";
 
@@ -87,6 +88,8 @@ export default async function ClienteHub({
           </div>
         </div>
       )}
+
+      {session && <PushRegistration />}
 
       {session && (
         <form action={boundLogout} className={styles.footer}>

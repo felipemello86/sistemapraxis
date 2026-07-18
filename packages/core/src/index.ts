@@ -3,6 +3,7 @@ export * from "./addressing";
 export * from "./tenant";
 export * from "./moduleAccess";
 export { prisma } from "./prisma";
+export { sendPushToUser } from "./push";
 export type {
   SuiteModule,
   User,

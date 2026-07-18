@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@praxis/core": "*",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/push-notifications": "^6.0.3",
     "bcryptjs": "^2.4.3",
     "next": "14.2.35",
     "react": "^18.3.1",

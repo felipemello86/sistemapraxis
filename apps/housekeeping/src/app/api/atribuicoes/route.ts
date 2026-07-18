@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/atribuicoes/route.ts (v1) — agora
 // completo (GET, POST, PATCH decidir_alteracao, DELETE), além do
@@ -106,7 +106,13 @@ export async function POST(req: NextRequest) {
       create: { tenantId, data, uhId, camareiraId, programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
       include: { uh: true, camareira: true },
     });
-    // TODO: notificar camareira via Telegram sobre a nova atribuição
+    // Push (best-effort, não bloqueia a resposta) — Telegram continua TODO,
+    // depende de infra de bot que ainda não existe em v2.
+    void sendPushToUser(camareiraId, {
+      title: "Nova atribuição",
+      body: `Você foi atribuída à UH ${assignment.uh.numero}${data ? ` (${data})` : ""}.`,
+      data: { tipo: "atribuicao", uhId: assignment.uhId, data },
+    });
     return NextResponse.json(assignment, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

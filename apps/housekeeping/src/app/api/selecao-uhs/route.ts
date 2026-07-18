@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/selecao-uhs/route.ts (v1).
 // Mesma lógica de seleção/liberação diária de UHs. Diferenças conscientes
@@ -169,11 +169,17 @@ export async function PATCH(req: NextRequest) {
     });
 
     if (assignmentId) {
-      await prisma.dailyAssignment.update({
+      const assignment = await prisma.dailyAssignment.update({
         where: { id: assignmentId },
         data: { status: "LIBERADO", liberadaEm: new Date() },
+        include: { uh: { select: { numero: true } } },
       });
-      // TODO: notificar camareira via Telegram que a UH foi liberada
+      // Push (best-effort) — Telegram continua TODO.
+      void sendPushToUser(assignment.camareiraId, {
+        title: "UH liberada",
+        body: `A UH ${assignment.uh.numero} foi liberada pra limpeza.`,
+        data: { tipo: "liberacao", uhId, data },
+      });
       // TODO: notificar suporte via Telegram
     }
 

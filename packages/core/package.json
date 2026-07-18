@@ -22,7 +22,8 @@
     "jose": "^5.9.6",
     "bcryptjs": "^2.4.3",
     "date-fns": "^3.6.0",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "firebase-admin": "^13.10.0"
   },
   "devDependencies": {
     "prisma": "^5.22.0",
