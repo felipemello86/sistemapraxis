@@ -34,4 +34,20 @@
   .label {
     @apply block text-sm font-medium text-gray-700 mb-1;
   }
+
+  /* Compensa, no mobile, a altura real do header fixo do Sidebar (56px +
+     safe-area-inset-top do notch/status bar no app nativo) — ver
+     components/layout/Sidebar.tsx. Usado no lugar de `pt-14 md:pt-0` em
+     todo layout.tsx de rota que renderiza <Sidebar>. Como o container pai
+     é `flex` (row, sidebar à esquerda no desktop), não dá pra empurrar o
+     conteúdo com um elemento espaçador em fluxo — só via padding direto
+     igual a este. */
+  .hk-content-offset {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+  }
+  @screen md {
+    .hk-content-offset {
+      padding-top: 0;
+    }
+  }
 }

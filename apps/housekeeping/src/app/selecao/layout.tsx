@@ -9,7 +9,7 @@ export default async function SelecaoLayout({ children }: { children: React.Reac
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar nome={session.nome} role={session.role} tenantSlug={session.tenantSlug} />
-      <main className="flex-1 overflow-auto pt-14 md:pt-0">{children}</main>
+      <main className="flex-1 overflow-auto hk-content-offset">{children}</main>
     </div>
   );
 }

@@ -9,7 +9,7 @@ export default async function CamareiraLayout({ children }: { children: React.Re
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar nome={session.nome} role={session.role} tenantSlug={session.tenantSlug} />
-      <div className="flex-1 pt-14 md:pt-0">{children}</div>
+      <div className="flex-1 hk-content-offset">{children}</div>
     </div>
   );
 }
