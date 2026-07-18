@@ -3,12 +3,12 @@ import { format } from "date-fns";
 import { calcularScoreUH } from "./scoring";
 
 // Portado de apps/housekeeping/src/lib/relatorio-dados.ts (v1). hotelId →
-// tenantId; model Hotel → Tenant (nome → name). User v2 não tem campo
-// `foto` — todo `foto` desta função sai hardcoded `null` (mesmo padrão já
-// usado em burndown/scores). Preservado o mesmo comportamento do v1: o
-// score aqui NÃO usa o targetMinutes configurado no HkConfig do tenant
-// (diferente de /api/scores) — sempre usa o default de calcularScoreUH
-// (25min). Não é um ajuste desta migração, é assim que já era no v1.
+// tenantId; model Hotel → Tenant (nome → name). `foto` vem de User.foto
+// (Cadastro de Usuários no gateway). Preservado o mesmo comportamento do
+// v1: o score aqui NÃO usa o targetMinutes configurado no HkConfig do
+// tenant (diferente de /api/scores) — sempre usa o default de
+// calcularScoreUH (25min). Não é um ajuste desta migração, é assim que já
+// era no v1.
 
 // ── Timezone helper (servidor roda UTC, Brasil = UTC-3) ───────────────────────
 function fmtHora(date: Date | null | undefined): string | null {
@@ -118,7 +118,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
       where: { tenantId, data },
       include: {
         uh: { select: { numero: true, emManutencao: true, manutencaoDescricao: true } },
-        camareira: { select: { id: true, nome: true } },
+        camareira: { select: { id: true, nome: true, foto: true } },
         program: { select: { tipo: true } },
         cleaningSession: {
           include: {
@@ -149,7 +149,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
     prisma.dailyAssignment.findMany({
       where: { tenantId, data: { gte: mesInicio, lte: mesFim } },
       include: {
-        camareira: { select: { id: true, nome: true } },
+        camareira: { select: { id: true, nome: true, foto: true } },
         program: { select: { tipo: true } },
         cleaningSession: { select: { duracaoSegundos: true, excluidoDoScore: true, inspection: { select: { totalFalhas: true } } } },
       },
@@ -230,7 +230,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
   // ── Camareiras ───────────────────────────────────────────────────────────────
   const camMap = new Map<string, { nome: string; foto: string | null; uhs: typeof assignments }>();
   for (const a of assignments) {
-    if (!camMap.has(a.camareiraId)) camMap.set(a.camareiraId, { nome: a.camareira.nome, foto: null, uhs: [] });
+    if (!camMap.has(a.camareiraId)) camMap.set(a.camareiraId, { nome: a.camareira.nome, foto: a.camareira.foto, uhs: [] });
     camMap.get(a.camareiraId)!.uhs.push(a);
   }
   const camareiras = Array.from(camMap.entries()).map(([camId, { nome, foto, uhs }]) => {
@@ -267,7 +267,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
     const cs = a.cleaningSession;
     if (!cs?.duracaoSegundos || cs.excluidoDoScore) continue;
     if (!camMesMap.has(a.camareiraId)) {
-      camMesMap.set(a.camareiraId, { nome: a.camareira.nome, foto: null, scores: [], duracoes: [], falhas: 0 });
+      camMesMap.set(a.camareiraId, { nome: a.camareira.nome, foto: a.camareira.foto, scores: [], duracoes: [], falhas: 0 });
     }
     const f = cs.inspection?.totalFalhas ?? 0;
     const entry = camMesMap.get(a.camareiraId)!;

@@ -21,6 +21,7 @@ export async function GET() {
       role: u.role,
       telegramChatId: u.telegramChatId,
       whatsapp: u.whatsapp,
+      foto: u.foto,
       ativo: u.ativo,
       modules: u.moduleAccess.map((m) => m.module),
     }))
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarUsuarios(session);
   if (bloqueado) return bloqueado;
 
-  const { nome, email, role, telegramChatId, whatsapp, password, modules } = await req.json();
+  const { nome, email, role, telegramChatId, whatsapp, password, modules, foto } = await req.json();
   if (!nome || !role || !email || !password) {
     return NextResponse.json({ error: "Nome, email, cargo e senha são obrigatórios" }, { status: 400 });
   }
@@ -63,12 +64,13 @@ export async function POST(req: NextRequest) {
         role,
         telegramChatId: telegramChatId || null,
         whatsapp: whatsapp || null,
+        foto: foto || null,
         passwordHash,
         moduleAccess: {
           create: moduleList.map((module) => ({ module: module as any, enabled: true })),
         },
       },
-      select: { id: true, nome: true, email: true, role: true, telegramChatId: true, whatsapp: true },
+      select: { id: true, nome: true, email: true, role: true, telegramChatId: true, whatsapp: true, foto: true },
     });
     return NextResponse.json(user, { status: 201 });
   } catch (e: any) {
@@ -97,7 +99,7 @@ export async function PUT(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarUsuarios(session);
   if (bloqueado) return bloqueado;
 
-  const { id, nome, email, role, telegramChatId, whatsapp, password, ativo, modules } = await req.json();
+  const { id, nome, email, role, telegramChatId, whatsapp, password, ativo, modules, foto } = await req.json();
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
 
   if (Array.isArray(modules)) {
@@ -117,10 +119,11 @@ export async function PUT(req: NextRequest) {
       role,
       telegramChatId,
       whatsapp,
+      foto,
       ativo,
       ...(passwordHash ? { passwordHash } : {}),
     },
-    select: { id: true, nome: true, email: true, role: true, telegramChatId: true, whatsapp: true, ativo: true },
+    select: { id: true, nome: true, email: true, role: true, telegramChatId: true, whatsapp: true, foto: true, ativo: true },
   });
   return NextResponse.json(user);
 }

@@ -9,8 +9,8 @@ import { apiFetch } from "@/lib/apiFetch";
 // Diferenças desta fatia:
 //   - `role`/`userId` vêm por prop (server component), não useSession.
 //   - fetch cru → apiFetch.
-//   - Sem campo `foto` de usuário (não existe em v2) — avatar é sempre a
-//     inicial do nome.
+//   - Avatar usa User.foto (Cadastro de Usuários no gateway) quando
+//     disponível, caindo pra inicial do nome quando null.
 //   - /api/usuarios-locais → /api/usuarios (v2 não tem duplicação de User
 //     local vs cadastro único, é a mesma pessoa/id em todo lugar).
 //   - Notificação "notificar todas" segue existindo na API mas sem envio de
@@ -18,7 +18,7 @@ import { apiFetch } from "@/lib/apiFetch";
 //     ainda.
 
 type UH = { id: string; numero: string; tipo: string; status: string; emManutencao: boolean; manutencaoDescricao?: string | null };
-type User = { id: string; nome: string; role: string };
+type User = { id: string; nome: string; role: string; foto?: string | null };
 type Program = { id: string; nome: string; tipo: string };
 type Assignment = {
   id: string;
@@ -41,6 +41,15 @@ type Assignment = {
     } | null;
   } | null;
 };
+
+function Avatar({ nome, foto, className }: { nome: string; foto?: string | null; className: string }) {
+  if (foto) return <img src={foto} alt={nome} className={`${className} object-cover`} />;
+  return (
+    <div className={`${className} bg-blue-100 text-blue-700 font-bold flex items-center justify-center`}>
+      {nome[0]?.toUpperCase()}
+    </div>
+  );
+}
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   PENDENTE:    { label: "Bloqueada",   color: "bg-gray-100 text-gray-500" },
@@ -319,11 +328,11 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
   ];
 
   const porCamareira = assignments.reduce<Record<string, {
-    id: string; nome: string;
+    id: string; nome: string; foto?: string | null;
     total: number; bloqueadas: number; liberadas: number; emAndamento: number; concluidas: number;
   }>>((acc, a) => {
     const id = a.camareira.id;
-    if (!acc[id]) acc[id] = { id, nome: a.camareira.nome, total: 0, bloqueadas: 0, liberadas: 0, emAndamento: 0, concluidas: 0 };
+    if (!acc[id]) acc[id] = { id, nome: a.camareira.nome, foto: a.camareira.foto, total: 0, bloqueadas: 0, liberadas: 0, emAndamento: 0, concluidas: 0 };
     acc[id].total++;
     if (a.status === "PENDENTE")                               acc[id].bloqueadas++;
     else if (a.status === "LIBERADO")                          acc[id].liberadas++;
@@ -500,7 +509,7 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
               return (
                 <div key={c.id} className="card flex flex-col gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-700 text-lg font-bold flex items-center justify-center flex-shrink-0">{c.nome[0].toUpperCase()}</div>
+                    <Avatar nome={c.nome} foto={c.foto} className="w-12 h-12 rounded-full text-lg flex-shrink-0" />
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-900 truncate">{c.nome}</p>
                       <p className="text-xs text-gray-500">{c.total} UH{c.total !== 1 ? "s" : ""} atribuída{c.total !== 1 ? "s" : ""}</p>
@@ -571,7 +580,7 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
             return (
               <div key={c.id}>
                 <button onClick={toggleColapso} className="flex items-center gap-2 mb-2 w-full text-left group">
-                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center flex-shrink-0">{c.nome[0].toUpperCase()}</div>
+                  <Avatar nome={c.nome} foto={c.foto} className="w-6 h-6 rounded-full text-xs flex-shrink-0" />
                   <p className="text-sm font-semibold text-gray-700 flex-1">{c.nome}</p>
                   <span className="text-xs text-gray-400 group-hover:text-gray-600">
                     {colapsada ? `${uhsDaCamareira.length} UH${uhsDaCamareira.length !== 1 ? "s" : ""} oculta${uhsDaCamareira.length !== 1 ? "s" : ""}` : ""}

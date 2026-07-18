@@ -4,8 +4,7 @@ import { calcularScoreUH, calcularScoreSuperLimpeza } from "@/lib/scoring";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 
 // Portado de apps/housekeeping/src/app/api/scores/route.ts (v1).
-// hotelId → tenantId; hotelConfig → HkConfig. User v2 não tem campo `foto`
-// (a UI já cai pra iniciais quando null).
+// hotelId → tenantId; hotelConfig → HkConfig.
 //
 // GET /api/scores?periodo=hoje|mes|alltime|custom&data=yyyy-MM-dd
 export async function GET(req: NextRequest) {
@@ -40,7 +39,7 @@ export async function GET(req: NextRequest) {
   // Buscar camareiras
   const camareiras = await prisma.user.findMany({
     where: { tenantId, role: "CAMAREIRA", ativo: true },
-    select: { id: true, nome: true },
+    select: { id: true, nome: true, foto: true },
   });
 
   // Base where para sessões
@@ -98,7 +97,7 @@ export async function GET(req: NextRequest) {
       (s) => !s.excluidoDoScore && !isMultiplaCamareira(s.assignment.data, s.uhId)
     );
 
-    if (minhasSessoes.length === 0) return { ...cam, foto: null, mediaScore: null, totalUHs: 0, totalFalhas: 0, detalhes: [] };
+    if (minhasSessoes.length === 0) return { ...cam, mediaScore: null, totalUHs: 0, totalFalhas: 0, detalhes: [] };
 
     let totalScore = 0;
     let totalFalhas = 0;
@@ -135,7 +134,6 @@ export async function GET(req: NextRequest) {
 
     return {
       ...cam,
-      foto: null,
       mediaScore,
       totalUHs: sessoesValidas.length,
       totalFalhas,

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       where: { tenantId, data },
       include: {
         uh: true,
-        camareira: { select: { id: true, nome: true, telegramChatId: true } },
+        camareira: { select: { id: true, nome: true, telegramChatId: true, foto: true } },
         program: { select: { id: true, nome: true, tipo: true } },
         cleaningSession: {
           include: {
@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
       where: { data_uhId_camareiraId: { data, uhId, camareiraId } },
       update: { programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
       create: { tenantId, data, uhId, camareiraId, programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
-      include: { uh: true, camareira: true },
+      include: { uh: true, camareira: { select: { id: true, nome: true, role: true, foto: true, telegramChatId: true } } },
     });
     // Push (best-effort, não bloqueia a resposta) — Telegram continua TODO,
     // depende de infra de bot que ainda não existe em v2.
@@ -146,7 +146,7 @@ export async function PATCH(req: NextRequest) {
     const assignment = await prisma.dailyAssignment.update({
       where: { id: assignmentId },
       data: { status: "LIBERADO", liberadaEm: new Date() },
-      include: { uh: true, camareira: true },
+      include: { uh: true, camareira: { select: { id: true, nome: true, role: true, foto: true, telegramChatId: true } } },
     });
     await prisma.uH.update({ where: { id: assignment.uhId }, data: { status: "DISPONIVEL" } });
     // TODO: notificar camareira via Telegram
@@ -157,7 +157,7 @@ export async function PATCH(req: NextRequest) {
     const dataAtual = data || format(new Date(), "yyyy-MM-dd");
     const assignments = await prisma.dailyAssignment.findMany({
       where: { tenantId, data: dataAtual },
-      include: { camareira: true },
+      select: { camareiraId: true },
     });
     const porCamareira = new Map<string, number>();
     for (const a of assignments) {
@@ -176,7 +176,7 @@ export async function PATCH(req: NextRequest) {
 
     const assignment = await prisma.dailyAssignment.findUnique({
       where: { id: assignmentId },
-      include: { uh: true, camareira: { select: { nome: true } } },
+      include: { uh: true, camareira: { select: { nome: true, foto: true } } },
     });
     if (!assignment || assignment.tenantId !== tenantId) {
       return NextResponse.json({ error: "Atribuição não encontrada" }, { status: 404 });
@@ -239,7 +239,7 @@ export async function PATCH(req: NextRequest) {
           observacoes: atual.solicitacaoMensagem ?? null,
         } : {}),
       },
-      include: { uh: true, camareira: true, program: true },
+      include: { uh: true, camareira: { select: { id: true, nome: true, role: true, foto: true, telegramChatId: true } }, program: true },
     });
 
     const ehSuperLimpeza = atual.solicitacaoTipo === "SUPER_LIMPEZA";

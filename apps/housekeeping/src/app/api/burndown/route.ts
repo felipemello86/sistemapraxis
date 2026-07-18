@@ -8,8 +8,10 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 //
 // Diferenças conscientes desta fatia:
 //   - hotelId → tenantId (schema único v2).
-//   - User v2 não tem campo `foto` (v1 tinha) — todo `atorFoto`/`foto` aqui
-//     sai sempre `null`; o frontend já cai pra iniciais nesse caso.
+//   - `atorFoto`/`foto` vêm de User.foto (ver packages/core/prisma/schema.prisma)
+//     quando o ator é a camareira ou a governanta que inspecionou; a
+//     liberação ("L") é atribuída por nome livre (liberadoPorNome, não é FK
+//     de User), então continua sem foto — o frontend já cai pra iniciais.
 //   - Não existe tabela de "evento"/log dedicada em nenhuma das duas versões:
 //     a timeline é derivada em memória a partir de DailyUHSelection,
 //     CleaningSession e InspectionSession, exatamente como no v1.
@@ -62,13 +64,13 @@ export async function GET(req: NextRequest) {
     where: { tenantId, data },
     include: {
       uh: { select: { numero: true, emManutencao: true } },
-      camareira: { select: { nome: true } },
+      camareira: { select: { nome: true, foto: true } },
       cleaningSession: {
         include: {
           inspection: {
             select: {
               finalizadaEm: true,
-              governanta: { select: { nome: true } },
+              governanta: { select: { nome: true, foto: true } },
             },
           },
         },
@@ -140,7 +142,7 @@ export async function GET(req: NextRequest) {
         uhNumero: a.uh.numero,
         emManutencao: a.uh.emManutencao,
         atorNome: a.camareira.nome,
-        atorFoto: null,
+        atorFoto: a.camareira.foto,
         camareiraId: a.camareiraId,
       });
     }
@@ -151,7 +153,7 @@ export async function GET(req: NextRequest) {
         uhNumero: a.uh.numero,
         emManutencao: a.uh.emManutencao,
         atorNome: a.camareira.nome,
-        atorFoto: null,
+        atorFoto: a.camareira.foto,
         duracaoSegundos: cs.duracaoSegundos,
         camareiraId: a.camareiraId,
       });
@@ -164,7 +166,7 @@ export async function GET(req: NextRequest) {
         uhNumero: a.uh.numero,
         emManutencao: a.uh.emManutencao,
         atorNome: cs.inspection.governanta?.nome ?? "Governanta",
-        atorFoto: null,
+        atorFoto: cs.inspection.governanta?.foto ?? null,
         camareiraId: a.camareiraId,
       });
     }
@@ -228,7 +230,7 @@ export async function GET(req: NextRequest) {
     const mediaDeslocamentoSegundos =
       gaps.length > 0 ? Math.round(gaps.reduce((acc, g) => acc + g, 0) / gaps.length) : null;
 
-    return { camareiraId: camId, nome, foto: null, totalUHs: totalUHsCam, mediaLimpezaSegundos, mediaDeslocamentoSegundos, countDeslocamentos: gaps.length };
+    return { camareiraId: camId, nome, foto: cams[0].camareira.foto, totalUHs: totalUHsCam, mediaLimpezaSegundos, mediaDeslocamentoSegundos, countDeslocamentos: gaps.length };
   });
 
   deslocamentos.sort((a, b) => a.nome.localeCompare(b.nome));

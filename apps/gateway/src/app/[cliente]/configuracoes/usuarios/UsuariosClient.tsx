@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ChangeEvent } from "react";
 
 type User = {
   id: string;
@@ -9,6 +9,7 @@ type User = {
   role: string;
   telegramChatId: string | null;
   whatsapp: string | null;
+  foto: string | null;
   ativo: boolean;
   modules?: string[];
 };
@@ -69,17 +70,26 @@ function btnStyle(primary: boolean, disabled = false): CSSProperties {
   };
 }
 
-function Avatar({ nome }: { nome: string }) {
+function Avatar({ nome, foto, size = 36 }: { nome: string; foto?: string | null; size?: number }) {
+  if (foto) {
+    return (
+      <img
+        src={foto}
+        alt={nome}
+        style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+      />
+    );
+  }
   return (
     <div
       style={{
-        width: 36,
-        height: 36,
+        width: size,
+        height: size,
         borderRadius: "50%",
         background: "#e8f0fe",
         color: "#0071e3",
         fontWeight: 700,
-        fontSize: 14,
+        fontSize: size * 0.4,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -87,6 +97,97 @@ function Avatar({ nome }: { nome: string }) {
       }}
     >
       {nome[0]?.toUpperCase()}
+    </div>
+  );
+}
+
+// Redimensiona no client antes de subir — mesmo padrão usado em
+// apps/housekeeping/src/components/camareira/CamareiraView.tsx.
+async function comprimirImagem(file: File, maxWidth = 480, quality = 0.85): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+          } else {
+            resolve(file);
+          }
+        },
+        "image/jpeg",
+        quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+    img.src = objectUrl;
+  });
+}
+
+function FotoUploader({ nome, foto, onChange }: { nome: string; foto: string | null; onChange: (url: string | null) => void }) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const inputId = `foto-upload-${Math.random().toString(36).slice(2)}`;
+
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const comprimido = await comprimirImagem(file);
+      const fd = new FormData();
+      fd.append("file", comprimido);
+      fd.append("pasta", "perfis");
+      fd.append("tipo", "perfil");
+      const r = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok || !data.url) throw new Error(data.error || "Erro ao enviar foto");
+      onChange(data.url);
+    } catch (e: any) {
+      setErro(e.message || "Erro ao enviar foto");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <Avatar nome={nome || "?"} foto={foto} size={52} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", gap: 10 }}>
+          <label
+            htmlFor={inputId}
+            style={{ fontSize: 13, fontWeight: 600, color: "#0071e3", cursor: enviando ? "default" : "pointer" }}
+          >
+            {enviando ? "Enviando..." : foto ? "Trocar foto" : "Adicionar foto"}
+          </label>
+          <input id={inputId} type="file" accept="image/*" onChange={handleFile} disabled={enviando} style={{ display: "none" }} />
+          {foto && (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              style={{ background: "none", border: "none", color: "#d70015", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: 0 }}
+            >
+              Remover
+            </button>
+          )}
+        </div>
+        {erro && <span style={{ fontSize: 12, color: "#d70015" }}>{erro}</span>}
+      </div>
     </div>
   );
 }
@@ -116,13 +217,13 @@ function ModuleCheckboxes({
   );
 }
 
-const emptyNewForm = { nome: "", email: "", role: "CAMAREIRA", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[] };
+const emptyNewForm = { nome: "", email: "", role: "CAMAREIRA", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[], foto: null as string | null };
 
 export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ nome: "", email: "", role: "", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[] });
+  const [editForm, setEditForm] = useState({ nome: "", email: "", role: "", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[], foto: null as string | null });
   const [newForm, setNewForm] = useState(emptyNewForm);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -192,6 +293,7 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
         <div style={cardStyle}>
           <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 14px" }}>Novo usuário</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+            <FotoUploader nome={newForm.nome} foto={newForm.foto} onChange={(url) => setNewForm({ ...newForm, foto: url })} />
             <label style={labelStyle}>
               Nome
               <input style={inputStyle} value={newForm.nome} onChange={(e) => setNewForm({ ...newForm, nome: e.target.value })} />
@@ -255,6 +357,7 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
           <div key={u.id} style={cardStyle}>
             {editId === u.id ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <FotoUploader nome={editForm.nome} foto={editForm.foto} onChange={(url) => setEditForm({ ...editForm, foto: url })} />
                 <label style={labelStyle}>
                   Nome
                   <input style={inputStyle} value={editForm.nome} onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })} />
@@ -309,7 +412,7 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
             ) : (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                  <Avatar nome={u.nome} />
+                  <Avatar nome={u.nome} foto={u.foto} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontWeight: 600, fontSize: 15 }}>{u.nome}</span>
@@ -347,6 +450,7 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
                           whatsapp: u.whatsapp || "",
                           password: "",
                           modules: u.modules || [],
+                          foto: u.foto,
                         });
                       }}
                       style={{ background: "none", border: "none", color: "#0071e3", fontSize: 13, fontWeight: 600, cursor: "pointer" }}

@@ -110,6 +110,10 @@ model User {
   ativo          Boolean @default(true)
   telegramChatId String?
   whatsapp       String?
+  // URL da foto de perfil (Cloudinary, upload feito na tela de Cadastro de
+  // Usuários do gateway). Usada nos avatares de Tempo Real, Atribuição
+  // Diária, Performance e Relatórios — todos já caem pra iniciais quando null.
+  foto           String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
