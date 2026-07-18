@@ -5,6 +5,20 @@
 /* Idêntico ao v1 (apps/housekeeping/src/app/globals.css) — mesma cara. */
 
 @layer base {
+  html, body {
+    /* Sem isso, o efeito nativo de "stretch" do overscroll no Android 12+
+       (WebView do app nativo) esticava/repintava o conteúdo quando a
+       página tentava rolar além dos limites — mesmo com overflow-hidden
+       no layout (ver dashboard/layout.tsx), o WebView ainda aplicava o
+       efeito no documento como um todo, o que na prática aparecia como o
+       gráfico/cards do Burndown "duplicados" empilhados na tela (só
+       reproduzia no emulador Android, nunca no Chrome desktop — o DOM real
+       tem só uma cópia, confirmado via chrome://inspect). Equivalente
+       Android do fix já existente pro bounce do iOS
+       (scrollView.bounces = false em AppDelegate.swift).
+       Não afeta comportamento em desktop/iOS. */
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-gray-50 text-gray-900;
   }

@@ -634,16 +634,7 @@ export default function BurndownChart({ role }: { role: string }) {
       <div className="flex flex-1 min-h-0 gap-3">
 
       {/* Gráfico */}
-      {/* Promove esse bloco pra uma camada GPU própria (translateZ(0)) —
-          no Android (WebView do app nativo, testado no emulador) o toggle
-          isMobile logo após o mount troca esse card de layout overlay
-          (desktop) pra grid em fluxo (mobile), e o WebView tava deixando um
-          "fantasma" da pintura anterior sobreposto ao novo layout (conteúdo
-          idêntico duplicado verticalmente). No Chrome desktop nunca
-          reproduziu — isMobile nunca vira true numa janela larga, então
-          esse toggle nunca acontece lá. Forçar a camada composta própria
-          evita o WebView reaproveitar um layer sujo nessa transição. */}
-      <div className="card flex-1 min-h-0 flex flex-col gap-4 p-4 relative" style={{ overflow: "visible", transform: "translateZ(0)", WebkitTransform: "translateZ(0)" }}>
+      <div className="card flex-1 min-h-0 flex flex-col gap-4 p-4 relative" style={{ overflow: "visible" }}>
 
         {/* Desktop: cards de séries sobrepostos no canto superior direito.
             Mobile: ver bloco em fluxo normal logo abaixo do gráfico — overlay
