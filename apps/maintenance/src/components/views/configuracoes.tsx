@@ -39,7 +39,10 @@ function RedirectCard({
   path: string
   tenantSlug?: string
 }) {
-  const href = tenantSlug ? `https://praxis-systems.com.br/${tenantSlug}/${path}` : 'https://praxis-systems.com.br/'
+  // Mesmo bug do hubUrl em dashboard.tsx: domínio v1 aqui era rejeitado pelo
+  // allowNavigation do app nativo e jogava a navegação pro Safari.
+  const base = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://sistemaspraxis.com.br'
+  const href = tenantSlug ? `${base}/${tenantSlug}/${path}` : base
   return (
     <Panel title={titulo} description={descricao}>
       <a href={href}>

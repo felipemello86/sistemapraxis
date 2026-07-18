@@ -40,8 +40,14 @@ import { Configuracoes } from '@/components/views/configuracoes'
 //     sessão local NextAuth e o cookie compartilhado; nesta v2 só existe UM
 //     cookie de sessão (praxis_v2_session), sem ponte nenhuma pra fazer.
 
+// Ficou apontando pro domínio v1 (praxis-systems.com.br) — o app nativo
+// (Capacitor) só permite navegação dentro de sistemaspraxis.com.br
+// (allowNavigation em apps/mobile-app/capacitor.config.ts), então esse link
+// era rejeitado pelo WKWebView e o iOS jogava a navegação pro Safari em vez
+// de manter dentro do app. Mesmo padrão de apps/housekeeping/src/components/layout/Sidebar.tsx.
 function hubUrl(tenantSlug?: string) {
-  return tenantSlug ? `https://praxis-systems.com.br/${tenantSlug}` : 'https://praxis-systems.com.br/'
+  const base = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://sistemaspraxis.com.br'
+  return tenantSlug ? `${base}/${tenantSlug}` : base
 }
 
 const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
