@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     // como não guardamos o estado anterior aqui, o alerta dispara sempre
     // que o saldo pós-movimentação estiver abaixo do mínimo — repetitivo se
     // ninguém repor, mas simples e sem estado extra pra rastrear.
-    if (produtoAtualizado.quantidade < produtoAtualizado.estoqueMinimo) {
+    if (produtoAtualizado.quantidade <= produtoAtualizado.estoqueMinimo) {
       void (async () => {
         const destinatarios = await prisma.user.findMany({
           where: { tenantId: session.tenantId, role: { in: ["MASTER", "GERENTE", "GOVERNANTA"] } },

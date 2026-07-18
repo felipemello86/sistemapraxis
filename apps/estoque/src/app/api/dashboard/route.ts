@@ -33,7 +33,9 @@ export async function GET() {
     }),
   ]);
 
-  const emAlerta = produtos.filter((p) => p.quantidade < p.estoqueMinimo);
+  // <= (não só <): sistema antigo considera "em alerta" também quando o
+  // saldo está exatamente igual ao mínimo, não só abaixo dele.
+  const emAlerta = produtos.filter((p) => p.quantidade <= p.estoqueMinimo);
 
   return NextResponse.json({
     totalProdutos,

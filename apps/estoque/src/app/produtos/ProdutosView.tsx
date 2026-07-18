@@ -189,7 +189,7 @@ export function ProdutosView() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtrados.map((p) => {
-                const baixo = p.quantidade < p.estoqueMinimo;
+                const baixo = p.quantidade <= p.estoqueMinimo;
                 return (
                   <tr key={p.id} className={!p.ativo ? "opacity-50" : ""}>
                     <td className="px-4 py-3 font-medium text-gray-900">{p.nome}</td>
