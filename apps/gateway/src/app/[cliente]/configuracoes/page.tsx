@@ -47,7 +47,7 @@ export default async function ConfiguracoesHub({
   const user = await prisma.user.findUnique({ where: { id: session.userId } });
 
   return (
-    <main style={{ minHeight: "100svh", padding: "20px 20px 40px" }}>
+    <main style={{ minHeight: "100svh", padding: "max(20px, env(safe-area-inset-top)) 20px 40px" }}>
       <div style={{ maxWidth: 420, margin: "0 auto" }}>
         <a href={`/${tenant.slug}`} style={{ color: "#0071e3", fontSize: 14, textDecoration: "none" }}>
           ← Início

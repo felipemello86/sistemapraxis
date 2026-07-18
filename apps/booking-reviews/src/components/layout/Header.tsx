@@ -35,7 +35,11 @@ export function Header({ nome, role, tenantSlug }: { nome: string; role: string;
   const pathname = usePathname();
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    // No app nativo (Capacitor/iOS) esse header é o primeiro elemento da
+    // página — sem esse padding, o nome do módulo/nav ficava atrás do
+    // notch/status bar. `env()` resolve pra 0 em navegador comum, então não
+    // afeta o layout web normal.
+    <header className="border-b border-slate-200 bg-white" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-8 min-w-0">
           <span className="font-semibold text-slate-800">Controle de Avaliações</span>

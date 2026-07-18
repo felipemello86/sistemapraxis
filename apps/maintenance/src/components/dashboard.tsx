@@ -93,6 +93,12 @@ export function Dashboard({
           'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-sidebar/80 backdrop-blur-xl transition-transform duration-300 md:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
+        // No app nativo (Capacitor/iOS), `env()` resolve pra 0 em navegador
+        // comum (desktop), então esse padding só afeta mesmo o app nativo —
+        // sem ele o logo ficava colado atrás do notch/status bar quando o
+        // menu mobile abre. Mesma causa raiz do fix em
+        // apps/housekeeping/src/components/layout/Sidebar.tsx.
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
         <div className="flex h-16 items-center gap-3 px-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-foreground text-background">
@@ -161,7 +167,10 @@ export function Dashboard({
 
       {/* Conteúdo */}
       <div className="flex flex-1 flex-col md:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border/70 bg-background/70 px-4 backdrop-blur-xl md:px-8">
+        <header
+          className="sticky top-0 z-20 flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 backdrop-blur-xl md:px-8"
+          style={{ height: 'calc(4rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
+        >
           <button
             className="rounded-lg p-2 text-muted-foreground hover:bg-accent md:hidden"
             onClick={() => setMobileOpen((v) => !v)}

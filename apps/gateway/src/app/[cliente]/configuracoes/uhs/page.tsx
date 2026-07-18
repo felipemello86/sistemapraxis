@@ -38,7 +38,7 @@ export default async function UHsPage({
   const somenteLeitura = !podeGerenciarCadastros(session.role);
 
   return (
-    <main style={{ minHeight: "100svh", padding: "20px 20px 40px" }}>
+    <main style={{ minHeight: "100svh", padding: "max(20px, env(safe-area-inset-top)) 20px 40px" }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
         <a
           href={`/${tenant.slug}/configuracoes`}
