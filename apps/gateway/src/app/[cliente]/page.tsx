@@ -50,7 +50,7 @@ export default async function ClienteHub({
     <main className={styles.main}>
       <div className={styles.header}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/praxis-mark.png" alt="Praxis" className={styles.logo} />
+        <img src="/praxis-logo.png" alt="Praxis" className={styles.logo} />
         <h1 className={styles.title}>{tenant.name}</h1>
       </div>
 
