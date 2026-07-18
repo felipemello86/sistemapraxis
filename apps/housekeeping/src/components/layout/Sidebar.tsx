@@ -147,7 +147,18 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
         )}
       </aside>
 
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-blue-900 text-white flex items-center justify-between px-4 h-14 shadow-md">
+      {/* No app nativo (Capacitor/iOS), esse header fixo ficava por trás da
+          barra de status/notch ao rolar a tela — o WKWebView não desloca
+          elementos `fixed` pela safe area sozinho. `env(safe-area-inset-top)`
+          resolve o valor real do notch porque o layout raiz já declara
+          viewport-fit=cover (ver app/layout.tsx). O espaçador logo abaixo
+          empurra o <main> (que já reserva pt-14 fixo em cada layout.tsx de
+          rota) pela altura extra da safe area, senão o conteúdo ficaria
+          escondido atrás do cabeçalho mais alto. */}
+      <header
+        className="md:hidden fixed top-0 left-0 right-0 z-40 bg-blue-900 text-white flex items-center justify-between px-4 shadow-md"
+        style={{ height: "calc(3.5rem + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <Hotel className="w-5 h-5 text-blue-300 flex-shrink-0" />
           <span className="font-bold text-sm truncate">{tenantSlug}</span>
@@ -161,11 +172,15 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
           </button>
         </div>
       </header>
+      <div className="md:hidden" style={{ height: "env(safe-area-inset-top)" }} aria-hidden="true" />
 
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-72 max-w-[85vw] bg-blue-900 text-white flex flex-col h-full shadow-xl">
+          <aside
+            className="relative w-72 max-w-[85vw] bg-blue-900 text-white flex flex-col h-full shadow-xl"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
             <NavContent {...navProps} onClose={() => setMobileOpen(false)} />
           </aside>
         </div>
