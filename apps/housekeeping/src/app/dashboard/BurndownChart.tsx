@@ -333,7 +333,10 @@ export default function BurndownChart({ role }: { role: string }) {
   const [logFilterCamId, setLogFilterCamId] = useState<string | null>(null);
   const [enviandoRelatorio, setEnviandoRelatorio] = useState(false);
   const [relatorioMsg, setRelatorioMsg] = useState<string | null>(null);
-  const isGerente = ["MASTER", "GERENTE"].includes(role);
+  // ATENDIMENTO tem as mesmas permissões de GERENTE em todo o módulo
+  // Governança, exceto em Configurações — ver mesmo comentário em
+  // api/selecao-uhs/route.ts.
+  const isGerente = ["MASTER", "GERENTE", "ATENDIMENTO"].includes(role);
 
   // Telas estreitas (mobile): os cards de camareira não cabem sobrepostos no
   // canto do gráfico (viram um amontoado ilegível sobre as linhas). Nesse caso

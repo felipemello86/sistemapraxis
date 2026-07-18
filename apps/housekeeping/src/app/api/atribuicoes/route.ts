@@ -11,8 +11,11 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 //   - Notificações Telegram viraram `// TODO:`.
 //   - hotelId → tenantId (schema único v2).
 
+// ATENDIMENTO tem as mesmas permissões de GERENTE em todo o módulo
+// Governança, exceto em Configurações (decisão explícita do Felipe) — ver
+// mesmo comentário em selecao-uhs/route.ts.
 function podeAtribuir(role: string) {
-  return ["MASTER", "GERENTE", "GOVERNANTA"].includes(role);
+  return ["MASTER", "GERENTE", "GOVERNANTA", "ATENDIMENTO"].includes(role);
 }
 
 // GET /api/atribuicoes?data=YYYY-MM-DD

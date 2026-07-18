@@ -54,7 +54,11 @@ function RedirectTab({ titulo, descricao, path }: { titulo: string; descricao: s
 export default function ConfiguracoesClient({ role }: { role: string }) {
   const TABS = ALL_TABS;
   const [tab, setTab] = useState("");
-  const somenteLeitura = role === "MANUTENCAO";
+  // ATENDIMENTO tem as mesmas permissões de GERENTE no resto do módulo
+  // Governança (ver comentário em api/selecao-uhs/route.ts), mas
+  // Configurações é a exceção explícita — aqui fica somente leitura, igual
+  // MANUTENÇÃO.
+  const somenteLeitura = role === "MANUTENCAO" || role === "ATENDIMENTO";
 
   const tabAtiva = tab || TABS[0]?.id || "";
 

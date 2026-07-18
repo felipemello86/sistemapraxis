@@ -18,8 +18,12 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// ATENDIMENTO tem as mesmas permissões de GERENTE em todo o módulo
+// Governança, exceto em Configurações (decisão explícita do Felipe) — ver
+// mesmo comentário em atribuicoes/route.ts, relatorio-diario/route.ts e
+// dashboard/BurndownChart.tsx.
 function onlyManagerOrMaster(role: string) {
-  return ["MASTER", "GERENTE"].includes(role);
+  return ["MASTER", "GERENTE", "ATENDIMENTO"].includes(role);
 }
 
 // GET /api/selecao-uhs?data=YYYY-MM-DD

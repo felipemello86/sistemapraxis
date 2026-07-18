@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
   if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
     return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
   }
-  if (!["MASTER", "GERENTE"].includes(session.role)) {
+  // ATENDIMENTO tem as mesmas permissões de GERENTE em todo o módulo
+  // Governança, exceto em Configurações — ver mesmo comentário em
+  // selecao-uhs/route.ts.
+  if (!["MASTER", "GERENTE", "ATENDIMENTO"].includes(session.role)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
