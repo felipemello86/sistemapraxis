@@ -283,6 +283,14 @@ model DailyUHSelection {
   liberadoPorNome String?
   temReserva      Boolean   @default(false)
 
+  // Comentário livre na UH, independente de ter camareira atribuída (ao
+  // contrário de DailyAssignment.observacoes, que é uma orientação pra
+  // camareira e exige assignmentId). Restrito a MASTER/GERENTE/ATENDIMENTO
+  // na tela — ver apps/housekeeping/src/app/api/selecao-uhs/route.ts.
+  comentario       String?
+  comentarioPorNome String?
+  comentarioEm      DateTime?
+
   @@unique([data, uhId])
 }
 

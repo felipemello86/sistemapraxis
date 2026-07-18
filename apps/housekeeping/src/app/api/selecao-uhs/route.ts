@@ -70,6 +70,9 @@ export async function GET(req: NextRequest) {
         camareiraNome: a?.camareira.nome ?? null,
         assignmentStatus: a?.status ?? null,
         observacoes: a?.observacoes ?? null,
+        comentario: s.comentario ?? null,
+        comentarioPorNome: s.comentarioPorNome ?? null,
+        comentarioEm: s.comentarioEm ?? null,
       };
     }),
   });
@@ -140,7 +143,7 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario } = await req.json();
 
   const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
@@ -293,6 +296,24 @@ export async function PATCH(req: NextRequest) {
     // restantes terminam (v1: envia PDF via react-pdf + ranking via Telegram) —
     // fatia futura, depende de lib/relatorio-dados e lib/telegram.
 
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Salvar comentário na UH (independe de assignment) ─────────────
+  // Restrito a MASTER/GERENTE/ATENDIMENTO (decisão explícita do Felipe) —
+  // diferente de "set_observacao" acima, que é orientação pra camareira e
+  // também é liberada pra GOVERNANTA.
+  if (action === "set_comentario") {
+    if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    const texto = comentario?.trim() || null;
+    await prisma.dailyUHSelection.update({
+      where: { data_uhId: { data, uhId } },
+      data: {
+        comentario: texto,
+        comentarioPorNome: texto ? session.nome : null,
+        comentarioEm: texto ? new Date() : null,
+      },
+    });
     return NextResponse.json({ ok: true });
   }
 

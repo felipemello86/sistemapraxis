@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageSquarePlus, MessageSquare } from "lucide-react";
+import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageSquarePlus, MessageSquare, MessageCircle, MessageCirclePlus } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -25,6 +25,9 @@ type UHSel = {
   camareiraNome: string | null;
   assignmentStatus: string | null;
   observacoes: string | null;
+  comentario: string | null;
+  comentarioPorNome: string | null;
+  comentarioEm: string | null;
 };
 
 type UH = { id: string; numero: string };
@@ -291,6 +294,10 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function SelecaoView({ role }: { role: string }) {
   const somenteLeitura = role === "MANUTENCAO";
+  // Comentário na UH é restrito a MASTER/GERENTE/ATENDIMENTO (decisão
+  // explícita do Felipe) — diferente de somenteLeitura, que também libera
+  // GOVERNANTA pras demais ações desta tela.
+  const podeComentar = ["MASTER", "GERENTE", "ATENDIMENTO"].includes(role);
   const hoje = format(new Date(), "yyyy-MM-dd");
   const [data, setData] = useState(hoje);
   const [modo, setModo] = useState<"selecao" | "liberacao">("selecao");
@@ -315,6 +322,8 @@ export default function SelecaoView({ role }: { role: string }) {
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
   const [editandoObsId, setEditandoObsId] = useState<string | null>(null);
   const [obsInput, setObsInput] = useState("");
+  const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
+  const [comentarioInput, setComentarioInput] = useState("");
   const [modoReedicao, setModoReedicao] = useState(false);
 
   useEffect(() => { carregar(); }, [data]);
@@ -432,6 +441,16 @@ export default function SelecaoView({ role }: { role: string }) {
       body: JSON.stringify({ action: "set_observacao", data, uhId: uh.uhId, assignmentId: uh.assignmentId, observacoes: obsInput }),
     });
     setEditandoObsId(null);
+    carregar();
+  }
+
+  async function salvarComentario(uh: UHSel) {
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set_comentario", data, uhId: uh.uhId, comentario: comentarioInput }),
+    });
+    setEditandoComentarioId(null);
     carregar();
   }
 
@@ -862,6 +881,45 @@ export default function SelecaoView({ role }: { role: string }) {
                       ) : null
                     )}
 
+                    {editandoComentarioId === uh.uhId ? (
+                      <div className="mt-1.5 flex items-start gap-1.5">
+                        <textarea
+                          autoFocus
+                          value={comentarioInput}
+                          onChange={(e) => setComentarioInput(e.target.value)}
+                          placeholder="Comentário sobre a UH…"
+                          className="flex-1 border border-blue-300 rounded-lg px-2 py-1 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50"
+                          rows={2}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); salvarComentario(uh); } }}
+                        />
+                        <div className="flex flex-col gap-1">
+                          <button onClick={() => salvarComentario(uh)}
+                            className="p-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600">
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setEditandoComentarioId(null)}
+                            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-100">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : uh.comentario ? (
+                      <button
+                        className="w-full text-left mt-1.5"
+                        onClick={() => podeComentar && (setEditandoComentarioId(uh.uhId), setComentarioInput(uh.comentario ?? ""))}
+                      >
+                        <p className="text-xs text-blue-800 bg-blue-50 rounded-lg px-2 py-1 border border-blue-200 flex items-start gap-1">
+                          <MessageCircle className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
+                          <span>
+                            {uh.comentario}
+                            {uh.comentarioPorNome && (
+                              <span className="block text-[10px] text-blue-400 mt-0.5">— {uh.comentarioPorNome}</span>
+                            )}
+                          </span>
+                        </p>
+                      </button>
+                    ) : null}
+
                     <div className="flex items-center justify-between gap-2 mt-1.5">
                       <button
                         className="text-left min-w-0"
@@ -874,6 +932,19 @@ export default function SelecaoView({ role }: { role: string }) {
                       </button>
 
                       <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {podeComentar && (
+                          <button
+                            onClick={() => { setEditandoComentarioId(uh.uhId); setComentarioInput(uh.comentario ?? ""); }}
+                            title={uh.comentario ? "Editar comentário" : "Adicionar comentário"}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              uh.comentario
+                                ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                                : "text-gray-300 hover:text-blue-500 hover:bg-blue-50"
+                            }`}
+                          >
+                            <MessageCirclePlus className="w-4 h-4" />
+                          </button>
+                        )}
                         {!somenteLeitura && (
                           <>
                             {uh.assignmentId && (
