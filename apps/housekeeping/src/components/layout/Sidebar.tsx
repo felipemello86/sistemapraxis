@@ -61,7 +61,7 @@ function NavContent({
       <div className="p-5 border-b border-blue-800 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARK_SRC} alt="Praxis" className="w-6 h-6 object-contain flex-shrink-0" />
+          <img src={MARK_SRC} alt="Praxis" className="w-7 h-7 object-contain rounded-md flex-shrink-0" />
           <div className="min-w-0">
             <p className="font-bold text-sm leading-tight truncate">{tenantSlug}</p>
             <p className="text-blue-400 text-xs">Governança</p>
@@ -173,7 +173,7 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
       >
         <div className="flex items-center gap-2 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARK_SRC} alt="Praxis" className="w-5 h-5 object-contain flex-shrink-0" />
+          <img src={MARK_SRC} alt="Praxis" className="w-6 h-6 object-contain rounded flex-shrink-0" />
           <span className="font-bold text-sm truncate">{tenantSlug}</span>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">

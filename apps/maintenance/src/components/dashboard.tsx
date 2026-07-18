@@ -108,7 +108,7 @@ export function Dashboard({
       >
         <div className="flex h-16 items-center gap-3 px-5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARK_SRC} alt="Praxis" className="h-8 w-8 shrink-0 object-contain" />
+          <img src={MARK_SRC} alt="Praxis" className="h-8 w-8 shrink-0 object-contain rounded-md" />
           <div className="leading-tight min-w-0">
             <p className="truncate text-sm font-semibold tracking-tight">{user.tenantSlug || 'Praxis'}</p>
             <p className="text-xs text-muted-foreground">Manutenção</p>
