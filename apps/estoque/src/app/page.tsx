@@ -15,5 +15,5 @@ export default async function EstoqueHome() {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
 
-  redirect("/produtos");
+  redirect("/dashboard");
 }

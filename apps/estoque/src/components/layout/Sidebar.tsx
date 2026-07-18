@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Package, ArrowLeftRight, Menu, X, Home, Warehouse } from "lucide-react";
+import { Package, ArrowLeftRight, Menu, X, Home, Warehouse, LayoutDashboard } from "lucide-react";
 
 // Mesmo padrão do Sidebar do housekeeping (ver
 // apps/housekeeping/src/components/layout/Sidebar.tsx): sem next-auth,
@@ -11,8 +11,9 @@ import { Package, ArrowLeftRight, Menu, X, Home, Warehouse } from "lucide-react"
 // env(safe-area-inset-top) pro notch/status bar do app nativo.
 
 const navItems = [
-  { href: "/produtos",   icon: Package,        label: "Produtos" },
-  { href: "/movimentos", icon: ArrowLeftRight, label: "Movimentações" },
+  { href: "/dashboard",  icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/produtos",   icon: Package,         label: "Produtos" },
+  { href: "/movimentos", icon: ArrowLeftRight,  label: "Movimentações" },
 ];
 
 function hubUrl(tenantSlug: string) {
