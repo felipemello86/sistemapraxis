@@ -172,7 +172,7 @@ function dotKey(pt: Evento) {
 }
 
 function MultiDotLayer(props: any) {
-  const { xAxisMap, yAxisMap, globalPts, showGlobal, camSeries, hoveredDot, setHoveredDot, filteredUH } = props;
+  const { xAxisMap, yAxisMap, globalPts, showGlobal, camSeries, hoveredDot, setHoveredDot, filteredUH, tiposAtivos } = props;
   const xScale = (Object.values(xAxisMap as Record<string, any>)[0] as any)?.scale;
   const yScale = (Object.values(yAxisMap as Record<string, any>)[0] as any)?.scale;
   if (!xScale || !yScale) return null;
@@ -180,6 +180,7 @@ function MultiDotLayer(props: any) {
   const renderDot = (pt: Evento, i: number, cor: string, serieKey: string) => {
     if (pt.isPhantom || !pt.tipo) return null;
     if (filteredUH && pt.uhNumero !== filteredUH) return null;
+    if (tiposAtivos && !tiposAtivos.has(pt.tipo)) return null;
     const cx = xScale(pt.x ?? 0);
     const cy = yScale(pt.valor);
     const key = dotKey(pt);
@@ -328,6 +329,7 @@ export default function BurndownChart({ role }: { role: string }) {
   const [hoveredDot, setHoveredDot] = useState<HoveredDot | null>(null);
   const [dataSel, setDataSel] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [ativas, setAtivas] = useState<Set<string>>(new Set(["global"]));
+  const [tiposAtivos, setTiposAtivos] = useState<Set<string>>(new Set(["L", "I", "T", "C"]));
   const [expandedLogKey, setExpandedLogKey] = useState<string | null>(null);
   const [filteredUH, setFilteredUH] = useState<string | null>(null);
   const [logFilterCamId, setLogFilterCamId] = useState<string | null>(null);
@@ -385,6 +387,14 @@ export default function BurndownChart({ role }: { role: string }) {
     setAtivas((prev) => {
       const next = new Set(prev);
       if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+  };
+
+  const toggleTipo = (tipo: string) => {
+    setTiposAtivos((prev) => {
+      const next = new Set(prev);
+      if (next.has(tipo)) { next.delete(tipo); } else { next.add(tipo); }
       return next;
     });
   };
@@ -619,14 +629,25 @@ export default function BurndownChart({ role }: { role: string }) {
             )}
           </div>
         </div>
-        {/* Legenda de eventos */}
-        <div className="flex flex-wrap justify-end gap-x-4 gap-y-1">
-          {(["L", "I", "T", "C"] as const).map((t) => (
-            <span key={t} className="flex items-center gap-1.5 text-xs text-gray-600">
-              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: TIPO_COR[t] }} />
-              <span className="font-bold">{t}</span> — {TIPO_LABEL[t]}
-            </span>
-          ))}
+        {/* Legenda de eventos — clicável: filtra quais tipos aparecem no gráfico */}
+        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1">
+          {(["L", "I", "T", "C"] as const).map((t) => {
+            const ativo = tiposAtivos.has(t);
+            return (
+              <button
+                key={t}
+                onClick={() => toggleTipo(t)}
+                className={`flex items-center gap-1.5 text-xs rounded px-1 py-0.5 transition-opacity ${ativo ? "text-gray-600" : "text-gray-400 opacity-40"}`}
+                title={ativo ? `Ocultar ${TIPO_LABEL[t]}` : `Exibir ${TIPO_LABEL[t]}`}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full inline-block"
+                  style={{ background: ativo ? TIPO_COR[t] : "#d1d5db" }}
+                />
+                <span className="font-bold">{t}</span> — {TIPO_LABEL[t]}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -696,6 +717,7 @@ export default function BurndownChart({ role }: { role: string }) {
                 hoveredDot={hoveredDot}
                 setHoveredDot={setHoveredDot}
                 filteredUH={filteredUH}
+                tiposAtivos={tiposAtivos}
               />
             </LineChart>
           </ResponsiveContainer>
