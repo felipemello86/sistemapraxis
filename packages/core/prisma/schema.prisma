@@ -56,6 +56,7 @@ model Tenant {
   uhs                 UH[]
   cleaningPrograms    CleaningProgram[]
   falhasLavanderia    FalhaLavanderia[]
+  guestComplaints     GuestComplaint[]
 
   // Avaliações (Booking-Reviews)
   reviewsConfig        ReviewsConfig?
@@ -138,6 +139,11 @@ model User {
   hkCleaningSessions CleaningSession[]   @relation("HkCamareira")
   hkInspections      InspectionSession[] @relation("HkGovernanta")
   hkPushTokens       PushToken[]
+
+  // Queixas de hóspede (ver GuestComplaint) — quem registrou (Atendimento)
+  // e, separadamente, a camareira penalizada quando a queixa é de Limpeza.
+  complaintsRegistradas GuestComplaint[] @relation("ComplaintRegisteredBy")
+  complaintsComoCamareira GuestComplaint[] @relation("ComplaintCamareira")
 
   // Relações do módulo Avaliações (Booking-Reviews) — mesmo raciocínio: FK
   // real pro User único, sem User local duplicado (v1 tinha um User próprio
@@ -286,6 +292,7 @@ model UH {
   cleaningSessions CleaningSession[]
   inspections      InspectionSession[]
   selecoes         DailyUHSelection[]
+  guestComplaints  GuestComplaint[]
 
   // Manutenção (Upkeep) — cadastro de UH continua centralizado aqui (gateway),
   // o módulo Manutenção referencia via FK em vez de ter seu próprio model
@@ -484,6 +491,52 @@ model FalhaLavanderia {
   createdAt        DateTime @default(now())
 }
 
+// Queixa de hóspede registrada pelo Atendimento na tela Seleção e Liberação
+// (Governança) — o hóspede reclamou de algo relacionado à UH do dia. Duas
+// consequências automáticas (ver api/selecao-uhs/route.ts, ação
+// "registrar_queixa"):
+//   1. Sempre cria um card espelho em Avaliações (Review, platform=INTERNO),
+//      tratado pela GERENTE dentro do fluxo normal do Kanban de Tratamento
+//      — entra em RECEBIDA como qualquer avaliação, com nota fixa baixa
+//      (1 estrela) contando na média do dashboard.
+//   2. Se tipo=LIMPEZA e havia exatamente uma camareira atribuída à UH
+//      naquele dia, desconta pontosDescontados (fixo 30) do total dela no
+//      período — penalidade independente, somada em api/scores/route.ts,
+//      não depende de existir sessão de limpeza concluída naquele dia. Se
+//      tipo=MANUTENCAO, dispara alerta Telegram pra GERENTE + MANUTENCAO em
+//      vez de descontar pontos.
+model GuestComplaint {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  data String // YYYY-MM-DD — dia do cartão em que a queixa foi registrada
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  tipo      String // LIMPEZA | MANUTENCAO
+  descricao String @db.Text
+
+  registradoPorId   String
+  registradoPor     User   @relation("ComplaintRegisteredBy", fields: [registradoPorId], references: [id])
+  registradoPorNome String
+
+  // Só preenchido quando tipo=LIMPEZA e havia exatamente uma camareira
+  // atribuída à UH naquele dia — é quem recebe o desconto.
+  camareiraId       String?
+  camareira         User?   @relation("ComplaintCamareira", fields: [camareiraId], references: [id])
+  pontosDescontados Int?
+
+  // Card espelho criado automaticamente em Avaliações.
+  reviewId String? @unique
+  review   Review? @relation(fields: [reviewId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, data, uhId])
+  @@index([tenantId, camareiraId])
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // AVALIAÇÕES (Booking-Reviews) — gestão/tratativa de avaliações já publicadas
 // no Booking.com e Airbnb (não é pesquisa de satisfação preenchida pelo
@@ -515,6 +568,9 @@ model FalhaLavanderia {
 enum ReviewPlatform {
   BOOKING
   AIRBNB
+  // Card criado automaticamente a partir de uma queixa de hóspede registrada
+  // pelo Atendimento em Governança (ver GuestComplaint) — não veio de OTA.
+  INTERNO
 }
 
 enum ReviewStage {
@@ -613,6 +669,10 @@ model Review {
   managerialNotes ManagerialNote[]
   attachments     ReviewAttachment[]
   logs            ReviewLog[]
+
+  // Presente só quando platform=INTERNO — o registro de origem em
+  // Governança (ver GuestComplaint) que gerou este card.
+  complaint GuestComplaint?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

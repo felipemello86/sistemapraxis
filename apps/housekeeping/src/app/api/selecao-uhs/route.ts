@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { notificarQueixaManutencao } from "@/lib/telegram";
+
+// Igual ao addBusinessDays de apps/booking-reviews/src/lib/scoring.ts —
+// duplicado aqui (não é exportado por @praxis/core) só pra calcular o prazo
+// de análise (2 dias úteis) do card espelho criado por "registrar_queixa".
+function addBusinessDays(start: Date, days: number) {
+  const result = new Date(start);
+  let added = 0;
+  while (added < days) {
+    result.setDate(result.getDate() + 1);
+    const day = result.getDay();
+    if (day !== 0 && day !== 6) added++;
+  }
+  return result;
+}
 
 // Portado de apps/housekeeping/src/app/api/selecao-uhs/route.ts (v1).
 // Mesma lógica de seleção/liberação diária de UHs. Diferenças conscientes
@@ -37,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   const data = req.nextUrl.searchParams.get("data") || format(new Date(), "yyyy-MM-dd");
 
-  const [status, selecoes, assignments] = await Promise.all([
+  const [status, selecoes, assignments, queixas] = await Promise.all([
     prisma.dailySelectionStatus.findUnique({ where: { tenantId_data: { tenantId, data } } }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId, data },
@@ -49,9 +64,17 @@ export async function GET(req: NextRequest) {
       include: { camareira: { select: { id: true, nome: true, telegramChatId: true } } },
       relationLoadStrategy: "join",
     }),
+    prisma.guestComplaint.findMany({
+      where: { tenantId, data },
+      select: { id: true, uhId: true, tipo: true, descricao: true, pontosDescontados: true, createdAt: true },
+    }),
   ]);
 
   const assignmentByUH = Object.fromEntries(assignments.map((a) => [a.uhId, a]));
+  const queixasByUH = new Map<string, typeof queixas>();
+  for (const q of queixas) {
+    queixasByUH.set(q.uhId, [...(queixasByUH.get(q.uhId) ?? []), q]);
+  }
 
   return NextResponse.json({
     confirmado: status?.confirmado ?? false,
@@ -73,6 +96,13 @@ export async function GET(req: NextRequest) {
         comentario: s.comentario ?? null,
         comentarioPorNome: s.comentarioPorNome ?? null,
         comentarioEm: s.comentarioEm ?? null,
+        queixas: (queixasByUH.get(s.uhId) ?? []).map((q) => ({
+          id: q.id,
+          tipo: q.tipo,
+          descricao: q.descricao,
+          pontosDescontados: q.pontosDescontados,
+          createdAt: q.createdAt,
+        })),
       };
     }),
   });
@@ -143,7 +173,7 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes, comentario } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo } = await req.json();
 
   const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
@@ -321,6 +351,91 @@ export async function PATCH(req: NextRequest) {
       },
     });
     return NextResponse.json({ ok: true });
+  }
+
+  // ── Registrar queixa de hóspede (Limpeza ou Manutenção) ───────────
+  // Restrito a MASTER/GERENTE/ATENDIMENTO. Sempre cria um card espelho em
+  // Avaliações (Review, platform=INTERNO) tratado pela GERENTE dentro do
+  // fluxo normal do Kanban. Se LIMPEZA e havia exatamente uma camareira
+  // atribuída à UH no dia, desconta pontosDescontados fixo (30) do total
+  // dela no período (ver api/scores/route.ts — penalidade independente, não
+  // depende de sessão de limpeza existir). Se MANUTENCAO, notifica GERENTE +
+  // MANUTENCAO via Telegram em vez de descontar pontos.
+  if (action === "registrar_queixa") {
+    if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    if (!["LIMPEZA", "MANUTENCAO"].includes(tipo)) {
+      return NextResponse.json({ error: "tipo deve ser LIMPEZA ou MANUTENCAO" }, { status: 400 });
+    }
+    const texto = descricao?.trim();
+    if (!texto) return NextResponse.json({ error: "descricao obrigatória" }, { status: 400 });
+
+    const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true, propertyId: true } });
+    if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });
+
+    // Só penaliza quando há exatamente uma camareira atribuída — se houver
+    // 0 ou 2+ (mutirão, que já não pontua pra ninguém), não há a quem
+    // atribuir o desconto.
+    const atribuicoesDoDia = await prisma.dailyAssignment.findMany({
+      where: { tenantId, data, uhId },
+      select: { camareiraId: true },
+    });
+    const camareiraId =
+      tipo === "LIMPEZA" && atribuicoesDoDia.length === 1 ? atribuicoesDoDia[0].camareiraId : null;
+    const pontosDescontados = camareiraId ? 30 : null;
+
+    const tipoLabel = tipo === "LIMPEZA" ? "limpeza" : "manutenção";
+
+    const review = await prisma.review.create({
+      data: {
+        tenantId,
+        propertyId: uh.propertyId,
+        platform: "INTERNO",
+        guestName: "Hóspede (via Atendimento)",
+        comment: `Queixa de ${tipoLabel} — UH ${uh.numero}\n\n${texto}`,
+        ratingRaw: 1,
+        ratingScaleMax: 5,
+        ratingNormalized: 1,
+        guestSubmittedAt: new Date(),
+        collectedAt: new Date(),
+        analysisDueAt: addBusinessDays(new Date(), 2),
+      },
+    });
+
+    await prisma.reviewLog.create({
+      data: {
+        reviewId: review.id,
+        actorId: session.userId,
+        action: "CRIADO_QUEIXA_GOVERNANCA",
+        detail: `Card criado automaticamente a partir de uma queixa de ${tipoLabel} registrada por ${session.nome} na tela Seleção e Liberação (UH ${uh.numero}).`,
+      },
+    });
+
+    await prisma.guestComplaint.create({
+      data: {
+        tenantId, data, uhId, tipo,
+        descricao: texto,
+        registradoPorId: session.userId,
+        registradoPorNome: session.nome,
+        camareiraId,
+        pontosDescontados,
+        reviewId: review.id,
+      },
+    });
+
+    if (tipo === "MANUTENCAO") {
+      const destinatarios = await prisma.user.findMany({
+        where: { tenantId, ativo: true, role: { in: ["GERENTE", "MANUTENCAO"] } },
+        select: { telegramChatId: true },
+      });
+      void notificarQueixaManutencao({
+        destinatarios,
+        uhNumero: uh.numero,
+        descricao: texto,
+        registradoPorNome: session.nome,
+      });
+    }
+
+    return NextResponse.json({ ok: true, reviewId: review.id, pontosDescontados });
   }
 
   // ── Salvar observação no assignment ──────────────────────────────

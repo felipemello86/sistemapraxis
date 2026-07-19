@@ -58,7 +58,8 @@ function AvatarTick({ x, y, payload, chartData, prefix }: any) {
 const hoje = () => new Date().toLocaleDateString("en-CA");
 
 type DetalheUH = { sessaoId: string; assignmentId: string; uhNumero: string; data: string; duracaoSegundos: number; falhas: number; score: number; excluidoDoScore: boolean; multiplaCamareira?: boolean };
-type Score = { id: string; nome: string; foto?: string | null; mediaScore: number | null; totalUHs: number; totalFalhas: number; detalhes?: DetalheUH[] };
+type QueixaLimpeza = { id: string; data: string; uhNumero: string; descricao: string; pontosDescontados: number };
+type Score = { id: string; nome: string; foto?: string | null; mediaScore: number | null; totalUHs: number; totalFalhas: number; detalhes?: DetalheUH[]; totalPenalidades?: number; queixasLimpeza?: QueixaLimpeza[] };
 
 function Avatar({ foto, nome }: { foto?: string | null; nome: string }) {
   if (foto) return <img src={foto} alt={nome} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />;
@@ -222,6 +223,11 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                       <div className="text-right">
                         <p className={`text-3xl font-bold ${text}`}>{cam.mediaScore ?? "—"}</p>
                         <p className="text-xs text-gray-400">pontos</p>
+                        {!!cam.totalPenalidades && (
+                          <p className="text-xs text-red-500 font-medium mt-0.5">
+                            -{cam.totalPenalidades} ({cam.queixasLimpeza?.length ?? 0} queixa{(cam.queixasLimpeza?.length ?? 0) > 1 ? "s" : ""})
+                          </p>
+                        )}
 
                         {/* Tempo médio e falhas + posição da camareira nesses
                             rankings específicos (podem diferir da posição geral
@@ -256,8 +262,24 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                     )}
                   </div>
 
-                  {expandido && cam.detalhes && cam.detalhes.length > 0 && (
+                  {expandido && ((cam.detalhes && cam.detalhes.length > 0) || (cam.queixasLimpeza && cam.queixasLimpeza.length > 0)) && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
+                      {!!cam.queixasLimpeza?.length && (
+                        <div className="mb-3">
+                          <p className="text-xs font-medium text-red-500 uppercase tracking-wide mb-2">Queixas de hóspede (Limpeza)</p>
+                          <div className="space-y-1.5">
+                            {cam.queixasLimpeza.map((q) => (
+                              <div key={q.id} className="flex items-center gap-2 text-sm rounded-lg px-3 py-2 bg-red-50">
+                                <span className="font-medium w-16 flex-shrink-0">{q.uhNumero}</span>
+                                <span className="text-gray-400 text-xs flex-1 truncate">{q.data} — {q.descricao}</span>
+                                <span className="font-bold flex-shrink-0 text-red-600">-{q.pontosDescontados} pts</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {!!cam.detalhes?.length && (
+                      <>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">UHs processadas</p>
                       <div className="space-y-1.5">
                         {cam.detalhes.map((d) => (
@@ -293,6 +315,8 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                           </div>
                         ))}
                       </div>
+                      </>
+                      )}
                     </div>
                   )}
                 </div>

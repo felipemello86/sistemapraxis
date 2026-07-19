@@ -89,6 +89,33 @@ export async function GET(req: NextRequest) {
   const isMultiplaCamareira = (data: string, uhId: string) =>
     (contagemPorUHData.get(`${data}|${uhId}`) ?? 0) > 1;
 
+  // Queixas de hóspede do tipo Limpeza registradas no período (ver
+  // api/selecao-uhs/route.ts, ação "registrar_queixa") — penalidade
+  // independente das sessões de limpeza: soma ao total de pontos do
+  // período da camareira mesmo que a sessão daquele dia ainda nem exista ou
+  // já tenha sido concluída (decisão explícita do Felipe).
+  const queixasLimpezaDoPeriodo = await prisma.guestComplaint.findMany({
+    where: {
+      tenantId,
+      tipo: "LIMPEZA",
+      camareiraId: { not: null },
+      ...(Object.keys(whereData).length > 0 ? whereData : {}),
+    },
+    select: {
+      id: true,
+      camareiraId: true,
+      pontosDescontados: true,
+      data: true,
+      descricao: true,
+      uh: { select: { numero: true } },
+    },
+  });
+  const queixasPorCamareira = new Map<string, typeof queixasLimpezaDoPeriodo>();
+  for (const q of queixasLimpezaDoPeriodo) {
+    const key = q.camareiraId as string;
+    queixasPorCamareira.set(key, [...(queixasPorCamareira.get(key) ?? []), q]);
+  }
+
   // Calcular scores por camareira
   const scores = camareiras.map((cam) => {
     const minhasSessoes = sessoes.filter((s) => s.camareiraId === cam.id);
@@ -97,7 +124,19 @@ export async function GET(req: NextRequest) {
       (s) => !s.excluidoDoScore && !isMultiplaCamareira(s.assignment.data, s.uhId)
     );
 
-    if (minhasSessoes.length === 0) return { ...cam, mediaScore: null, totalUHs: 0, totalFalhas: 0, detalhes: [] };
+    const queixasCam = queixasPorCamareira.get(cam.id) ?? [];
+    const totalPenalidades = queixasCam.reduce((acc, q) => acc + (q.pontosDescontados ?? 0), 0);
+    const queixasLimpeza = queixasCam.map((q) => ({
+      id: q.id,
+      data: q.data,
+      uhNumero: q.uh.numero,
+      descricao: q.descricao,
+      pontosDescontados: q.pontosDescontados ?? 0,
+    }));
+
+    if (minhasSessoes.length === 0) {
+      return { ...cam, mediaScore: null, totalUHs: 0, totalFalhas: 0, detalhes: [], totalPenalidades, queixasLimpeza };
+    }
 
     let totalScore = 0;
     let totalFalhas = 0;
@@ -128,8 +167,11 @@ export async function GET(req: NextRequest) {
       };
     });
 
+    // Penalidade de queixa de Limpeza soma ao total do período antes de
+    // tirar a média — reduz o mediaScore mas não conta como uma UH a mais
+    // (totalUHs continua sendo a contagem de sessões válidas).
     const mediaScore = sessoesValidas.length > 0
-      ? Math.round((totalScore / sessoesValidas.length) * 10) / 10
+      ? Math.max(0, Math.round(((totalScore - totalPenalidades) / sessoesValidas.length) * 10) / 10)
       : null;
 
     return {
@@ -138,6 +180,8 @@ export async function GET(req: NextRequest) {
       totalUHs: sessoesValidas.length,
       totalFalhas,
       detalhes,
+      totalPenalidades,
+      queixasLimpeza,
     };
   });
 

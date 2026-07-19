@@ -28,6 +28,7 @@ type UHSel = {
   comentario: string | null;
   comentarioPorNome: string | null;
   comentarioEm: string | null;
+  queixas: { id: string; tipo: string; descricao: string; pontosDescontados: number | null; createdAt: string }[];
 };
 
 type UH = { id: string; numero: string };
@@ -320,6 +321,10 @@ export default function SelecaoView({ role }: { role: string }) {
   const [confirmandoRenovar, setConfirmandoRenovar] = useState<string | null>(null);
   const [manutencaoModal, setManutencaoModal] = useState<UHSel | null>(null);
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
+  const [queixaModal, setQueixaModal] = useState<UHSel | null>(null);
+  const [queixaTipoInput, setQueixaTipoInput] = useState<"LIMPEZA" | "MANUTENCAO">("LIMPEZA");
+  const [queixaDescricaoInput, setQueixaDescricaoInput] = useState("");
+  const [enviandoQueixa, setEnviandoQueixa] = useState(false);
   const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
   const [comentarioInput, setComentarioInput] = useState("");
   const [modoReedicao, setModoReedicao] = useState(false);
@@ -428,6 +433,31 @@ export default function SelecaoView({ role }: { role: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "toggle_manutencao", data, uhId: uh.uhId, descricao }),
     });
+    carregar();
+  }
+
+  function abrirQueixa(uh: UHSel) {
+    setQueixaTipoInput("LIMPEZA");
+    setQueixaDescricaoInput("");
+    setQueixaModal(uh);
+  }
+
+  async function registrarQueixa() {
+    if (!queixaModal || !queixaDescricaoInput.trim()) return;
+    setEnviandoQueixa(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "registrar_queixa",
+        data,
+        uhId: queixaModal.uhId,
+        tipo: queixaTipoInput,
+        descricao: queixaDescricaoInput.trim(),
+      }),
+    });
+    setEnviandoQueixa(false);
+    setQueixaModal(null);
     carregar();
   }
 
@@ -567,6 +597,75 @@ export default function SelecaoView({ role }: { role: string }) {
                 className="flex-1 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {queixaModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+              <h2 className="text-base font-bold text-gray-900">Registrar queixa do hóspede</h2>
+            </div>
+            <p className="text-sm text-gray-500 mb-3">UH <strong>{queixaModal.numero}</strong> — selecione o tipo e descreva o que o hóspede relatou.</p>
+
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setQueixaTipoInput("LIMPEZA")}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                  queixaTipoInput === "LIMPEZA"
+                    ? "bg-red-500 border-red-500 text-white"
+                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                Limpeza
+              </button>
+              <button
+                onClick={() => setQueixaTipoInput("MANUTENCAO")}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                  queixaTipoInput === "MANUTENCAO"
+                    ? "bg-orange-500 border-orange-500 text-white"
+                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                Manutenção
+              </button>
+            </div>
+
+            {queixaTipoInput === "LIMPEZA" ? (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-3">
+                Desconta 30 pontos da camareira atribuída a esta UH hoje.
+              </p>
+            ) : (
+              <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 mb-3">
+                Envia um alerta no Telegram pra Gerente e Manutenção.
+              </p>
+            )}
+
+            <textarea
+              autoFocus
+              value={queixaDescricaoInput}
+              onChange={(e) => setQueixaDescricaoInput(e.target.value)}
+              placeholder="O que o hóspede relatou…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
+              rows={3}
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setQueixaModal(null)}
+                className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={!queixaDescricaoInput.trim() || enviandoQueixa}
+                onClick={registrarQueixa}
+                className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {enviandoQueixa ? "Registrando…" : "Registrar"}
               </button>
             </div>
           </div>
@@ -812,7 +911,7 @@ export default function SelecaoView({ role }: { role: string }) {
                       </div>
                     </div>
 
-                    {(uh.emManutencao || uh.temReserva) && (
+                    {(uh.emManutencao || uh.temReserva || uh.queixas.length > 0) && (
                       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         {uh.emManutencao && (
                           <span className="flex items-center gap-1 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">
@@ -822,6 +921,14 @@ export default function SelecaoView({ role }: { role: string }) {
                         {uh.temReserva && (
                           <span className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
                             <BedDouble className="w-3 h-3" /> Reserva
+                          </span>
+                        )}
+                        {uh.queixas.length > 0 && (
+                          <span
+                            title={uh.queixas.map((q) => q.descricao).join(" · ")}
+                            className="flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 border border-red-300 rounded-full px-2 py-0.5"
+                          >
+                            <AlertTriangle className="w-3 h-3" /> Queixa{uh.queixas.length > 1 ? "s" : ""} ({uh.queixas.length})
                           </span>
                         )}
                       </div>
@@ -894,6 +1001,19 @@ export default function SelecaoView({ role }: { role: string }) {
                             }`}
                           >
                             <MessageCirclePlus className="w-4 h-4" />
+                          </button>
+                        )}
+                        {podeComentar && (
+                          <button
+                            onClick={() => abrirQueixa(uh)}
+                            title="Registrar queixa do hóspede"
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              uh.queixas.length > 0
+                                ? "bg-red-100 text-red-600 hover:bg-red-200"
+                                : "text-gray-300 hover:text-red-500 hover:bg-red-50"
+                            }`}
+                          >
+                            <AlertTriangle className="w-4 h-4" />
                           </button>
                         )}
                         {!somenteLeitura && (

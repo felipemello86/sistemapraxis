@@ -25,6 +25,46 @@ interface SendMessageResult {
   error?: string;
 }
 
+// Envio de texto simples — mesmo padrão já usado em apps/estoque/src/lib/telegram.ts
+// (sendTelegramMessage) pros alertas de estoque baixo. Best-effort: falha de
+// rede/token não pode travar o fluxo que chamou.
+export async function sendTelegramMessage(chatId: string, message: string): Promise<void> {
+  if (!BOT_TOKEN) return;
+  try {
+    const res = await fetch(`${API_URL()}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "HTML" }),
+    });
+    if (!res.ok) {
+      console.error("[Telegram] Falha ao enviar mensagem:", res.status, await res.text());
+    }
+  } catch (err) {
+    console.error("[Telegram] Erro de rede:", err);
+  }
+}
+
+/** Alerta pra GERENTE + MANUTENCAO (com telegramChatId definido) quando o
+ * Atendimento registra uma queixa de hóspede do tipo Manutenção na tela
+ * Seleção e Liberação (ver api/selecao-uhs/route.ts, ação "registrar_queixa"). */
+export async function notificarQueixaManutencao(params: {
+  destinatarios: { telegramChatId: string | null }[];
+  uhNumero: string;
+  descricao: string;
+  registradoPorNome: string;
+}): Promise<void> {
+  const { destinatarios, uhNumero, descricao, registradoPorNome } = params;
+  const chatIds = destinatarios.map((d) => d.telegramChatId).filter((id): id is string => Boolean(id));
+  if (chatIds.length === 0) return;
+
+  const texto =
+    `🛠️ <b>Queixa de hóspede — Manutenção</b>\n\n` +
+    `UH <b>${uhNumero}</b>\n${descricao}\n\n` +
+    `Registrado por ${registradoPorNome}.`;
+
+  await Promise.all(chatIds.map((chatId) => sendTelegramMessage(chatId, texto)));
+}
+
 export async function enviarRelatorioPDF(
   chatId: string | null | undefined,
   _hotelNome: string,
