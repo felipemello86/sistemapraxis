@@ -440,10 +440,15 @@ export async function PATCH(req: NextRequest) {
     // atribuir o desconto.
     const atribuicoesDoDia = await prisma.dailyAssignment.findMany({
       where: { tenantId, data, uhId },
-      select: { camareiraId: true },
+      select: { camareiraId: true, camareira: { select: { nome: true } } },
     });
-    const camareiraId =
-      tipo === "LIMPEZA" && atribuicoesDoDia.length === 1 ? atribuicoesDoDia[0].camareiraId : null;
+    // Camareira "envolvida" pro log: só faz sentido identificar uma quando há
+    // exatamente uma atribuída à UH no dia (0 ou 2+ — mutirão — não têm a quem
+    // atribuir). O desconto de pontos continua exclusivo de tipo === LIMPEZA;
+    // o nome no log aparece pra qualquer tipo, como contexto.
+    const atribuicaoUnica = atribuicoesDoDia.length === 1 ? atribuicoesDoDia[0] : null;
+    const camareiraId = tipo === "LIMPEZA" ? atribuicaoUnica?.camareiraId ?? null : null;
+    const camareiraNomeLog = atribuicaoUnica?.camareira.nome ?? null;
     const pontosDescontados = camareiraId ? 30 : null;
 
     const TIPO_LABEL: Record<string, string> = {
@@ -475,7 +480,9 @@ export async function PATCH(req: NextRequest) {
         reviewId: review.id,
         actorId: session.userId,
         action: "CRIADO_QUEIXA_GOVERNANCA",
-        detail: `Card "${tituloTexto}" criado automaticamente a partir de uma queixa de ${tipoLabel} registrada por ${session.nome} na tela Seleção e Liberação (UH ${uh.numero}).`,
+        detail: `Card "${tituloTexto}" criado automaticamente a partir de uma queixa de ${tipoLabel} registrada por ${session.nome} na tela Seleção e Liberação (UH ${uh.numero}).${
+          camareiraNomeLog ? ` Camareira responsável pela UH no dia: ${camareiraNomeLog}.` : ""
+        }`,
       },
     });
 
