@@ -30,6 +30,9 @@ type UHSel = {
   comentarioPorNome: string | null;
   comentarioEm: string | null;
   queixas: { id: string; titulo: string; tipo: string; descricao: string; pontosDescontados: number | null; anexos: QueixaAnexo[]; createdAt: string }[];
+  lateCheckout: boolean;
+  lateCheckoutHora: string | null;
+  lateCheckoutPorNome: string | null;
 };
 
 type QueixaAnexo = { url: string; fileName: string; fileSize?: number };
@@ -338,10 +341,49 @@ export default function SelecaoView({ role }: { role: string }) {
   const [erroAnexoQueixa, setErroAnexoQueixa] = useState<string | null>(null);
   const [queixaDetalheId, setQueixaDetalheId] = useState<string | null>(null);
   const [queixaEscolherEntre, setQueixaEscolherEntre] = useState<UHSel["queixas"] | null>(null);
+  const [lateCheckoutModal, setLateCheckoutModal] = useState<UHSel | null>(null);
+  const [lateCheckoutHoraInput, setLateCheckoutHoraInput] = useState("");
+  const [salvandoLateCheckout, setSalvandoLateCheckout] = useState(false);
 
   function abrirBalaoQueixas(queixas: UHSel["queixas"]) {
     if (queixas.length === 1) setQueixaDetalheId(queixas[0].id);
     else setQueixaEscolherEntre(queixas);
+  }
+
+  function abrirLateCheckout(uh: UHSel) {
+    setLateCheckoutHoraInput(uh.lateCheckoutHora ?? "");
+    setLateCheckoutModal(uh);
+  }
+
+  async function confirmarLateCheckout() {
+    if (!lateCheckoutModal || !lateCheckoutHoraInput) return;
+    setSalvandoLateCheckout(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "ativar_late_checkout",
+        data,
+        uhId: lateCheckoutModal.uhId,
+        horaSaida: lateCheckoutHoraInput,
+      }),
+    });
+    setSalvandoLateCheckout(false);
+    setLateCheckoutModal(null);
+    carregar();
+  }
+
+  async function desativarLateCheckout() {
+    if (!lateCheckoutModal) return;
+    setSalvandoLateCheckout(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "desativar_late_checkout", data, uhId: lateCheckoutModal.uhId }),
+    });
+    setSalvandoLateCheckout(false);
+    setLateCheckoutModal(null);
+    carregar();
   }
   const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
   const [comentarioInput, setComentarioInput] = useState("");
@@ -624,6 +666,57 @@ export default function SelecaoView({ role }: { role: string }) {
 
   return (
     <div className="p-4 md:p-6 max-w-2xl">
+
+      {lateCheckoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className="w-5 h-5 text-indigo-500" />
+              <h2 className="text-base font-bold text-gray-900">Late Check-out</h2>
+            </div>
+            <p className="text-sm text-gray-500 mb-3">
+              UH <strong>{lateCheckoutModal.numero}</strong> — essa UH não será liberada automaticamente ao meio-dia. Informe o horário de saída combinado com o hóspede.
+            </p>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Hora de saída</label>
+            <input
+              autoFocus
+              type="time"
+              value={lateCheckoutHoraInput}
+              onChange={(e) => setLateCheckoutHoraInput(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            {lateCheckoutModal.lateCheckout && (
+              <p className="text-xs text-gray-400 mt-2">
+                Marcado por {lateCheckoutModal.lateCheckoutPorNome ?? "—"}.
+              </p>
+            )}
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setLateCheckoutModal(null)}
+                className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              {lateCheckoutModal.lateCheckout && (
+                <button
+                  disabled={salvandoLateCheckout}
+                  onClick={desativarLateCheckout}
+                  className="flex-1 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Desativar
+                </button>
+              )}
+              <button
+                disabled={!lateCheckoutHoraInput || salvandoLateCheckout}
+                onClick={confirmarLateCheckout}
+                className="flex-1 py-2 rounded-lg bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {manutencaoModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -1014,7 +1107,7 @@ export default function SelecaoView({ role }: { role: string }) {
                       </div>
                     </div>
 
-                    {(uh.emManutencao || uh.temReserva || uh.queixas.length > 0) && (
+                    {(uh.emManutencao || uh.temReserva || uh.queixas.length > 0 || (uh.lateCheckout && !liberada)) && (
                       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         {uh.emManutencao && (
                           <span className="flex items-center gap-1 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">
@@ -1033,6 +1126,15 @@ export default function SelecaoView({ role }: { role: string }) {
                             className="flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 border border-red-300 rounded-full px-2 py-0.5 hover:bg-red-200 transition-colors"
                           >
                             <AlertTriangle className="w-3 h-3" /> Queixa{uh.queixas.length > 1 ? "s" : ""} ({uh.queixas.length})
+                          </button>
+                        )}
+                        {uh.lateCheckout && !liberada && (
+                          <button
+                            onClick={() => abrirLateCheckout(uh)}
+                            title={`Marcado por ${uh.lateCheckoutPorNome ?? "—"}`}
+                            className="flex items-center gap-1 text-xs font-semibold text-indigo-700 bg-indigo-100 border border-indigo-300 rounded-full px-2 py-0.5 hover:bg-indigo-200 transition-colors"
+                          >
+                            <Clock className="w-3 h-3" /> Late Check-out até {uh.lateCheckoutHora}
                           </button>
                         )}
                       </div>
@@ -1118,6 +1220,19 @@ export default function SelecaoView({ role }: { role: string }) {
                             }`}
                           >
                             <AlertTriangle className="w-4 h-4" />
+                          </button>
+                        )}
+                        {podeComentar && !liberada && (
+                          <button
+                            onClick={() => abrirLateCheckout(uh)}
+                            title={uh.lateCheckout ? `Late Check-out às ${uh.lateCheckoutHora}` : "Marcar Late Check-out"}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              uh.lateCheckout
+                                ? "bg-indigo-100 text-indigo-600 hover:bg-indigo-200"
+                                : "text-gray-300 hover:text-indigo-500 hover:bg-indigo-50"
+                            }`}
+                          >
+                            <Clock className="w-4 h-4" />
                           </button>
                         )}
                         {!somenteLeitura && (

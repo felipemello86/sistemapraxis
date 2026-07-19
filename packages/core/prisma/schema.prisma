@@ -322,6 +322,18 @@ model DailyUHSelection {
   comentarioPorNome String?
   comentarioEm      DateTime?
 
+  // Late Check-out — o Atendimento marca que esta UH só vai ser liberada
+  // mais tarde (hóspede com late checkout autorizado), com hora de saída
+  // obrigatória ("HH:mm"). Quando essa hora chega, o sistema libera a UH
+  // sozinho (ver lib/late-checkout.ts) — chamado como efeito colateral no
+  // GET de Seleção e Liberação e do Tempo Real, e também por um cron
+  // dedicado (api/cron/late-checkout), pra funcionar mesmo sem ninguém com
+  // uma tela aberta.
+  lateCheckout        Boolean   @default(false)
+  lateCheckoutHora     String?
+  lateCheckoutPorNome  String?
+  lateCheckoutEm       DateTime?
+
   @@unique([data, uhId])
 }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
+import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
 
 // Igual ao addBusinessDays de apps/booking-reviews/src/lib/scoring.ts —
 // duplicado aqui (não é exportado por @praxis/core) só pra calcular o prazo
@@ -52,6 +53,15 @@ export async function GET(req: NextRequest) {
 
   const data = req.nextUrl.searchParams.get("data") || format(new Date(), "yyyy-MM-dd");
 
+  // Best-effort: se alguma UH marcada como Late Check-out já passou da hora
+  // de saída, libera sozinha antes de montar a resposta. Nunca deve travar
+  // a tela por causa disso.
+  try {
+    await liberarLateCheckoutsVencidos(tenantId);
+  } catch (e) {
+    console.error("[late-checkout] falha ao liberar automaticamente:", e);
+  }
+
   const [status, selecoes, assignments, queixas] = await Promise.all([
     prisma.dailySelectionStatus.findUnique({ where: { tenantId_data: { tenantId, data } } }),
     prisma.dailyUHSelection.findMany({
@@ -96,6 +106,9 @@ export async function GET(req: NextRequest) {
         comentario: s.comentario ?? null,
         comentarioPorNome: s.comentarioPorNome ?? null,
         comentarioEm: s.comentarioEm ?? null,
+        lateCheckout: s.lateCheckout,
+        lateCheckoutHora: s.lateCheckoutHora ?? null,
+        lateCheckoutPorNome: s.lateCheckoutPorNome ?? null,
         queixas: (queixasByUH.get(s.uhId) ?? []).map((q) => ({
           id: q.id,
           titulo: q.titulo,
@@ -175,7 +188,7 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida } = await req.json();
 
   const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
@@ -301,6 +314,44 @@ export async function PATCH(req: NextRequest) {
       data: { temReserva: novoValor },
     });
     return NextResponse.json({ temReserva: novoValor });
+  }
+
+  // ── Ativar Late Check-out ─────────────────────────────────────────
+  // Restrito a MASTER/GERENTE/ATENDIMENTO (mesma decisão de set_comentario e
+  // registrar_queixa) — a UH não vai ser liberada no fluxo normal, então
+  // exige hora de saída obrigatória ("HH:mm"). A liberação automática de
+  // verdade acontece em lib/late-checkout.ts.
+  if (action === "ativar_late_checkout") {
+    if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    const hora = horaSaida?.trim();
+    if (!hora || !/^\d{2}:\d{2}$/.test(hora)) {
+      return NextResponse.json({ error: "horaSaida obrigatória (HH:mm)" }, { status: 400 });
+    }
+    await prisma.dailyUHSelection.update({
+      where: { data_uhId: { data, uhId } },
+      data: {
+        lateCheckout: true,
+        lateCheckoutHora: hora,
+        lateCheckoutPorNome: session.nome,
+        lateCheckoutEm: new Date(),
+      },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Desativar Late Check-out ──────────────────────────────────────
+  if (action === "desativar_late_checkout") {
+    if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    await prisma.dailyUHSelection.update({
+      where: { data_uhId: { data, uhId } },
+      data: {
+        lateCheckout: false,
+        lateCheckoutHora: null,
+        lateCheckoutPorNome: null,
+        lateCheckoutEm: null,
+      },
+    });
+    return NextResponse.json({ ok: true });
   }
 
   // ── Renovação — remove assignment + selection do dia ─────────────

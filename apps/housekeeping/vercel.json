@@ -1,3 +1,9 @@
 {
-  "regions": ["gru1"]
+  "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/governance/api/cron/late-checkout",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }
