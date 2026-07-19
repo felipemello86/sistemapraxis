@@ -502,9 +502,11 @@ model FalhaLavanderia {
 //   2. Se tipo=LIMPEZA e havia exatamente uma camareira atribuída à UH
 //      naquele dia, desconta pontosDescontados (fixo 30) do total dela no
 //      período — penalidade independente, somada em api/scores/route.ts,
-//      não depende de existir sessão de limpeza concluída naquele dia. Se
-//      tipo=MANUTENCAO, dispara alerta Telegram pra GERENTE + MANUTENCAO em
-//      vez de descontar pontos.
+//      não depende de existir sessão de limpeza concluída naquele dia. Nos
+//      demais tipos (MANUTENCAO, LAVANDERIA, OUTRA) não há desconto — em vez
+//      disso dispara alerta Telegram pra GERENTE + o cargo correspondente
+//      (MANUTENCAO→role MANUTENCAO, LAVANDERIA→role LAVANDERIA, OUTRA→só
+//      GERENTE, ver lib/telegram.ts).
 model GuestComplaint {
   id       String @id @default(cuid())
   tenantId String
@@ -518,7 +520,7 @@ model GuestComplaint {
   // usado como Review.guestName do card espelho (ver abaixo), já que é ele
   // que aparece como título no Kanban de Tratamento de Avaliações.
   titulo    String
-  tipo      String // LIMPEZA | MANUTENCAO
+  tipo      String // LIMPEZA | MANUTENCAO | LAVANDERIA | OUTRA
   descricao String @db.Text
   // JSON array de { url, fileName, fileSize } (Cloudinary, resource_type
   // "auto" — aceita foto, PDF etc.) — anexo opcional de evidência. Os mesmos

@@ -63,6 +63,10 @@ const CAT_LABEL: Record<string, string> = {
   CAMA: "🛏️ Cama", BANHEIRO: "🚿 Banheiro", QUARTO: "🏠 Quarto", COZINHA: "🍳 Cozinha", GERAL: "✅ Geral",
 };
 
+const TIPO_QUEIXA_LABEL: Record<string, string> = {
+  LIMPEZA: "Limpeza", MANUTENCAO: "Manutenção", LAVANDERIA: "Lavanderia", OUTRA: "Outra",
+};
+
 function FotoThumb({ url, index, onOpen }: { url: string; index: number; onOpen: (u: string) => void }) {
   const [erro, setErro] = useState(false);
   if (erro || url.startsWith("/placeholder")) {
@@ -326,7 +330,7 @@ export default function SelecaoView({ role }: { role: string }) {
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
   const [queixaModal, setQueixaModal] = useState<UHSel | null>(null);
   const [queixaTituloInput, setQueixaTituloInput] = useState("");
-  const [queixaTipoInput, setQueixaTipoInput] = useState<"LIMPEZA" | "MANUTENCAO">("LIMPEZA");
+  const [queixaTipoInput, setQueixaTipoInput] = useState<"LIMPEZA" | "MANUTENCAO" | "LAVANDERIA" | "OUTRA">("LIMPEZA");
   const [queixaDescricaoInput, setQueixaDescricaoInput] = useState("");
   const [enviandoQueixa, setEnviandoQueixa] = useState(false);
   const [queixaAnexos, setQueixaAnexos] = useState<QueixaAnexo[]>([]);
@@ -676,36 +680,42 @@ export default function SelecaoView({ role }: { role: string }) {
             />
             <p className="text-xs text-gray-400 -mt-2 mb-3">Esse é o título que vai aparecer no card em Avaliações.</p>
 
-            <div className="flex gap-2 mb-3">
-              <button
-                onClick={() => setQueixaTipoInput("LIMPEZA")}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${
-                  queixaTipoInput === "LIMPEZA"
-                    ? "bg-red-500 border-red-500 text-white"
-                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
-                }`}
-              >
-                Limpeza
-              </button>
-              <button
-                onClick={() => setQueixaTipoInput("MANUTENCAO")}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${
-                  queixaTipoInput === "MANUTENCAO"
-                    ? "bg-orange-500 border-orange-500 text-white"
-                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
-                }`}
-              >
-                Manutenção
-              </button>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {([
+                { tipo: "LIMPEZA", label: "Limpeza", cor: "bg-red-500 border-red-500" },
+                { tipo: "MANUTENCAO", label: "Manutenção", cor: "bg-orange-500 border-orange-500" },
+                { tipo: "LAVANDERIA", label: "Lavanderia", cor: "bg-blue-500 border-blue-500" },
+                { tipo: "OUTRA", label: "Outra", cor: "bg-gray-500 border-gray-500" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.tipo}
+                  onClick={() => setQueixaTipoInput(opt.tipo)}
+                  className={`py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    queixaTipoInput === opt.tipo
+                      ? `${opt.cor} text-white`
+                      : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
 
             {queixaTipoInput === "LIMPEZA" ? (
               <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-3">
                 Desconta 30 pontos da camareira atribuída a esta UH hoje.
               </p>
-            ) : (
+            ) : queixaTipoInput === "MANUTENCAO" ? (
               <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 mb-3">
                 Envia um alerta no Telegram pra Gerente e Manutenção.
+              </p>
+            ) : queixaTipoInput === "LAVANDERIA" ? (
+              <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-3">
+                Envia um alerta no Telegram pra Gerente e Lavanderia.
+              </p>
+            ) : (
+              <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-3">
+                Envia um alerta no Telegram pra Gerente.
               </p>
             )}
 
@@ -1225,7 +1235,7 @@ export default function SelecaoView({ role }: { role: string }) {
                   className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
                 >
                   <p className="text-sm font-medium text-gray-800 truncate">{q.titulo}</p>
-                  <p className="text-xs text-gray-400">{q.tipo === "LIMPEZA" ? "Limpeza" : "Manutenção"}</p>
+                  <p className="text-xs text-gray-400">{TIPO_QUEIXA_LABEL[q.tipo] ?? q.tipo}</p>
                 </button>
               ))}
             </div>

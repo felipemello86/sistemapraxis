@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
-import { notificarQueixaManutencao } from "@/lib/telegram";
+import { notificarQueixa } from "@/lib/telegram";
 
 // Igual ao addBusinessDays de apps/booking-reviews/src/lib/scoring.ts —
 // duplicado aqui (não é exportado por @praxis/core) só pra calcular o prazo
@@ -365,8 +365,9 @@ export async function PATCH(req: NextRequest) {
   // MANUTENCAO via Telegram em vez de descontar pontos.
   if (action === "registrar_queixa") {
     if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
-    if (!["LIMPEZA", "MANUTENCAO"].includes(tipo)) {
-      return NextResponse.json({ error: "tipo deve ser LIMPEZA ou MANUTENCAO" }, { status: 400 });
+    const TIPOS_QUEIXA = ["LIMPEZA", "MANUTENCAO", "LAVANDERIA", "OUTRA"];
+    if (!TIPOS_QUEIXA.includes(tipo)) {
+      return NextResponse.json({ error: `tipo deve ser um de: ${TIPOS_QUEIXA.join(", ")}` }, { status: 400 });
     }
     const tituloTexto = titulo?.trim();
     if (!tituloTexto) return NextResponse.json({ error: "titulo obrigatório" }, { status: 400 });
@@ -394,7 +395,13 @@ export async function PATCH(req: NextRequest) {
       tipo === "LIMPEZA" && atribuicoesDoDia.length === 1 ? atribuicoesDoDia[0].camareiraId : null;
     const pontosDescontados = camareiraId ? 30 : null;
 
-    const tipoLabel = tipo === "LIMPEZA" ? "limpeza" : "manutenção";
+    const TIPO_LABEL: Record<string, string> = {
+      LIMPEZA: "limpeza",
+      MANUTENCAO: "manutenção",
+      LAVANDERIA: "lavanderia",
+      OUTRA: "outro assunto",
+    };
+    const tipoLabel = TIPO_LABEL[tipo] ?? tipo.toLowerCase();
 
     const review = await prisma.review.create({
       data: {
@@ -449,13 +456,25 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    if (tipo === "MANUTENCAO") {
+    // Limpeza já foi tratada acima (desconto de pontos, sem Telegram) — os
+    // demais tipos notificam GERENTE + o cargo correspondente (Manutenção→
+    // role MANUTENCAO, Lavanderia→role LAVANDERIA; Outra não tem cargo
+    // específico, só GERENTE mesmo).
+    const ROLES_POR_TIPO: Record<string, string[]> = {
+      MANUTENCAO: ["GERENTE", "MANUTENCAO"],
+      LAVANDERIA: ["GERENTE", "LAVANDERIA"],
+      OUTRA: ["GERENTE"],
+    };
+    if (tipo !== "LIMPEZA") {
+      const roles = ROLES_POR_TIPO[tipo] ?? ["GERENTE"];
       const destinatarios = await prisma.user.findMany({
-        where: { tenantId, ativo: true, role: { in: ["GERENTE", "MANUTENCAO"] } },
+        where: { tenantId, ativo: true, role: { in: roles } },
         select: { telegramChatId: true },
       });
-      void notificarQueixaManutencao({
+      void notificarQueixa({
         destinatarios,
+        tipo,
+        titulo: tituloTexto,
         uhNumero: uh.numero,
         descricao: texto,
         registradoPorNome: session.nome,

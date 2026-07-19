@@ -44,22 +44,32 @@ export async function sendTelegramMessage(chatId: string, message: string): Prom
   }
 }
 
-/** Alerta pra GERENTE + MANUTENCAO (com telegramChatId definido) quando o
- * Atendimento registra uma queixa de hóspede do tipo Manutenção na tela
- * Seleção e Liberação (ver api/selecao-uhs/route.ts, ação "registrar_queixa"). */
-export async function notificarQueixaManutencao(params: {
+const QUEIXA_LABEL: Record<string, { emoji: string; nome: string }> = {
+  MANUTENCAO: { emoji: "🛠️", nome: "Manutenção" },
+  LAVANDERIA: { emoji: "🧺", nome: "Lavanderia" },
+  OUTRA: { emoji: "❗️", nome: "Outra" },
+};
+
+/** Alerta pra GERENTE + o cargo correspondente (com telegramChatId definido)
+ * quando o Atendimento registra uma queixa de hóspede que não é do tipo
+ * Limpeza (essa desconta pontos em vez de notificar, ver
+ * api/selecao-uhs/route.ts, ação "registrar_queixa"). */
+export async function notificarQueixa(params: {
   destinatarios: { telegramChatId: string | null }[];
+  tipo: string;
+  titulo: string;
   uhNumero: string;
   descricao: string;
   registradoPorNome: string;
 }): Promise<void> {
-  const { destinatarios, uhNumero, descricao, registradoPorNome } = params;
+  const { destinatarios, tipo, titulo, uhNumero, descricao, registradoPorNome } = params;
   const chatIds = destinatarios.map((d) => d.telegramChatId).filter((id): id is string => Boolean(id));
   if (chatIds.length === 0) return;
 
+  const { emoji, nome } = QUEIXA_LABEL[tipo] ?? { emoji: "❗️", nome: tipo };
   const texto =
-    `🛠️ <b>Queixa de hóspede — Manutenção</b>\n\n` +
-    `UH <b>${uhNumero}</b>\n${descricao}\n\n` +
+    `${emoji} <b>Queixa de hóspede — ${nome}</b>\n\n` +
+    `<b>${titulo}</b>\nUH <b>${uhNumero}</b>\n${descricao}\n\n` +
     `Registrado por ${registradoPorNome}.`;
 
   await Promise.all(chatIds.map((chatId) => sendTelegramMessage(chatId, texto)));

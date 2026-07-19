@@ -28,6 +28,13 @@ function isImagem(url: string) {
   return /\.(jpe?g|png|gif|webp)(\?|$)/i.test(url);
 }
 
+const TIPO_BADGE: Record<string, { label: string; className: string }> = {
+  LIMPEZA: { label: "Limpeza", className: "bg-red-100 text-red-700" },
+  MANUTENCAO: { label: "Manutenção", className: "bg-orange-100 text-orange-700" },
+  LAVANDERIA: { label: "Lavanderia", className: "bg-blue-100 text-blue-700" },
+  OUTRA: { label: "Outra", className: "bg-gray-100 text-gray-700" },
+};
+
 export default function QueixaDetailModal({ queixaId, onClose }: { queixaId: string; onClose: () => void }) {
   const [detail, setDetail] = useState<QueixaDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,9 +80,9 @@ export default function QueixaDetailModal({ queixaId, onClose }: { queixaId: str
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                  detail.tipo === "LIMPEZA" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
+                  (TIPO_BADGE[detail.tipo] ?? TIPO_BADGE.OUTRA).className
                 }`}>
-                  {detail.tipo === "LIMPEZA" ? "Limpeza" : "Manutenção"}
+                  {(TIPO_BADGE[detail.tipo] ?? TIPO_BADGE.OUTRA).label}
                 </span>
                 <span className="text-xs text-gray-400">UH {detail.uhNumero} · {detail.data}</span>
               </div>
