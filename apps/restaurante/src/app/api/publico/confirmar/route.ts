@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@praxis/core";
 
-export const HORARIOS_VALIDOS = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
+// Não pode ser `export`: arquivos route.ts do Next só aceitam exports de
+// handlers/config — qualquer outro export quebra o build ("is not a valid
+// Route export field"). O PedidoFlow tem a própria cópia desta lista.
+const HORARIOS_VALIDOS = ["07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00"];
 
 // POST /api/publico/confirmar — ÚNICA rota sem sessão da v2 (fora o GET da
 // página, que é server component). A credencial é o token do link enviado
