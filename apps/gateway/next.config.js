@@ -54,6 +54,15 @@ const nextConfig = {
       );
     }
 
+    if (process.env.RESTAURANTE_APP_URL) {
+      rules.push(
+        { source: "/:cliente/restaurante", destination: `${process.env.RESTAURANTE_APP_URL}/restaurante` },
+        { source: "/:cliente/restaurante/:path*", destination: `${process.env.RESTAURANTE_APP_URL}/restaurante/:path*` },
+        { source: "/restaurante", destination: `${process.env.RESTAURANTE_APP_URL}/restaurante` },
+        { source: "/restaurante/:path*", destination: `${process.env.RESTAURANTE_APP_URL}/restaurante/:path*` }
+      );
+    }
+
     return rules;
   },
 };

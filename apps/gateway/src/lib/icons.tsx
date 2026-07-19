@@ -46,6 +46,19 @@ export function IconBox({ size = 28 }: IconProps) {
   );
 }
 
+// Novo — módulo Restaurante (cloche/campânula de prato).
+export function IconCloche({ size = 28 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 16a8 8 0 0 1 16 0" />
+      <line x1="2" y1="16" x2="22" y2="16" />
+      <line x1="12" y1="8" x2="12" y2="6" />
+      <circle cx="12" cy="5" r="1" />
+      <line x1="5" y1="20" x2="19" y2="20" />
+    </svg>
+  );
+}
+
 export function IconGear({ size = 28 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

@@ -74,12 +74,18 @@ model Tenant {
   // "estoque-bnb-flex" — que rodava fora da suíte, no Render).
   stockProducts   StockProduct[]
   stockMovements  StockMovement[]
+
+  // Restaurante
+  menuSections    MenuSection[]
+  menuItems       MenuItem[]
+  breakfastOrders BreakfastOrder[]
 }
 
 enum SuiteModule {
   HOUSEKEEPING
   MAINTENANCE
   BOOKING_REVIEWS
+  RESTAURANT
   STOCK
 }
 
@@ -114,6 +120,10 @@ model User {
   // Usuários do gateway). Usada nos avatares de Tempo Real, Atribuição
   // Diária, Performance e Relatórios — todos já caem pra iniciais quando null.
   foto           String?
+  // Atributo (não role): habilita o usuário a operar o kanban do módulo
+  // Restaurante (mover cartões de pedido). É ortogonal ao cargo — uma
+  // camareira ou um usuário de lavanderia podem ter cozinha=true.
+  cozinha        Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -956,6 +966,7 @@ model StockProduct {
   updatedAt DateTime @updatedAt
 
   movements StockMovement[]
+  menuItems MenuItem[]
 
   @@index([tenantId])
 }
@@ -986,4 +997,110 @@ model StockMovement {
 
   @@index([tenantId, createdAt])
   @@index([productId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Restaurante — cardápio de café da manhã por link público + kanban da cozinha.
+// Integrado ao Estoque: todo MenuItem referencia um StockProduct, e a
+// finalização de um pedido gera StockMovement de SAIDA por item (a fração
+// quantidadePorPorcao permite que uma porção consuma menos de 1 unidade de
+// estoque — ex.: porção de geleia = 0.1 do pote).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MenuSection {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome  String
+  ordem Int    @default(0)
+  // Limite de itens que o cliente pode escolher nesta seção num café
+  // SINGLE. No DOUBLE o limite dobra (2x) — regra fixa do produto.
+  limiteSingle Int @default(2)
+
+  ativo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items MenuItem[]
+
+  @@index([tenantId])
+}
+
+model MenuItem {
+  id        String      @id @default(cuid())
+  tenantId  String
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sectionId String
+  section   MenuSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  nome      String
+  descricao String?
+  ordem     Int     @default(0)
+
+  // Todo item do cardápio é obrigatoriamente um produto do Estoque —
+  // não existe item "solto". quantidadePorPorcao é quanto do StockProduct
+  // uma porção servida consome (1 = uma unidade inteira, 0.1 = um décimo).
+  stockProductId      String
+  stockProduct        StockProduct @relation(fields: [stockProductId], references: [id], onDelete: Cascade)
+  quantidadePorPorcao Float        @default(1)
+
+  ativo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orderItems BreakfastOrderItem[]
+
+  @@index([tenantId])
+  @@index([sectionId])
+}
+
+model BreakfastOrder {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Token do link público enviado ao hóspede — a rota /pedido/[token] não
+  // exige sessão; o token (cuid + sufixo aleatório) é a própria credencial.
+  token String @unique
+
+  clienteNome String
+  uhNumero    String
+  tipo        String // SINGLE | DOUBLE
+
+  // Fluxo: o Atendimento gera o link (status LINK_ENVIADO, fora do kanban);
+  // quando o hóspede confirma o pedido vira RECEBIDO e entra na coluna 1.
+  // Kanban: RECEBIDO → PREPARACAO → ENTREGA → FINALIZADO.
+  // A baixa de estoque acontece UMA vez, na transição pra FINALIZADO
+  // (estoqueBaixadoEm marca isso e impede dupla baixa).
+  status String @default("LINK_ENVIADO")
+
+  observacoes     String?
+  horarioEntrega  String? // "07:00" | "07:30" | ... | "10:00"
+  confirmadoEm    DateTime?
+  estoqueBaixadoEm DateTime?
+
+  criadoPorNome String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itens BreakfastOrderItem[]
+
+  @@index([tenantId, status])
+}
+
+model BreakfastOrderItem {
+  id      String         @id @default(cuid())
+  orderId String
+  order   BreakfastOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  quantidade Int @default(1)
+
+  @@unique([orderId, menuItemId])
 }

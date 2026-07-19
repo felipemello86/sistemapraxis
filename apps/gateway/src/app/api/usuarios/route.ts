@@ -22,6 +22,7 @@ export async function GET() {
       telegramChatId: u.telegramChatId,
       whatsapp: u.whatsapp,
       foto: u.foto,
+      cozinha: u.cozinha,
       ativo: u.ativo,
       modules: u.moduleAccess.map((m) => m.module),
     }))
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarUsuarios(session);
   if (bloqueado) return bloqueado;
 
-  const { nome, email, role, telegramChatId, whatsapp, password, modules, foto } = await req.json();
+  const { nome, email, role, telegramChatId, whatsapp, password, modules, foto, cozinha } = await req.json();
   if (!nome || !role || !email || !password) {
     return NextResponse.json({ error: "Nome, email, cargo e senha são obrigatórios" }, { status: 400 });
   }
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
         telegramChatId: telegramChatId || null,
         whatsapp: whatsapp || null,
         foto: foto || null,
+        cozinha: Boolean(cozinha),
         passwordHash,
         moduleAccess: {
           create: moduleList.map((module) => ({ module: module as any, enabled: true })),
@@ -99,7 +101,7 @@ export async function PUT(req: NextRequest) {
   const bloqueado = bloqueadoParaGerenciarUsuarios(session);
   if (bloqueado) return bloqueado;
 
-  const { id, nome, email, role, telegramChatId, whatsapp, password, ativo, modules, foto } = await req.json();
+  const { id, nome, email, role, telegramChatId, whatsapp, password, ativo, modules, foto, cozinha } = await req.json();
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
 
   if (Array.isArray(modules)) {
@@ -120,6 +122,7 @@ export async function PUT(req: NextRequest) {
       telegramChatId,
       whatsapp,
       foto,
+      ...(cozinha !== undefined ? { cozinha: Boolean(cozinha) } : {}),
       ativo,
       ...(passwordHash ? { passwordHash } : {}),
     },

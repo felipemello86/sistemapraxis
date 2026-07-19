@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mesma cara dos outros módulos (ver apps/estoque/src/app/globals.css). */
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-700 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-secondary {
+    @apply bg-white text-gray-700 px-4 py-2 rounded-lg font-medium border border-gray-300 hover:bg-gray-50 disabled:opacity-50 transition-colors;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 transition-colors;
+  }
+  .btn-success {
+    @apply bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 transition-colors;
+  }
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-4;
+  }
+  /* text-base (16px), não text-sm: campo abaixo de 16px faz o iOS Safari
+     dar zoom automático ao focar. */
+  .input {
+    @apply w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500;
+  }
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+
+  /* CTA grande do fluxo público do hóspede (PedidoFlow) — âmbar, cheio. */
+  .btn-cta {
+    @apply inline-flex items-center gap-2 bg-amber-600 text-white px-6 py-3.5 rounded-xl font-semibold text-base shadow-sm hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors;
+  }
+
+  /* Compensa, no mobile, a altura real do header fixo do Sidebar (56px +
+     safe-area-inset-top do notch/status bar no app nativo). Mesmo padrão
+     de .estoque-content-offset. */
+  .rest-content-offset {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+  }
+  @screen md {
+    .rest-content-offset {
+      padding-top: 0;
+    }
+  }
+}

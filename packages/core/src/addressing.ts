@@ -7,6 +7,7 @@ export const MODULE_SLUGS: Record<SuiteModule, string> = {
   MAINTENANCE: "upkeep",
   BOOKING_REVIEWS: "reviews",
   STOCK: "estoque",
+  RESTAURANT: "restaurante",
 };
 
 export const MODULE_LABELS: Record<SuiteModule, string> = {
@@ -14,6 +15,7 @@ export const MODULE_LABELS: Record<SuiteModule, string> = {
   MAINTENANCE: "Manutenção",
   BOOKING_REVIEWS: "Avaliações",
   STOCK: "Estoque",
+  RESTAURANT: "Restaurante",
 };
 
 const SLUG_TO_MODULE: Record<string, SuiteModule> = Object.fromEntries(

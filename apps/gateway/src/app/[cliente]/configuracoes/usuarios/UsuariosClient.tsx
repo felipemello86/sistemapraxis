@@ -10,6 +10,7 @@ type User = {
   telegramChatId: string | null;
   whatsapp: string | null;
   foto: string | null;
+  cozinha: boolean;
   ativo: boolean;
   modules?: string[];
 };
@@ -30,6 +31,8 @@ const MODULOS = [
   { value: "HOUSEKEEPING", label: "Governança" },
   { value: "MAINTENANCE", label: "Manutenção" },
   { value: "BOOKING_REVIEWS", label: "Avaliações" },
+  { value: "STOCK", label: "Estoque" },
+  { value: "RESTAURANT", label: "Restaurante" },
 ] as const;
 
 const cardStyle: CSSProperties = {
@@ -217,13 +220,13 @@ function ModuleCheckboxes({
   );
 }
 
-const emptyNewForm = { nome: "", email: "", role: "CAMAREIRA", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[], foto: null as string | null };
+const emptyNewForm = { nome: "", email: "", role: "CAMAREIRA", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[], foto: null as string | null, cozinha: false };
 
 export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ nome: "", email: "", role: "", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[], foto: null as string | null });
+  const [editForm, setEditForm] = useState({ nome: "", email: "", role: "", telegramChatId: "", whatsapp: "", password: "", modules: [] as string[], foto: null as string | null, cozinha: false });
   const [newForm, setNewForm] = useState(emptyNewForm);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -344,6 +347,14 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
               <p style={{ ...labelStyle, marginBottom: 6 }}>Módulos que essa pessoa pode acessar</p>
               <ModuleCheckboxes value={newForm.modules} onChange={(v) => setNewForm({ ...newForm, modules: v })} />
             </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "#1d1d1f" }}>
+              <input
+                type="checkbox"
+                checked={newForm.cozinha}
+                onChange={(e) => setNewForm({ ...newForm, cozinha: e.target.checked, modules: e.target.checked && !newForm.modules.includes("RESTAURANT") ? [...newForm.modules, "RESTAURANT"] : newForm.modules })}
+              />
+              Cozinha — pode operar o kanban de pedidos do Restaurante
+            </label>
           </div>
           <button onClick={adicionar} disabled={salvando || !newForm.nome || !newForm.email || !newForm.password} style={btnStyle(true, salvando)}>
             Adicionar
@@ -400,6 +411,14 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
                   <p style={{ ...labelStyle, marginBottom: 6 }}>Módulos que essa pessoa pode acessar</p>
                   <ModuleCheckboxes value={editForm.modules} onChange={(v) => setEditForm({ ...editForm, modules: v })} />
                 </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "#1d1d1f" }}>
+                  <input
+                    type="checkbox"
+                    checked={editForm.cozinha}
+                    onChange={(e) => setEditForm({ ...editForm, cozinha: e.target.checked, modules: e.target.checked && !editForm.modules.includes("RESTAURANT") ? [...editForm.modules, "RESTAURANT"] : editForm.modules })}
+                  />
+                  Cozinha — pode operar o kanban de pedidos do Restaurante
+                </label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={salvarEdicao} disabled={salvando} style={btnStyle(true, salvando)}>
                     Salvar
@@ -451,6 +470,7 @@ export function UsuariosClient({ somenteLeitura }: { somenteLeitura: boolean }) 
                           password: "",
                           modules: u.modules || [],
                           foto: u.foto,
+                          cozinha: u.cozinha ?? false,
                         });
                       }}
                       style={{ background: "none", border: "none", color: "#0071e3", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
