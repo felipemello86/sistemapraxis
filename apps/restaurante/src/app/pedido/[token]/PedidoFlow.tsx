@@ -112,7 +112,7 @@ export function PedidoFlow({
             fresquinho na UH <strong>{uhNumero}</strong>, no horário que preferir.
           </p>
           {jaConfirmado && (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-4">
+            <p className="text-sm text-gray-600 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 mt-4">
               Você já confirmou um pedido — pode revisar e alterar enquanto a cozinha não começar o preparo.
             </p>
           )}
@@ -136,7 +136,7 @@ export function PedidoFlow({
               <div key={s.id}>
                 <div className="flex items-baseline justify-between mb-2">
                   <h2 className="font-bold text-gray-800">{s.nome}</h2>
-                  <span className={`text-xs font-medium ${usado >= limite ? "text-amber-700" : "text-gray-400"}`}>
+                  <span className={`text-xs font-medium ${usado >= limite ? "text-gray-900" : "text-gray-400"}`}>
                     {usado}/{limite}
                   </span>
                 </div>
@@ -145,7 +145,7 @@ export function PedidoFlow({
                     const q = qtd[i.id] ?? 0;
                     const lotado = usado >= limite;
                     return (
-                      <div key={i.id} className={`flex items-center gap-3 rounded-xl border p-3 transition-colors ${q > 0 ? "border-amber-400 bg-amber-50" : "border-gray-200 bg-white"}`}>
+                      <div key={i.id} className={`flex items-center gap-3 rounded-xl border p-3 transition-colors ${q > 0 ? "border-gray-900 bg-gray-50" : "border-gray-200 bg-white"}`}>
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-gray-900">{i.nome}</p>
                           {i.descricao && <p className="text-xs text-gray-500 mt-0.5">{i.descricao}</p>}
@@ -154,18 +154,18 @@ export function PedidoFlow({
                           <button
                             onClick={() => ajustar(s, i.id, 1)}
                             disabled={lotado}
-                            className="w-9 h-9 rounded-full bg-amber-600 text-white flex items-center justify-center disabled:opacity-30 flex-shrink-0"
+                            className="w-9 h-9 rounded-full bg-gray-900 text-white flex items-center justify-center disabled:opacity-30 flex-shrink-0"
                             aria-label={`Adicionar ${i.nome}`}
                           >
                             <Plus className="w-4 h-4" />
                           </button>
                         ) : (
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <button onClick={() => ajustar(s, i.id, -1)} className="w-8 h-8 rounded-full border border-amber-400 text-amber-700 flex items-center justify-center" aria-label="Remover um">
+                            <button onClick={() => ajustar(s, i.id, -1)} className="w-8 h-8 rounded-full border border-gray-400 text-gray-700 flex items-center justify-center" aria-label="Remover um">
                               <Minus className="w-4 h-4" />
                             </button>
-                            <span className="w-5 text-center font-bold text-amber-800">{q}</span>
-                            <button onClick={() => ajustar(s, i.id, 1)} disabled={lotado} className="w-8 h-8 rounded-full bg-amber-600 text-white flex items-center justify-center disabled:opacity-30" aria-label="Adicionar mais um">
+                            <span className="w-5 text-center font-bold text-gray-900">{q}</span>
+                            <button onClick={() => ajustar(s, i.id, 1)} disabled={lotado} className="w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center disabled:opacity-30" aria-label="Adicionar mais um">
                               <Plus className="w-4 h-4" />
                             </button>
                           </div>
@@ -194,7 +194,7 @@ export function PedidoFlow({
         <StepHeader titulo="Alguma observação?" subtitulo="Alergias, preferências, ponto do ovo... (opcional)" />
         <textarea
           rows={4}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
           placeholder="ex: sem lactose, por favor 🙏"
           value={obs}
           onChange={(e) => setObs(e.target.value)}
@@ -214,7 +214,7 @@ export function PedidoFlow({
               key={h}
               onClick={() => setHorario(h)}
               className={`flex items-center justify-center gap-2 rounded-xl border py-3 font-semibold transition-colors ${
-                horario === h ? "border-amber-500 bg-amber-600 text-white" : "border-gray-200 bg-white text-gray-700 hover:border-amber-300"
+                horario === h ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-700 hover:border-gray-400"
               }`}
             >
               <Clock className="w-4 h-4" /> {h}
@@ -265,7 +265,7 @@ export function PedidoFlow({
           <div className="p-4">
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">Entrega</p>
             <p className="font-medium text-gray-900 flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-amber-600" /> {horario}
+              <Clock className="w-4 h-4 text-gray-500" /> {horario}
             </p>
           </div>
         </div>
@@ -274,7 +274,7 @@ export function PedidoFlow({
           <button onClick={confirmar} disabled={enviando} className="btn-cta w-full justify-center">
             <Check className="w-5 h-5" /> {enviando ? "Enviando..." : "Confirmar pedido"}
           </button>
-          <button onClick={() => setEtapa("selecao")} className="flex items-center justify-center gap-1.5 text-amber-700 font-medium py-2 text-sm">
+          <button onClick={() => setEtapa("selecao")} className="flex items-center justify-center gap-1.5 text-gray-600 font-medium py-2 text-sm">
             <Pencil className="w-4 h-4" /> Editar pedido
           </button>
         </div>
@@ -292,7 +292,7 @@ export function PedidoFlow({
           Obrigado, {primeiroNome}! Seu café da manhã chega na UH <strong>{uhNumero}</strong> às{" "}
           <strong>{horario}</strong>. Bom apetite! ☕️
         </p>
-        <button onClick={() => setEtapa("resumo")} className="mt-6 text-amber-700 font-medium text-sm underline">
+        <button onClick={() => setEtapa("resumo")} className="mt-6 text-gray-600 font-medium text-sm underline">
           Rever meu pedido
         </button>
       </div>
@@ -304,9 +304,9 @@ export function PedidoFlow({
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-amber-50" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+    <div className="min-h-screen bg-gray-50" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <div className="max-w-md mx-auto px-5 py-8 pb-16">
-        <div className="flex items-center justify-center gap-2 mb-8 text-amber-800">
+        <div className="flex items-center justify-center gap-2 mb-8 text-gray-500">
           <Coffee className="w-5 h-5" />
           <span className="font-bold tracking-wide text-sm uppercase">Café da manhã</span>
         </div>

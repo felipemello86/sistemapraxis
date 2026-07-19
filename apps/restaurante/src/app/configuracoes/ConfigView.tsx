@@ -229,7 +229,7 @@ export function ConfigView() {
             </div>
 
             {itemSecaoId === s.id ? (
-              <div className="mt-3 border border-amber-200 bg-amber-50/50 rounded-lg p-3 space-y-3">
+              <div className="mt-3 border border-gray-200 bg-gray-50 rounded-lg p-3 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="label">Nome no cardápio</label>
@@ -298,7 +298,7 @@ export function ConfigView() {
                 </div>
               </div>
             ) : (
-              <button onClick={() => abrirNovoItem(s.id)} className="mt-3 flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900">
+              <button onClick={() => abrirNovoItem(s.id)} className="mt-3 flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900">
                 <Plus className="w-4 h-4" /> Adicionar item
               </button>
             )}

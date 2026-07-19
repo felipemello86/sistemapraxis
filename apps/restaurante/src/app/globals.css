@@ -35,9 +35,10 @@
     @apply block text-sm font-medium text-gray-700 mb-1;
   }
 
-  /* CTA grande do fluxo público do hóspede (PedidoFlow) — âmbar, cheio. */
+  /* CTA grande do fluxo público do hóspede (PedidoFlow) — escuro, neutro,
+     mesmo tom do estilo Manutenção adotado no módulo todo. */
   .btn-cta {
-    @apply inline-flex items-center gap-2 bg-amber-600 text-white px-6 py-3.5 rounded-xl font-semibold text-base shadow-sm hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors;
+    @apply inline-flex items-center gap-2 bg-gray-900 text-white px-6 py-3.5 rounded-xl font-semibold text-base shadow-sm hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors;
   }
 
   /* Compensa, no mobile, a altura real do header fixo do Sidebar (56px +

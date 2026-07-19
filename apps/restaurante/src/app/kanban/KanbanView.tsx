@@ -99,7 +99,7 @@ export function KanbanView() {
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-bold text-gray-900 truncate">{p.clienteNome}</p>
                           {p.horarioEntrega && (
-                            <span className="flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 rounded-full px-2 py-0.5 flex-shrink-0">
+                            <span className="flex items-center gap-1 text-xs font-bold text-gray-700 bg-gray-100 rounded-full px-2 py-0.5 flex-shrink-0">
                               <Clock className="w-3 h-3" /> {p.horarioEntrega}
                             </span>
                           )}
@@ -135,7 +135,7 @@ export function KanbanView() {
                               className={`flex items-center gap-0.5 text-xs font-semibold py-1.5 px-2.5 rounded-lg transition-colors disabled:opacity-50 ${
                                 ORDEM[idx + 1] === "FINALIZADO"
                                   ? "bg-green-600 text-white hover:bg-green-700"
-                                  : "bg-amber-600 text-white hover:bg-amber-700"
+                                  : "bg-gray-900 text-white hover:bg-gray-800"
                               }`}
                             >
                               {movendo === p.id ? "..." : ORDEM[idx + 1] === "FINALIZADO" ? "Finalizar" : "Avançar"}

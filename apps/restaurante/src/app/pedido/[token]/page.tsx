@@ -14,7 +14,7 @@ export default async function PedidoPublicoPage({ params }: { params: { token: s
 
   if (!pedido) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-amber-50 p-6">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
         <div className="text-center max-w-sm">
           <p className="text-5xl mb-4">🥐</p>
           <h1 className="text-xl font-bold text-gray-800">Link não encontrado</h1>

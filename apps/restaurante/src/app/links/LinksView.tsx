@@ -31,6 +31,21 @@ function linkPublico(token: string) {
   return `${base}/restaurante/pedido/${token}`;
 }
 
+// O botão copiar não copia só a URL: monta a mensagem pronta pro Atendimento
+// colar direto no chat com o hóspede (WhatsApp etc).
+function mensagemPronta(p: { clienteNome: string; uhNumero: string; token: string }) {
+  const primeiroNome = p.clienteNome.split(" ")[0];
+  return [
+    `Olá, ${primeiroNome}! ☀️`,
+    "",
+    `Preparamos um link especial pra você montar o seu café da manhã: é só escolher seus itens favoritos e o horário em que prefere receber na UH ${p.uhNumero}.`,
+    "",
+    linkPublico(p.token),
+    "",
+    "Qualquer dúvida, é só chamar a gente por aqui. Bom apetite! 🥐",
+  ].join("\n");
+}
+
 export function LinksView() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,17 +83,18 @@ export function LinksView() {
     setUh("");
     setTipo("SINGLE");
     await carregar();
-    copiar(data.token);
+    copiar(data);
   }
 
-  async function copiar(token: string) {
+  async function copiar(p: { clienteNome: string; uhNumero: string; token: string }) {
+    const msg = mensagemPronta(p);
     try {
-      await navigator.clipboard.writeText(linkPublico(token));
-      setCopiado(token);
+      await navigator.clipboard.writeText(msg);
+      setCopiado(p.token);
       setTimeout(() => setCopiado(null), 2500);
     } catch {
-      // clipboard bloqueado (http) — mostra o link pro usuário copiar na mão
-      prompt("Copie o link:", linkPublico(token));
+      // clipboard bloqueado (http) — mostra a mensagem pro usuário copiar na mão
+      prompt("Copie a mensagem:", msg);
     }
   }
 
@@ -114,7 +130,7 @@ export function LinksView() {
                   type="button"
                   onClick={() => setTipo(t)}
                   className={`flex-1 py-2 text-sm font-semibold transition-colors ${
-                    tipo === t ? "bg-amber-600 text-white" : "bg-white text-gray-600 hover:bg-amber-50"
+                    tipo === t ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                   }`}
                 >
                   {t === "SINGLE" ? "Single" : "Double"}
@@ -151,7 +167,7 @@ export function LinksView() {
                     <span className="text-sm text-gray-500 flex items-center gap-1">
                       <BedDouble className="w-3.5 h-3.5" /> UH {p.uhNumero}
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-700 border border-gray-200">
                       {p.tipo === "DOUBLE" ? "Double" : "Single"}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.cls}`}>{st.label}</span>
@@ -164,9 +180,9 @@ export function LinksView() {
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button
-                    onClick={() => copiar(p.token)}
-                    className="p-2 rounded-lg text-gray-500 hover:bg-amber-50 hover:text-amber-700 transition-colors"
-                    title="Copiar link do hóspede"
+                    onClick={() => copiar(p)}
+                    className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                    title="Copiar mensagem pronta pro hóspede"
                   >
                     {copiado === p.token ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                   </button>
