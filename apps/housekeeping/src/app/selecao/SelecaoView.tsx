@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageSquarePlus, MessageSquare, MessageCircle, MessageCirclePlus } from "lucide-react";
+import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageCircle, MessageCirclePlus } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -320,8 +320,6 @@ export default function SelecaoView({ role }: { role: string }) {
   const [confirmandoRenovar, setConfirmandoRenovar] = useState<string | null>(null);
   const [manutencaoModal, setManutencaoModal] = useState<UHSel | null>(null);
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
-  const [editandoObsId, setEditandoObsId] = useState<string | null>(null);
-  const [obsInput, setObsInput] = useState("");
   const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
   const [comentarioInput, setComentarioInput] = useState("");
   const [modoReedicao, setModoReedicao] = useState(false);
@@ -430,17 +428,6 @@ export default function SelecaoView({ role }: { role: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "toggle_manutencao", data, uhId: uh.uhId, descricao }),
     });
-    carregar();
-  }
-
-  async function salvarObservacao(uh: UHSel) {
-    if (!uh.assignmentId) return;
-    await apiFetch("/api/selecao-uhs", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "set_observacao", data, uhId: uh.uhId, assignmentId: uh.assignmentId, observacoes: obsInput }),
-    });
-    setEditandoObsId(null);
     carregar();
   }
 
@@ -845,42 +832,6 @@ export default function SelecaoView({ role }: { role: string }) {
                       </p>
                     )}
 
-                    {uh.assignmentId && (
-                      editandoObsId === uh.uhId ? (
-                        <div className="mt-1.5 flex items-start gap-1.5">
-                          <textarea
-                            autoFocus
-                            value={obsInput}
-                            onChange={(e) => setObsInput(e.target.value)}
-                            placeholder="Orientação para a camareira…"
-                            className="flex-1 border border-amber-300 rounded-lg px-2 py-1 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50"
-                            rows={2}
-                            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); salvarObservacao(uh); } }}
-                          />
-                          <div className="flex flex-col gap-1">
-                            <button onClick={() => salvarObservacao(uh)}
-                              className="p-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600">
-                              <Check className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => setEditandoObsId(null)}
-                              className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-100">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ) : uh.observacoes ? (
-                        <button
-                          className="w-full text-left mt-1.5"
-                          onClick={() => !somenteLeitura && (setEditandoObsId(uh.uhId), setObsInput(uh.observacoes ?? ""))}
-                        >
-                          <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-2 py-1 border border-amber-200 flex items-start gap-1">
-                            <MessageSquare className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
-                            {uh.observacoes}
-                          </p>
-                        </button>
-                      ) : null
-                    )}
-
                     {editandoComentarioId === uh.uhId ? (
                       <div className="mt-1.5 flex items-start gap-1.5">
                         <textarea
@@ -947,19 +898,6 @@ export default function SelecaoView({ role }: { role: string }) {
                         )}
                         {!somenteLeitura && (
                           <>
-                            {uh.assignmentId && (
-                              <button
-                                onClick={() => { setEditandoObsId(uh.uhId); setObsInput(uh.observacoes ?? ""); }}
-                                title={uh.observacoes ? "Editar observação" : "Adicionar observação"}
-                                className={`p-1.5 rounded-lg transition-colors ${
-                                  uh.observacoes
-                                    ? "bg-amber-100 text-amber-600 hover:bg-amber-200"
-                                    : "text-gray-300 hover:text-amber-500 hover:bg-amber-50"
-                                }`}
-                              >
-                                <MessageSquarePlus className="w-4 h-4" />
-                              </button>
-                            )}
                             <button
                               onClick={() => toggleManutencao(uh)}
                               title={uh.emManutencao ? "Remover manutenção" : "Marcar em manutenção"}
