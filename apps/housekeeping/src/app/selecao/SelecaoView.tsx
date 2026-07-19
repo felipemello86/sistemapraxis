@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageCircle, MessageCirclePlus, Paperclip } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
+import QueixaDetailModal from "@/components/QueixaDetailModal";
 
 // Portado de apps/housekeeping/src/app/selecao/SelecaoView.tsx (v1). Mesma UI
 // e comportamento. Diferenças desta fatia:
@@ -28,7 +29,7 @@ type UHSel = {
   comentario: string | null;
   comentarioPorNome: string | null;
   comentarioEm: string | null;
-  queixas: { id: string; tipo: string; descricao: string; pontosDescontados: number | null; anexos: QueixaAnexo[]; createdAt: string }[];
+  queixas: { id: string; titulo: string; tipo: string; descricao: string; pontosDescontados: number | null; anexos: QueixaAnexo[]; createdAt: string }[];
 };
 
 type QueixaAnexo = { url: string; fileName: string; fileSize?: number };
@@ -324,12 +325,20 @@ export default function SelecaoView({ role }: { role: string }) {
   const [manutencaoModal, setManutencaoModal] = useState<UHSel | null>(null);
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
   const [queixaModal, setQueixaModal] = useState<UHSel | null>(null);
+  const [queixaTituloInput, setQueixaTituloInput] = useState("");
   const [queixaTipoInput, setQueixaTipoInput] = useState<"LIMPEZA" | "MANUTENCAO">("LIMPEZA");
   const [queixaDescricaoInput, setQueixaDescricaoInput] = useState("");
   const [enviandoQueixa, setEnviandoQueixa] = useState(false);
   const [queixaAnexos, setQueixaAnexos] = useState<QueixaAnexo[]>([]);
   const [enviandoAnexoQueixa, setEnviandoAnexoQueixa] = useState(false);
   const [erroAnexoQueixa, setErroAnexoQueixa] = useState<string | null>(null);
+  const [queixaDetalheId, setQueixaDetalheId] = useState<string | null>(null);
+  const [queixaEscolherEntre, setQueixaEscolherEntre] = useState<UHSel["queixas"] | null>(null);
+
+  function abrirBalaoQueixas(queixas: UHSel["queixas"]) {
+    if (queixas.length === 1) setQueixaDetalheId(queixas[0].id);
+    else setQueixaEscolherEntre(queixas);
+  }
   const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
   const [comentarioInput, setComentarioInput] = useState("");
   const [modoReedicao, setModoReedicao] = useState(false);
@@ -442,6 +451,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   function abrirQueixa(uh: UHSel) {
+    setQueixaTituloInput("");
     setQueixaTipoInput("LIMPEZA");
     setQueixaDescricaoInput("");
     setQueixaAnexos([]);
@@ -483,7 +493,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function registrarQueixa() {
-    if (!queixaModal || !queixaDescricaoInput.trim()) return;
+    if (!queixaModal || !queixaTituloInput.trim() || !queixaDescricaoInput.trim()) return;
     setEnviandoQueixa(true);
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
@@ -492,6 +502,7 @@ export default function SelecaoView({ role }: { role: string }) {
         action: "registrar_queixa",
         data,
         uhId: queixaModal.uhId,
+        titulo: queixaTituloInput.trim(),
         tipo: queixaTipoInput,
         descricao: queixaDescricaoInput.trim(),
         anexos: queixaAnexos,
@@ -654,6 +665,17 @@ export default function SelecaoView({ role }: { role: string }) {
             </div>
             <p className="text-sm text-gray-500 mb-3">UH <strong>{queixaModal.numero}</strong> — selecione o tipo e descreva o que o hóspede relatou.</p>
 
+            <label className="block text-xs text-gray-500 font-medium mb-1">Título da queixa</label>
+            <input
+              type="text"
+              autoFocus
+              value={queixaTituloInput}
+              onChange={(e) => setQueixaTituloInput(e.target.value)}
+              placeholder="Ex.: Absorvente embaixo da cama"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-red-400"
+            />
+            <p className="text-xs text-gray-400 -mt-2 mb-3">Esse é o título que vai aparecer no card em Avaliações.</p>
+
             <div className="flex gap-2 mb-3">
               <button
                 onClick={() => setQueixaTipoInput("LIMPEZA")}
@@ -688,7 +710,6 @@ export default function SelecaoView({ role }: { role: string }) {
             )}
 
             <textarea
-              autoFocus
               value={queixaDescricaoInput}
               onChange={(e) => setQueixaDescricaoInput(e.target.value)}
               placeholder="O que o hóspede relatou…"
@@ -733,7 +754,7 @@ export default function SelecaoView({ role }: { role: string }) {
                 Cancelar
               </button>
               <button
-                disabled={!queixaDescricaoInput.trim() || enviandoQueixa}
+                disabled={!queixaTituloInput.trim() || !queixaDescricaoInput.trim() || enviandoQueixa}
                 onClick={registrarQueixa}
                 className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -996,12 +1017,13 @@ export default function SelecaoView({ role }: { role: string }) {
                           </span>
                         )}
                         {uh.queixas.length > 0 && (
-                          <span
-                            title={uh.queixas.map((q) => q.descricao).join(" · ")}
-                            className="flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 border border-red-300 rounded-full px-2 py-0.5"
+                          <button
+                            onClick={() => abrirBalaoQueixas(uh.queixas)}
+                            title={uh.queixas.map((q) => q.titulo).join(" · ")}
+                            className="flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-100 border border-red-300 rounded-full px-2 py-0.5 hover:bg-red-200 transition-colors"
                           >
                             <AlertTriangle className="w-3 h-3" /> Queixa{uh.queixas.length > 1 ? "s" : ""} ({uh.queixas.length})
-                          </span>
+                          </button>
                         )}
                       </div>
                     )}
@@ -1188,6 +1210,36 @@ export default function SelecaoView({ role }: { role: string }) {
         <UHDetailModal
           assignmentId={detalheAssignmentId}
           onClose={() => setDetalheAssignmentId(null)}
+        />
+      )}
+
+      {queixaEscolherEntre && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setQueixaEscolherEntre(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <p className="font-bold text-gray-900 mb-3">Qual queixa você quer ver?</p>
+            <div className="space-y-1.5">
+              {queixaEscolherEntre.map((q) => (
+                <button
+                  key={q.id}
+                  onClick={() => { setQueixaDetalheId(q.id); setQueixaEscolherEntre(null); }}
+                  className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
+                >
+                  <p className="text-sm font-medium text-gray-800 truncate">{q.titulo}</p>
+                  <p className="text-xs text-gray-400">{q.tipo === "LIMPEZA" ? "Limpeza" : "Manutenção"}</p>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setQueixaEscolherEntre(null)} className="mt-3 w-full py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {queixaDetalheId && (
+        <QueixaDetailModal
+          queixaId={queixaDetalheId}
+          onClose={() => setQueixaDetalheId(null)}
         />
       )}
     </div>

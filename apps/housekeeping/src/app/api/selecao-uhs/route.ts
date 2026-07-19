@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.guestComplaint.findMany({
       where: { tenantId, data },
-      select: { id: true, uhId: true, tipo: true, descricao: true, pontosDescontados: true, anexos: true, createdAt: true },
+      select: { id: true, uhId: true, titulo: true, tipo: true, descricao: true, pontosDescontados: true, anexos: true, createdAt: true },
     }),
   ]);
 
@@ -98,6 +98,7 @@ export async function GET(req: NextRequest) {
         comentarioEm: s.comentarioEm ?? null,
         queixas: (queixasByUH.get(s.uhId) ?? []).map((q) => ({
           id: q.id,
+          titulo: q.titulo,
           tipo: q.tipo,
           descricao: q.descricao,
           pontosDescontados: q.pontosDescontados,
@@ -174,7 +175,7 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo } = await req.json();
 
   const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
@@ -367,6 +368,8 @@ export async function PATCH(req: NextRequest) {
     if (!["LIMPEZA", "MANUTENCAO"].includes(tipo)) {
       return NextResponse.json({ error: "tipo deve ser LIMPEZA ou MANUTENCAO" }, { status: 400 });
     }
+    const tituloTexto = titulo?.trim();
+    if (!tituloTexto) return NextResponse.json({ error: "titulo obrigatório" }, { status: 400 });
     const texto = descricao?.trim();
     if (!texto) return NextResponse.json({ error: "descricao obrigatória" }, { status: 400 });
 
@@ -398,7 +401,7 @@ export async function PATCH(req: NextRequest) {
         tenantId,
         propertyId: uh.propertyId,
         platform: "INTERNO",
-        guestName: "Hóspede (via Atendimento)",
+        guestName: tituloTexto,
         comment: `Queixa de ${tipoLabel} — UH ${uh.numero}\n\n${texto}`,
         ratingRaw: 1,
         ratingScaleMax: 5,
@@ -414,7 +417,7 @@ export async function PATCH(req: NextRequest) {
         reviewId: review.id,
         actorId: session.userId,
         action: "CRIADO_QUEIXA_GOVERNANCA",
-        detail: `Card criado automaticamente a partir de uma queixa de ${tipoLabel} registrada por ${session.nome} na tela Seleção e Liberação (UH ${uh.numero}).`,
+        detail: `Card "${tituloTexto}" criado automaticamente a partir de uma queixa de ${tipoLabel} registrada por ${session.nome} na tela Seleção e Liberação (UH ${uh.numero}).`,
       },
     });
 
@@ -435,6 +438,7 @@ export async function PATCH(req: NextRequest) {
     await prisma.guestComplaint.create({
       data: {
         tenantId, data, uhId, tipo,
+        titulo: tituloTexto,
         descricao: texto,
         anexos: JSON.stringify(anexosValidos),
         registradoPorId: session.userId,

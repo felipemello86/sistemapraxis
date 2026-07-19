@@ -5,6 +5,7 @@ import { AlertTriangle, Trophy, Trash2, RotateCcw, Eraser, Timer } from "lucide-
 import { scoreLabel, formatarTempo } from "@/lib/scoring";
 import PeriodoPicker, { Periodo, buildQuery } from "./PeriodoPicker";
 import UHDetailModal from "@/components/UHDetailModal";
+import QueixaDetailModal from "@/components/QueixaDetailModal";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/movimentos/PerformanceView.tsx (v1).
@@ -58,7 +59,7 @@ function AvatarTick({ x, y, payload, chartData, prefix }: any) {
 const hoje = () => new Date().toLocaleDateString("en-CA");
 
 type DetalheUH = { sessaoId: string; assignmentId: string; uhNumero: string; data: string; duracaoSegundos: number; falhas: number; score: number; excluidoDoScore: boolean; multiplaCamareira?: boolean };
-type QueixaLimpeza = { id: string; data: string; uhNumero: string; descricao: string; pontosDescontados: number };
+type QueixaLimpeza = { id: string; data: string; uhNumero: string; titulo: string; descricao: string; pontosDescontados: number };
 type Score = { id: string; nome: string; foto?: string | null; mediaScore: number | null; totalUHs: number; totalFalhas: number; detalhes?: DetalheUH[]; totalPenalidades?: number; queixasLimpeza?: QueixaLimpeza[] };
 
 function Avatar({ foto, nome }: { foto?: string | null; nome: string }) {
@@ -96,6 +97,7 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
   const [toggling, setToggling] = useState<string | null>(null);
   const [excluindoTodos, setExcluindoTodos] = useState<string | null>(null);
   const [detalheAssignmentId, setDetalheAssignmentId] = useState<string | null>(null);
+  const [queixaDetalheId, setQueixaDetalheId] = useState<string | null>(null);
 
   // No app nativo (Capacitor) a tela é sempre estreita e o ranking é o que
   // importa pra quem tá no chão de fábrica — os gráficos de barra só disputam
@@ -269,9 +271,12 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                           <p className="text-xs font-medium text-red-500 uppercase tracking-wide mb-2">Queixas de hóspede (Limpeza)</p>
                           <div className="space-y-1.5">
                             {cam.queixasLimpeza.map((q) => (
-                              <div key={q.id} className="flex items-center gap-2 text-sm rounded-lg px-3 py-2 bg-red-50">
+                              <div key={q.id}
+                                className="flex items-center gap-2 text-sm rounded-lg px-3 py-2 bg-red-50 cursor-pointer hover:bg-red-100 transition-colors"
+                                onClick={() => setQueixaDetalheId(q.id)}>
                                 <span className="font-medium w-16 flex-shrink-0">{q.uhNumero}</span>
-                                <span className="text-gray-400 text-xs flex-1 truncate">{q.data} — {q.descricao}</span>
+                                <span className="text-gray-600 text-xs flex-1 truncate">{q.titulo}</span>
+                                <span className="text-gray-400 text-xs flex-shrink-0">{q.data}</span>
                                 <span className="font-bold flex-shrink-0 text-red-600">-{q.pontosDescontados} pts</span>
                               </div>
                             ))}
@@ -389,6 +394,13 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
         <UHDetailModal
           assignmentId={detalheAssignmentId}
           onClose={() => setDetalheAssignmentId(null)}
+        />
+      )}
+
+      {queixaDetalheId && (
+        <QueixaDetailModal
+          queixaId={queixaDetalheId}
+          onClose={() => setQueixaDetalheId(null)}
         />
       )}
     </div>

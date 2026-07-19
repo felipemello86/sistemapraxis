@@ -106,6 +106,7 @@ export async function GET(req: NextRequest) {
       camareiraId: true,
       pontosDescontados: true,
       data: true,
+      titulo: true,
       descricao: true,
       uh: { select: { numero: true } },
     },
@@ -130,6 +131,7 @@ export async function GET(req: NextRequest) {
       id: q.id,
       data: q.data,
       uhNumero: q.uh.numero,
+      titulo: q.titulo,
       descricao: q.descricao,
       pontosDescontados: q.pontosDescontados ?? 0,
     }));

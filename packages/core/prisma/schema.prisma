@@ -514,6 +514,10 @@ model GuestComplaint {
   uhId String
   uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
 
+  // Preenchido obrigatoriamente na abertura da queixa — é o mesmo texto
+  // usado como Review.guestName do card espelho (ver abaixo), já que é ele
+  // que aparece como título no Kanban de Tratamento de Avaliações.
+  titulo    String
   tipo      String // LIMPEZA | MANUTENCAO
   descricao String @db.Text
   // JSON array de { url, fileName, fileSize } (Cloudinary, resource_type
