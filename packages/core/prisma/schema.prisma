@@ -516,6 +516,11 @@ model GuestComplaint {
 
   tipo      String // LIMPEZA | MANUTENCAO
   descricao String @db.Text
+  // JSON array de { url, fileName, fileSize } (Cloudinary, resource_type
+  // "auto" — aceita foto, PDF etc.) — anexo opcional de evidência. Os mesmos
+  // arquivos também viram ReviewAttachment no card espelho (ver review
+  // abaixo), pra a GERENTE já ver tudo dentro do fluxo de Avaliações.
+  anexos String @default("[]")
 
   registradoPorId   String
   registradoPor     User   @relation("ComplaintRegisteredBy", fields: [registradoPorId], references: [id])

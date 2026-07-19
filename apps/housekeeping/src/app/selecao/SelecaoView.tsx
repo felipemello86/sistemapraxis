@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageCircle, MessageCirclePlus } from "lucide-react";
+import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageCircle, MessageCirclePlus, Paperclip } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -28,8 +28,10 @@ type UHSel = {
   comentario: string | null;
   comentarioPorNome: string | null;
   comentarioEm: string | null;
-  queixas: { id: string; tipo: string; descricao: string; pontosDescontados: number | null; createdAt: string }[];
+  queixas: { id: string; tipo: string; descricao: string; pontosDescontados: number | null; anexos: QueixaAnexo[]; createdAt: string }[];
 };
+
+type QueixaAnexo = { url: string; fileName: string; fileSize?: number };
 
 type UH = { id: string; numero: string };
 
@@ -325,6 +327,9 @@ export default function SelecaoView({ role }: { role: string }) {
   const [queixaTipoInput, setQueixaTipoInput] = useState<"LIMPEZA" | "MANUTENCAO">("LIMPEZA");
   const [queixaDescricaoInput, setQueixaDescricaoInput] = useState("");
   const [enviandoQueixa, setEnviandoQueixa] = useState(false);
+  const [queixaAnexos, setQueixaAnexos] = useState<QueixaAnexo[]>([]);
+  const [enviandoAnexoQueixa, setEnviandoAnexoQueixa] = useState(false);
+  const [erroAnexoQueixa, setErroAnexoQueixa] = useState<string | null>(null);
   const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
   const [comentarioInput, setComentarioInput] = useState("");
   const [modoReedicao, setModoReedicao] = useState(false);
@@ -439,7 +444,42 @@ export default function SelecaoView({ role }: { role: string }) {
   function abrirQueixa(uh: UHSel) {
     setQueixaTipoInput("LIMPEZA");
     setQueixaDescricaoInput("");
+    setQueixaAnexos([]);
+    setErroAnexoQueixa(null);
     setQueixaModal(uh);
+  }
+
+  // Anexo é opcional — pode ser foto, PDF etc. (resourceType=auto deixa o
+  // Cloudinary detectar sozinho, ver /api/upload). Enviado assim que
+  // escolhido; a URL só é usada no PATCH final, junto com o resto da queixa.
+  async function uploadAnexoQueixa(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setErroAnexoQueixa("Arquivo muito grande (máximo 8 MB).");
+      return;
+    }
+    setErroAnexoQueixa(null);
+    setEnviandoAnexoQueixa(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("tipo", "queixa");
+      fd.append("pasta", "queixas");
+      fd.append("resourceType", "auto");
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (json.url) {
+        setQueixaAnexos((prev) => [...prev, { url: json.url, fileName: json.originalName ?? file.name, fileSize: json.fileSize }]);
+      } else {
+        setErroAnexoQueixa(json.error ?? "Falha ao enviar o anexo.");
+      }
+    } catch {
+      setErroAnexoQueixa("Falha ao enviar o anexo.");
+    } finally {
+      setEnviandoAnexoQueixa(false);
+    }
   }
 
   async function registrarQueixa() {
@@ -454,10 +494,12 @@ export default function SelecaoView({ role }: { role: string }) {
         uhId: queixaModal.uhId,
         tipo: queixaTipoInput,
         descricao: queixaDescricaoInput.trim(),
+        anexos: queixaAnexos,
       }),
     });
     setEnviandoQueixa(false);
     setQueixaModal(null);
+    setQueixaAnexos([]);
     carregar();
   }
 
@@ -653,6 +695,36 @@ export default function SelecaoView({ role }: { role: string }) {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
               rows={3}
             />
+
+            <div className="mt-3">
+              <p className="text-xs text-gray-500 font-medium mb-1.5">Anexo (opcional)</p>
+              {queixaAnexos.length > 0 && (
+                <div className="space-y-1 mb-2">
+                  {queixaAnexos.map((a, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5">
+                      <Paperclip className="w-3.5 h-3.5 flex-shrink-0 text-gray-400" />
+                      <span className="flex-1 truncate text-gray-600">{a.fileName}</span>
+                      <button onClick={() => setQueixaAnexos((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-gray-400 hover:text-red-500 flex-shrink-0">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {erroAnexoQueixa && <p className="text-xs text-red-500 mb-1.5">{erroAnexoQueixa}</p>}
+              <label className={`flex items-center gap-2 cursor-pointer text-sm rounded-lg px-3 py-2 border ${enviandoAnexoQueixa ? "opacity-50 border-gray-200 bg-gray-50 text-gray-400" : "border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"}`}>
+                <Paperclip className="w-4 h-4 flex-shrink-0" />
+                <span>{enviandoAnexoQueixa ? "Enviando…" : "Anexar arquivo"}</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  onChange={uploadAnexoQueixa}
+                  disabled={enviandoAnexoQueixa}
+                />
+              </label>
+            </div>
+
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => setQueixaModal(null)}

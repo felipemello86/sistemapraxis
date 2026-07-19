@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     }),
     prisma.guestComplaint.findMany({
       where: { tenantId, data },
-      select: { id: true, uhId: true, tipo: true, descricao: true, pontosDescontados: true, createdAt: true },
+      select: { id: true, uhId: true, tipo: true, descricao: true, pontosDescontados: true, anexos: true, createdAt: true },
     }),
   ]);
 
@@ -101,6 +101,7 @@ export async function GET(req: NextRequest) {
           tipo: q.tipo,
           descricao: q.descricao,
           pontosDescontados: q.pontosDescontados,
+          anexos: (() => { try { return JSON.parse(q.anexos); } catch { return []; } })(),
           createdAt: q.createdAt,
         })),
       };
@@ -173,7 +174,7 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos } = await req.json();
 
   const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
@@ -369,6 +370,13 @@ export async function PATCH(req: NextRequest) {
     const texto = descricao?.trim();
     if (!texto) return NextResponse.json({ error: "descricao obrigatória" }, { status: 400 });
 
+    // Anexos são opcionais — já foram enviados pro Cloudinary pelo cliente
+    // (ver /api/upload, resourceType=auto) antes deste PATCH; aqui só
+    // recebemos { url, fileName, fileSize }[] já prontos.
+    const anexosValidos: { url: string; fileName: string; fileSize?: number }[] = Array.isArray(anexos)
+      ? anexos.filter((a: any) => a?.url)
+      : [];
+
     const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true, propertyId: true } });
     if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });
 
@@ -410,10 +418,25 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
+    // Anexos (opcionais) viram ReviewAttachment também — a GERENTE já vê
+    // tudo dentro do card, sem precisar voltar pra Governança.
+    if (anexosValidos.length > 0) {
+      await prisma.reviewAttachment.createMany({
+        data: anexosValidos.map((a) => ({
+          reviewId: review.id,
+          uploadedById: session.userId,
+          fileName: a.fileName || a.url.split("/").pop() || "anexo",
+          fileUrl: a.url,
+          fileSize: a.fileSize ?? null,
+        })),
+      });
+    }
+
     await prisma.guestComplaint.create({
       data: {
         tenantId, data, uhId, tipo,
         descricao: texto,
+        anexos: JSON.stringify(anexosValidos),
         registradoPorId: session.userId,
         registradoPorNome: session.nome,
         camareiraId,

@@ -36,6 +36,11 @@ export async function POST(req: NextRequest) {
     const sessaoId = formData.get("sessaoId") as string | null;
     const pasta = formData.get("pasta") as string | null;
     const tipo = (formData.get("tipo") as string) || "foto";
+    // "image" (default, todo o resto do app) exige que o arquivo seja uma
+    // imagem de verdade. "auto" deixa o Cloudinary detectar sozinho —
+    // usado pelo anexo (opcional) da queixa de hóspede, que pode ser foto,
+    // PDF etc. (mesmo padrão de apps/booking-reviews/src/lib/cloudinary.ts).
+    const resourceType = (formData.get("resourceType") as string) || "image";
 
     if (!file) {
       return NextResponse.json({ error: "file obrigatório" }, { status: 400 });
@@ -46,7 +51,10 @@ export async function POST(req: NextRequest) {
       : pasta
       ? `governanca/${pasta}`
       : "governanca/perfis";
-    const public_id = `${tipo}_${Date.now()}`;
+    // Extensão original preservada no public_id — sem ela, anexos tipo PDF
+    // baixam sem extensão (ver mesmo comentário em booking-reviews).
+    const ext = resourceType === "auto" && file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+    const public_id = `${tipo}_${Date.now()}${ext}`;
     const timestamp = String(Math.round(Date.now() / 1000));
 
     const signature = assinarRequisicao({ folder, public_id, timestamp });
@@ -59,7 +67,7 @@ export async function POST(req: NextRequest) {
     cldForm.append("folder", folder);
     cldForm.append("public_id", public_id);
 
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`, {
       method: "POST",
       body: cldForm,
     });
@@ -70,7 +78,12 @@ export async function POST(req: NextRequest) {
       throw new Error(data.error?.message || `Cloudinary error ${res.status}`);
     }
 
-    return NextResponse.json({ url: data.secure_url, filename: data.public_id });
+    return NextResponse.json({
+      url: data.secure_url,
+      filename: data.public_id,
+      fileSize: data.bytes ?? file.size,
+      originalName: file.name,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
