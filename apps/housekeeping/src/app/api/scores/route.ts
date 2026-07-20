@@ -72,6 +72,67 @@ export async function GET(req: NextRequest) {
 
   const config = await prisma.hkConfig.findUnique({ where: { tenantId } });
   const targetMinutos = config?.targetMinutes ?? 25;
+  const turnoInicioHora = config?.turnoInicioHora ?? "08:00";
+
+  // ── Relógio de disponibilidade (anti-sonegação de "iniciar") ──────────────
+  // Antes, o score de velocidade usava direto finalizadaEm - iniciadaEm, e
+  // iniciadaEm é um clique que a própria camareira controla — dava pra
+  // começar a arrumar de verdade e só apertar "iniciar" bem depois, escondendo
+  // o tempo real gasto. Decisão do Felipe (19/07): em vez de pontuar esse
+  // "deslocamento" como um bloco à parte, o relógio pontuado passa a contar
+  // de max(UH liberada, fim da UH anterior da mesma camareira no mesmo dia,
+  // início do turno) até finalizadaEm — nenhum desses três marcos é
+  // controlado pela camareira. turnoInicioHora é só o piso do dia inteiro,
+  // pra a 1ª UH liberada de madrugada não penalizar quem ainda nem chegou.
+  const liberacoes = await prisma.dailyUHSelection.findMany({
+    where: { tenantId, ...(Object.keys(whereData).length > 0 ? whereData : {}) },
+    select: { data: true, uhId: true, liberadaEm: true },
+  });
+  const liberadaEmPorUH = new Map<string, Date | null>();
+  for (const l of liberacoes) {
+    liberadaEmPorUH.set(`${l.data}|${l.uhId}`, l.liberadaEm);
+  }
+  function turnoInicioDate(data: string): Date {
+    // Brasil não observa mais horário de verão desde 2019 — offset fixo
+    // -03:00 (mesma convenção de lib/late-checkout.ts).
+    return new Date(`${data}T${turnoInicioHora}:00-03:00`);
+  }
+
+  // Encadeia "fim da UH anterior" usando TODAS as sessões finalizadas da
+  // camareira no período — não só o subconjunto elegível pra score (sem essa
+  // sessão excluída/Super Limpeza no meio, o encadeamento pularia ela e
+  // acabaria ancorando a UH seguinte cedo demais, superestimando o tempo
+  // pontuado dela). O filtro de elegibilidade pro score em si continua sendo
+  // aplicado depois, no cálculo de `sessoes`.
+  const todasSessoesDoPeriodo = await prisma.cleaningSession.findMany({
+    where: {
+      camareira: { tenantId },
+      finalizadaEm: { not: null },
+      assignment: Object.keys(whereData).length > 0 ? whereData : undefined,
+    },
+    select: { id: true, camareiraId: true, uhId: true, iniciadaEm: true, finalizadaEm: true, assignment: { select: { data: true } } },
+  });
+  const sessoesPorCamareiraDia = new Map<string, typeof todasSessoesDoPeriodo>();
+  for (const s of todasSessoesDoPeriodo) {
+    const chave = `${s.camareiraId}|${s.assignment.data}`;
+    sessoesPorCamareiraDia.set(chave, [...(sessoesPorCamareiraDia.get(chave) ?? []), s]);
+  }
+  const duracaoEfetivaPorSessao = new Map<string, number>();
+  for (const grupo of sessoesPorCamareiraDia.values()) {
+    const ordenado = [...grupo].sort((a, b) => a.iniciadaEm.getTime() - b.iniciadaEm.getTime());
+    let fimAnterior: Date | null = null;
+    for (const s of ordenado) {
+      const liberadaEm = liberadaEmPorUH.get(`${s.assignment.data}|${s.uhId}`) ?? null;
+      const candidatos = [turnoInicioDate(s.assignment.data), liberadaEm, fimAnterior].filter(
+        (d): d is Date => d != null
+      );
+      const ancora = new Date(Math.max(...candidatos.map((d) => d.getTime())));
+      const fim = (s.finalizadaEm ?? s.iniciadaEm) as Date;
+      const efetivaSegundos = Math.max(0, Math.round((fim.getTime() - ancora.getTime()) / 1000));
+      duracaoEfetivaPorSessao.set(s.id, efetivaSegundos);
+      fimAnterior = fim;
+    }
+  }
 
   // UHs com mais de uma camareira atribuída no mesmo dia (mutirão/"a duas")
   // não pontuam pra ninguém — tempo e inspeção deixam de ser individualmente
@@ -147,11 +208,17 @@ export async function GET(req: NextRequest) {
     const detalhes = minhasSessoes.map((s) => {
       const multiplaCamareira = isMultiplaCamareira(s.assignment.data, s.uhId);
       const falhas = s.inspection?.totalFalhas ?? 0;
+      // duracaoEfetivaSegundos é o tempo realmente pontuado (ver bloco do
+      // "relógio de disponibilidade" acima) — pode ser bem maior que
+      // duracaoSegundos (iniciadaEm→finalizadaEm) quando a camareira atrasa
+      // o "iniciar" de propósito. duracaoSegundos continua exibido como dado
+      // bruto/auditoria, mas não é mais o que decide o score.
+      const duracaoEfetivaSegundos = duracaoEfetivaPorSessao.get(s.id) ?? s.duracaoSegundos ?? 0;
       const score = multiplaCamareira
         ? 0
         : s.assignment.program?.tipo === "SUPER_LIMPEZA"
           ? calcularScoreSuperLimpeza(falhas)
-          : calcularScoreUH(s.duracaoSegundos ?? 0, falhas, targetMinutos);
+          : calcularScoreUH(duracaoEfetivaSegundos, falhas, targetMinutos);
       if (!s.excluidoDoScore && !multiplaCamareira) {
         totalFalhas += falhas;
         totalScore += score;
@@ -162,6 +229,7 @@ export async function GET(req: NextRequest) {
         uhNumero: s.uh.numero,
         data: s.assignment.data,
         duracaoSegundos: s.duracaoSegundos,
+        duracaoEfetivaSegundos,
         falhas,
         score,
         excluidoDoScore: s.excluidoDoScore,

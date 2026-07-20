@@ -216,6 +216,15 @@ model HkConfig {
   notificationTime  String @default("08:00")
   targetMinutes     Int    @default(25)
   photoRequirements String @default("[\"cozinha\",\"cama\",\"toalhas\",\"banheiro\"]")
+
+  // Retaguarda do "relógio de disponibilidade" usado no score (ver
+  // api/scores/route.ts): pra fechar a brecha de camareira atrasar
+  // propositalmente o "iniciar" pra esconder tempo já trabalhado, o score
+  // passa a contar a partir de max(UH liberada, fim da UH anterior do dia,
+  // início do turno) em vez de simplesmente iniciadaEm. turnoInicioHora é
+  // só o piso do dia — sem ele, a 1ª UH liberada de madrugada penalizaria
+  // quem ainda nem chegou.
+  turnoInicioHora String @default("08:00")
 }
 
 model InspectionTemplate {

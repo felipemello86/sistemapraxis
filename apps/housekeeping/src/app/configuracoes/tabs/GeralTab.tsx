@@ -10,6 +10,7 @@ export default function GeralTab({ somenteLeitura = false }: { somenteLeitura?: 
     hotelNome: "",
     notificationTime: "08:00",
     targetMinutes: 25,
+    turnoInicioHora: "08:00",
     photoRequirements: ["cozinha", "cama", "toalhas", "banheiro"],
   });
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,7 @@ export default function GeralTab({ somenteLeitura = false }: { somenteLeitura?: 
         hotelNome: d.hotelNome || "",
         notificationTime: d.notificationTime || "08:00",
         targetMinutes: d.targetMinutes || 25,
+        turnoInicioHora: d.turnoInicioHora || "08:00",
         photoRequirements: d.photoRequirements ? JSON.parse(d.photoRequirements) : ["cozinha", "cama", "toalhas", "banheiro"],
       });
       setLoading(false);
@@ -65,6 +67,13 @@ export default function GeralTab({ somenteLeitura = false }: { somenteLeitura?: 
             <label className="label">Tempo alvo de arrumação (minutos)</label>
             <input type="number" min={10} max={90} className="input w-auto" value={form.targetMinutes} onChange={(e) => setForm({ ...form, targetMinutes: +e.target.value })} />
             <p className="text-xs text-gray-400 mt-1">Meta de tempo para cálculo do score. Padrão: 25 min.</p>
+          </div>
+          <div>
+            <label className="label">Início do turno</label>
+            <input type="time" className="input w-auto" value={form.turnoInicioHora} onChange={(e) => setForm({ ...form, turnoInicioHora: e.target.value })} />
+            <p className="text-xs text-gray-400 mt-1">
+              Retaguarda usada no cálculo do score: nenhuma UH conta tempo pontuado antes desse horário, mesmo se já tiver sido liberada. Evita que a 1ª UH do dia seja penalizada por ter sido liberada de madrugada.
+            </p>
           </div>
         </div>
       </div>

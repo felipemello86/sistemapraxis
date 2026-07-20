@@ -26,12 +26,12 @@ export async function PUT(req: NextRequest) {
   }
   const tenantId = session.tenantId;
 
-  const { notificationTime, targetMinutes, photoRequirements, hotelNome } = await req.json();
+  const { notificationTime, targetMinutes, photoRequirements, hotelNome, turnoInicioHora } = await req.json();
 
   const config = await prisma.hkConfig.upsert({
     where: { tenantId },
-    update: { notificationTime, targetMinutes, photoRequirements: JSON.stringify(photoRequirements) },
-    create: { tenantId, notificationTime, targetMinutes, photoRequirements: JSON.stringify(photoRequirements) },
+    update: { notificationTime, targetMinutes, photoRequirements: JSON.stringify(photoRequirements), turnoInicioHora },
+    create: { tenantId, notificationTime, targetMinutes, photoRequirements: JSON.stringify(photoRequirements), turnoInicioHora },
   });
 
   if (hotelNome) {
