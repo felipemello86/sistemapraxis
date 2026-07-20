@@ -245,9 +245,12 @@ async function saveAnalysisActionImpl(input: SaveAnalysisInput) {
     "Análise & Planejamento concluído — card seguiu para Execução."
   );
 
-  // Card passou pra Execução: todo mundo do tenant recebe (não só Master/Gerente).
-  const everyone = await prisma.user.findMany({
-    where: { tenantId: session.tenantId, ativo: true },
+  // Card passou pra Execução: só Gerente, Atendimento e Master recebem —
+  // camareiras e governantas não têm ação nenhuma nesse card (decisão do
+  // Felipe, 20/07 — antes ia pra "todo mundo do tenant", o que incluía
+  // Governança sem necessidade).
+  const gerenciaEAtendimento = await prisma.user.findMany({
+    where: { tenantId: session.tenantId, ativo: true, role: { in: ["MASTER", "GERENTE", "ATENDIMENTO"] } },
     select: { id: true },
   });
 
@@ -255,7 +258,7 @@ async function saveAnalysisActionImpl(input: SaveAnalysisInput) {
     tenantId: session.tenantId,
     type: "ANALISE_PLANEJAMENTO_CONCLUIDA",
     message: `Análise & Planejamento concluído para a avaliação de ${review.guestName} (nota ${review.ratingNormalized.toFixed(2)}). Card seguiu para Execução.`,
-    targetUserIds: everyone.map((u) => u.id),
+    targetUserIds: gerenciaEAtendimento.map((u) => u.id),
     reviewId: review.id,
   });
 
