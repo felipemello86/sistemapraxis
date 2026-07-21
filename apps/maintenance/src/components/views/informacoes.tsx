@@ -163,7 +163,7 @@ export function Informacoes({
   return (
     <div className="space-y-6">
       <Panel
-        title="Informações das unidades"
+        title="Inspeções das unidades"
         description="Toque numa unidade pra ver o histórico de inspeções, ou inicie uma nova direto na linha"
         action={
           <div className="relative w-full max-w-56">

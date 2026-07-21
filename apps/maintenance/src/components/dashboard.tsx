@@ -62,7 +62,7 @@ const MARK_SRC = '/upkeep/praxis-mark.png'
 const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'gerencial', label: 'Visão Gerencial', icon: LayoutDashboard },
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
-  { id: 'informacoes', label: 'Informações', icon: Info },
+  { id: 'informacoes', label: 'Inspeções', icon: Info },
   { id: 'rota', label: 'Rota de Manutenção', icon: Route },
   { id: 'correcao', label: 'Rota de Correção', icon: Wrench },
   { id: 'config', label: 'Configurações', icon: Settings },
