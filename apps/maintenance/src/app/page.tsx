@@ -1,7 +1,14 @@
 import { redirect } from "next/navigation";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 import { Dashboard } from "@/components/dashboard";
-import type { ChecklistItem, InspecaoComUnidade, UnitOption } from "@/lib/types";
+import type {
+  AtribuicoesPorUnidade,
+  ChecklistItem,
+  CorrectionSummary,
+  InspecaoComUnidade,
+  MaintenanceConfigView,
+  UnitOption,
+} from "@/lib/types";
 
 // Portado de apps/maintenance/src/app/page.tsx (v1). Era um único ponto de
 // entrada lá (view trocada client-side via useState, ver components/dashboard.tsx)
@@ -21,7 +28,7 @@ export default async function Home() {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
 
-  const [uhs, checklistItems, inspections] = await Promise.all([
+  const [uhs, checklistItems, inspections, unitChecklistItems, corrections, config] = await Promise.all([
     prisma.uH.findMany({
       where: { tenantId: session.tenantId, ativo: true },
       orderBy: { ordem: "asc" },
@@ -41,6 +48,31 @@ export default async function Home() {
       // relationJoins ligado no schema compartilhado (ver
       // packages/core/prisma/schema.prisma).
       relationLoadStrategy: "join",
+    }),
+    // Atribuição de item por UH (ver comentário em MaintenanceUnitChecklistItem
+    // no schema) — ausência de linha pra uma UH = todos os itens se aplicam.
+    prisma.maintenanceUnitChecklistItem.findMany({
+      where: { tenantId: session.tenantId },
+      select: { uhId: true, checklistItemId: true },
+    }),
+    // Últimas correções registradas (Rota de Correção) — histórico exibido
+    // na própria tela, mesmo padrão do PageCorrecao do protótipo standalone.
+    prisma.maintenanceCorrection.findMany({
+      where: { tenantId: session.tenantId },
+      include: {
+        uh: { select: { id: true, numero: true } },
+        checklistItem: { select: { id: true, name: true } },
+        author: { select: { id: true, nome: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    // Prazo máximo entre inspeções e meta de conformidade — pode não existir
+    // ainda pra tenants antigos (upsert só cria na primeira vez que alguém
+    // edita em Configurações); usamos o mesmo default 90/90 do schema até lá.
+    prisma.maintenanceConfig.findUnique({
+      where: { tenantId: session.tenantId },
+      select: { maxDaysBetweenInspections: true, goal: true },
     }),
   ]);
 
@@ -65,8 +97,32 @@ export default async function Home() {
       checklistItemId: it.checklistItemId,
       status: it.status as "CONFORME" | "NAO_CONFORME",
       comment: it.comment,
+      photos: safeParsePhotos(it.photos),
+      corrigidoEm: it.corrigidoEm ? it.corrigidoEm.toISOString() : null,
     })),
   }));
+
+  const atribuicoes: AtribuicoesPorUnidade = {};
+  for (const row of unitChecklistItems) {
+    (atribuicoes[row.uhId] ??= []).push(row.checklistItemId);
+  }
+
+  const correcoes: CorrectionSummary[] = corrections.map((c) => ({
+    id: c.id,
+    uhId: c.uhId,
+    uhName: c.uh.numero,
+    checklistItemId: c.checklistItemId,
+    checklistItemName: c.checklistItem?.name ?? null,
+    description: c.description,
+    photos: safeParsePhotos(c.photos),
+    createdAt: c.createdAt.toISOString(),
+    authorName: c.author?.nome ?? null,
+  }));
+
+  const configView: MaintenanceConfigView = {
+    maxDaysBetweenInspections: config?.maxDaysBetweenInspections ?? 90,
+    goal: config?.goal ?? 90,
+  };
 
   return (
     <Dashboard
@@ -79,6 +135,18 @@ export default async function Home() {
       unidades={unidades}
       itens={itens}
       inspecoes={inspecoes}
+      atribuicoes={atribuicoes}
+      correcoes={correcoes}
+      config={configView}
     />
   );
+}
+
+function safeParsePhotos(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

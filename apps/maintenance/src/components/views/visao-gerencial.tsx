@@ -42,10 +42,12 @@ export function VisaoGerencial({
   unidades,
   itens,
   inspecoes,
+  meta,
 }: {
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
+  meta: number
 }) {
   const totalUnidades = unidades.length
   const totalInspecoes = inspecoes.length
@@ -57,6 +59,18 @@ export function VisaoGerencial({
   const inspecionadas = ultimaMap.size
   const cobertura =
     totalUnidades > 0 ? Math.round((inspecionadas / totalUnidades) * 100) : 0
+
+  // Conformidade geral — baseada na última inspeção de cada UH (mesmo
+  // critério do "goal" do protótipo standalone: bate contra a meta
+  // configurável em Configurações > Prazo & Meta).
+  const conformidade = useMemo(() => {
+    const ultimas = Array.from(ultimaMap.values())
+    if (ultimas.length === 0) return null
+    const contagens = ultimas.map(contarConformidade)
+    const ok = contagens.reduce((s, c) => s + c.ok, 0)
+    const total = contagens.reduce((s, c) => s + c.total, 0)
+    return total > 0 ? Math.round((ok / total) * 100) : null
+  }, [ultimaMap])
 
   // Distribuição por categoria de itens
   const porCategoria = useMemo(() => {
@@ -99,7 +113,7 @@ export function VisaoGerencial({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           label="Unidades"
           value={totalUnidades}
@@ -127,6 +141,13 @@ export function VisaoGerencial({
           hint="exigem ação"
           tone="warning"
           icon={<AlertTriangle className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Conformidade"
+          value={conformidade === null ? '—' : `${conformidade}%`}
+          hint={`meta: ${meta}%`}
+          tone={conformidade !== null && conformidade >= meta ? 'success' : 'warning'}
+          icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
         />
       </div>
 

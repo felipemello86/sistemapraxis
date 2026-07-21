@@ -5,6 +5,9 @@ const nextConfig = {
   // O gateway já tem a regra de rewrite pra cá preparada (UPKEEP_APP_URL em
   // apps/gateway/next.config.js, de uma tentativa anterior de migração).
   basePath: "/upkeep",
+  images: {
+    remotePatterns: [{ protocol: "https", hostname: "res.cloudinary.com" }],
+  },
 };
 
 module.exports = nextConfig;

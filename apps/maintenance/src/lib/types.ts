@@ -23,6 +23,8 @@ export type InspectionItem = {
   checklistItemId: string | null;
   status: "CONFORME" | "NAO_CONFORME";
   comment: string | null;
+  photos: string[];
+  corrigidoEm: string | null; // ISO — preenchido quando uma MaintenanceCorrection resolve o item
 };
 
 export type InspecaoComUnidade = {
@@ -48,4 +50,27 @@ export type ViewId =
   | "informacoes"
   | "controle"
   | "rota"
+  | "correcao"
   | "config";
+
+// UH.id -> lista de ChecklistItem.id atribuídos a essa unidade. Ausência de
+// chave (ou array vazio) significa "todos os itens do catálogo se aplicam"
+// — ver comentário em MaintenanceUnitChecklistItem no schema Prisma.
+export type AtribuicoesPorUnidade = Record<string, string[]>;
+
+export type MaintenanceConfigView = {
+  maxDaysBetweenInspections: number;
+  goal: number;
+};
+
+export type CorrectionSummary = {
+  id: string;
+  uhId: string;
+  uhName: string;
+  checklistItemId: string | null;
+  checklistItemName: string | null;
+  description: string;
+  photos: string[];
+  createdAt: string; // ISO
+  authorName: string | null;
+};

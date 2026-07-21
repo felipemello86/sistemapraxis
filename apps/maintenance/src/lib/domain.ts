@@ -1,4 +1,4 @@
-import type { InspecaoComUnidade } from '@/lib/types'
+import type { AtribuicoesPorUnidade, ChecklistItem, InspecaoComUnidade } from '@/lib/types'
 
 const CHART_COLORS = [
   'var(--chart-1)',
@@ -49,6 +49,23 @@ export function temPendencia(insp: InspecaoComUnidade) {
 
 export function labelResultado(insp: InspecaoComUnidade) {
   return temPendencia(insp) ? 'Com pendências' : 'Conforme'
+}
+
+/**
+ * Itens de checklist que se aplicam a uma UH. Se não houver atribuição
+ * customizada pra essa UH (chave ausente ou lista vazia em `atribuicoes`),
+ * todos os itens do catálogo se aplicam — ver comentário em
+ * MaintenanceUnitChecklistItem no schema Prisma.
+ */
+export function itensParaUnidade(
+  uhId: string,
+  todosItens: ChecklistItem[],
+  atribuicoes: AtribuicoesPorUnidade,
+) {
+  const permitidos = atribuicoes[uhId]
+  if (!permitidos || permitidos.length === 0) return todosItens
+  const permitidosSet = new Set(permitidos)
+  return todosItens.filter((it) => permitidosSet.has(it.id))
 }
 
 /** Última inspeção por unidade (chave = Unit.id, string). */

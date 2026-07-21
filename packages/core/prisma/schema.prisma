@@ -68,8 +68,11 @@ model Tenant {
   performanceMeetings  PerformanceMeeting[]
 
   // Manutenção (Upkeep)
-  maintenanceChecklistItems MaintenanceChecklistItem[]
-  maintenanceInspections    MaintenanceInspection[]
+  maintenanceChecklistItems      MaintenanceChecklistItem[]
+  maintenanceInspections         MaintenanceInspection[]
+  maintenanceCorrections         MaintenanceCorrection[]
+  maintenanceUnitChecklistItems  MaintenanceUnitChecklistItem[]
+  maintenanceConfig              MaintenanceConfig?
 
   // Estoque (módulo novo, migrado de um sistema Flask/Postgres avulso —
   // "estoque-bnb-flex" — que rodava fora da suíte, no Render).
@@ -168,6 +171,9 @@ model User {
   // Manutenção (Upkeep) — inspetor que realizou a inspeção (opcional: a v1
   // permite registrar sem inspetor definido).
   maintenanceInspections MaintenanceInspection[] @relation("MaintenanceInspector")
+
+  // Manutenção (Upkeep) — autor da correção (opcional, mesmo motivo acima).
+  maintenanceCorrections MaintenanceCorrection[] @relation("MaintenanceCorrectionAuthor")
 
   // Estoque — usuário que registrou a movimentação (opcional: dado migrado
   // do sistema antigo não tem FK real, ver comentário em StockMovement).
@@ -307,7 +313,9 @@ model UH {
   // o módulo Manutenção referencia via FK em vez de ter seu próprio model
   // "Unit" duplicado (era assim na v1 — mesmo problema de duplicação de
   // usuário que já foi corrigido em todo o resto da suíte).
-  maintenanceInspections MaintenanceInspection[]
+  maintenanceInspections        MaintenanceInspection[]
+  maintenanceCorrections        MaintenanceCorrection[]
+  maintenanceUnitChecklistItems MaintenanceUnitChecklistItem[]
 
   @@unique([tenantId, numero])
 }
@@ -960,13 +968,12 @@ model PerformanceMeetingLog {
 //   - checklistItemId é FK de verdade pro catálogo (onDelete: SetNull), no
 //     lugar do "itemLegacyId" solto (Int, sem FK) que a v1 usava só porque
 //     tinha nascido de um schema legado sem cuid — aqui não tem esse motivo.
-//   - Sem model de log por item (InspectionItemLogEntry, da v1): nenhuma tela
-//     do frontend v1 lê ou escreve nele hoje — é campo morto no domínio
-//     atual. Fácil de adicionar depois se aparecer um fluxo de "correção"
-//     de fato.
-//   - Sem tabela de config (a v1 tinha "MaintenanceAccount.maxDaysBetween
-//     Inspections", mas nenhuma tela atual lê esse valor — RotaManutencao usa
-//     um limite fixo de 90 dias direto no componente).
+//   - UPDATE 2026-07: recuperando funcionalidades do protótipo standalone
+//     "Bnb Manutenção" (sistema-manutencao.html) que não tinham sido
+//     portadas na primeira leva — Rota de Correção, fotos na inspeção,
+//     atribuição de item por UH e config de prazo/meta. Integração
+//     WhatsApp daquele protótipo foi deliberadamente descartada (visão de
+//     comunicação da v2 é push notification, não WhatsApp).
 // ═══════════════════════════════════════════════════════════════════════════
 
 model MaintenanceChecklistItem {
@@ -978,7 +985,9 @@ model MaintenanceChecklistItem {
   category       String // texto livre (ex: "Elétrica", "Hidráulica") — sem lista fixa, igual v1
   subDescription String?
 
-  inspectionItems MaintenanceInspectionItem[]
+  inspectionItems  MaintenanceInspectionItem[]
+  corrections      MaintenanceCorrection[]
+  unitAssignments  MaintenanceUnitChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1017,8 +1026,84 @@ model MaintenanceInspectionItem {
 
   status  String // CONFORME | NAO_CONFORME
   comment String?
+  photos  String  @default("[]") // JSON array de URLs (Cloudinary) — evidência de não conformidade
+
+  // Preenchido quando uma MaintenanceCorrection resolve este item (o status
+  // acima volta pra CONFORME e este campo guarda quando isso aconteceu —
+  // mesmo comportamento do REGISTER_CORRECAO do protótipo standalone).
+  corrigidoEm DateTime?
+
+  corrections MaintenanceCorrection[]
 
   @@index([inspectionId])
+}
+
+// Rota de Correção — fluxo dedicado pra encerrar uma não-conformidade
+// registrada numa inspeção: técnico descreve o reparo (+ foto opcional),
+// o item correspondente vira CONFORME e fica um histórico permanente.
+// Recuperado do protótipo standalone "Bnb Manutenção" (REGISTER_CORRECAO /
+// PageCorrecao), que não tinha sido portado na primeira leva da v2.
+model MaintenanceCorrection {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  inspectionItemId String
+  inspectionItem    MaintenanceInspectionItem @relation(fields: [inspectionItemId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  checklistItemId String?
+  checklistItem   MaintenanceChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+
+  authorId String?
+  author   User?   @relation("MaintenanceCorrectionAuthor", fields: [authorId], references: [id])
+
+  description String  @db.Text
+  photos      String  @default("[]") // JSON array de URLs (Cloudinary)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([inspectionItemId])
+  @@index([uhId])
+}
+
+// Atribuição de item de checklist por UH. Ausência de linhas pra uma UH
+// significa "todos os itens do catálogo se aplicam" (default retrocompatível
+// com o comportamento atual, onde todo item vale pra toda UH) — a tabela só
+// funciona como restrição quando alguém explicitamente monta uma lista
+// customizada pra uma UH em Configurações.
+model MaintenanceUnitChecklistItem {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  checklistItemId String
+  checklistItem   MaintenanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([uhId, checklistItemId])
+  @@index([tenantId])
+}
+
+// Config por tenant — prazo máximo entre inspeções (usado em Controle de
+// Inspeções e na priorização da Rota de Manutenção) e meta de conformidade
+// (usada na Visão Gerencial). Mesmo padrão de HkConfig (Governança).
+model MaintenanceConfig {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  maxDaysBetweenInspections Int @default(90)
+  goal                      Int @default(90) // meta de conformidade, em %
+
+  updatedAt DateTime @updatedAt
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -7,6 +7,7 @@ import {
   Info,
   ClipboardCheck,
   Route,
+  Wrench,
   Settings,
   Menu,
   X,
@@ -18,9 +19,12 @@ import {
   AvatarFallback,
 } from '@/components/ui/avatar'
 import type {
+  AtribuicoesPorUnidade,
+  CorrectionSummary,
   DashboardUser,
   InspecaoComUnidade,
   ChecklistItem,
+  MaintenanceConfigView,
   UnitOption,
   ViewId,
 } from '@/lib/types'
@@ -29,6 +33,7 @@ import { Evolucao } from '@/components/views/evolucao'
 import { Informacoes } from '@/components/views/informacoes'
 import { ControleInspecoes } from '@/components/views/controle-inspecoes'
 import { RotaManutencao } from '@/components/views/rota-manutencao'
+import { RotaCorrecao } from '@/components/views/correcao'
 import { Configuracoes } from '@/components/views/configuracoes'
 
 // Portado de apps/maintenance/src/components/dashboard.tsx (v1). Diferenças:
@@ -62,6 +67,7 @@ const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'informacoes', label: 'Informações', icon: Info },
   { id: 'controle', label: 'Controle de Inspeções', icon: ClipboardCheck },
   { id: 'rota', label: 'Rota de Manutenção', icon: Route },
+  { id: 'correcao', label: 'Rota de Correção', icon: Wrench },
   { id: 'config', label: 'Configurações', icon: Settings },
 ]
 
@@ -70,11 +76,17 @@ export function Dashboard({
   unidades,
   itens,
   inspecoes,
+  atribuicoes,
+  correcoes,
+  config,
 }: {
   user: DashboardUser
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
+  atribuicoes: AtribuicoesPorUnidade
+  correcoes: CorrectionSummary[]
+  config: MaintenanceConfigView
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -204,11 +216,12 @@ export function Dashboard({
               unidades={unidades}
               itens={itens}
               inspecoes={inspecoes}
+              meta={config.goal}
             />
           )}
           {view === 'evolucao' && <Evolucao inspecoes={inspecoes} />}
           {view === 'informacoes' && (
-            <Informacoes unidades={unidades} inspecoes={inspecoes} />
+            <Informacoes unidades={unidades} itens={itens} inspecoes={inspecoes} />
           )}
           {view === 'controle' && (
             <ControleInspecoes
@@ -218,11 +231,28 @@ export function Dashboard({
             />
           )}
           {view === 'rota' && (
-            <RotaManutencao unidades={unidades} inspecoes={inspecoes} />
+            <RotaManutencao
+              unidades={unidades}
+              itens={itens}
+              inspecoes={inspecoes}
+              atribuicoes={atribuicoes}
+              maxDias={config.maxDaysBetweenInspections}
+            />
+          )}
+          {view === 'correcao' && (
+            <RotaCorrecao
+              unidades={unidades}
+              itens={itens}
+              inspecoes={inspecoes}
+              correcoesRecentes={correcoes}
+            />
           )}
           {view === 'config' && (
             <Configuracoes
               itens={itens}
+              unidades={unidades}
+              atribuicoes={atribuicoes}
+              config={config}
               user={user}
             />
           )}
