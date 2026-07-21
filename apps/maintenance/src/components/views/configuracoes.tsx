@@ -4,12 +4,10 @@ import { useMemo, useState, useTransition } from 'react'
 import {
   Plus,
   Trash2,
-  Building2,
   ListChecks,
   LayoutGrid,
   Timer,
   UserCircle,
-  ExternalLink,
   ChevronDown,
   ChevronRight,
   RotateCcw,
@@ -46,39 +44,11 @@ import type {
 } from '@/lib/types'
 
 // Portado de apps/maintenance/src/components/views/configuracoes.tsx (v1),
-// bem reduzido: a aba "Unidades" virou um redirect pro cadastro único de UH
-// no gateway (mesma decisão já tomada em Governança/Avaliações — ver
-// RedirectTab em apps/housekeeping/src/app/configuracoes/ConfiguracoesClient.tsx)
-// e a aba "Conta" ficou só com os dados da própria sessão (sem CRUD de
-// usuário aqui — isso também é só no gateway). A única aba que continua com
-// CRUD de verdade nesta tela é o catálogo de itens de inspeção.
-function RedirectCard({
-  titulo,
-  descricao,
-  path,
-  tenantSlug,
-}: {
-  titulo: string
-  descricao: string
-  path: string
-  tenantSlug?: string
-}) {
-  // Mesmo bug do hubUrl em dashboard.tsx: domínio v1 aqui era rejeitado pelo
-  // allowNavigation do app nativo e jogava a navegação pro Safari.
-  const base = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://sistemaspraxis.com.br'
-  const href = tenantSlug ? `${base}/${tenantSlug}/${path}` : base
-  return (
-    <Panel title={titulo} description={descricao}>
-      <a href={href}>
-        <Button className="h-10 rounded-xl">
-          <ExternalLink className="h-4 w-4" />
-          Ir pro hub
-        </Button>
-      </a>
-    </Panel>
-  )
-}
-
+// bem reduzido: sem aba "Unidades" — cadastro de UH é só no hub (mesma
+// decisão já tomada em Governança/Avaliações) e a aba "Conta" ficou só com
+// os dados da própria sessão (sem CRUD de usuário aqui — isso também é só
+// no gateway). A única aba que continua com CRUD de verdade nesta tela é o
+// catálogo de itens de inspeção.
 export function Configuracoes({
   itens,
   unidades,
@@ -214,10 +184,6 @@ export function Configuracoes({
     <div className="space-y-6">
       <Tabs defaultValue="itens" className="w-full">
         <TabsList className="rounded-xl bg-muted p-1">
-          <TabsTrigger value="unidades" className="rounded-lg">
-            <Building2 className="h-4 w-4" />
-            Unidades
-          </TabsTrigger>
           <TabsTrigger value="itens" className="rounded-lg">
             <ListChecks className="h-4 w-4" />
             Itens
@@ -235,15 +201,6 @@ export function Configuracoes({
             Conta
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="unidades" className="mt-6">
-          <RedirectCard
-            titulo="Cadastro de UHs mudou de lugar"
-            descricao="Criar, editar e desativar UHs agora é feito em um lugar só, no hub — válido para Governança, Manutenção e Avaliações."
-            path="configuracoes/uhs"
-            tenantSlug={user.tenantSlug}
-          />
-        </TabsContent>
 
         {/* Itens */}
         <TabsContent value="itens" className="mt-6 space-y-6">
