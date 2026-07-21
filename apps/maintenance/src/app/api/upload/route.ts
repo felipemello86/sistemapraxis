@@ -4,8 +4,8 @@ import crypto from "crypto";
 
 // Upload assinado direto pro Cloudinary (sem passar o binário pelo nosso
 // servidor) — mesmo padrão de apps/housekeeping/src/app/api/upload/route.ts.
-// Usado pela Rota de Manutenção (fotos de item não conforme) e pela Rota de
-// Correção (foto do reparo).
+// Usado pela inspeção gamificada em Inspeções (fotos de item não conforme)
+// e pela Rota de Correção (foto do reparo).
 
 const CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
 const API_KEY = process.env.CLOUDINARY_API_KEY;

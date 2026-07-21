@@ -454,7 +454,7 @@ export function Configuracoes({
                   className="h-10 rounded-xl"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Unidades além desse prazo aparecem como prioridade na Rota de Manutenção.
+                  Unidades além desse prazo entram no card "Pendentes" em Inspeções.
                 </p>
               </div>
               <div className="flex flex-col gap-2">

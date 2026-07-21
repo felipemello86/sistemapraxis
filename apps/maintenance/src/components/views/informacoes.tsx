@@ -5,12 +5,15 @@ import {
   Search,
   ChevronDown,
   ChevronRight as ChevronRightIcon,
+  ChevronUp,
+  ChevronsUpDown,
   History,
   Check,
   AlertTriangle,
   Plus,
   Trash2,
   ClipboardList,
+  MapPin,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +25,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Panel } from '@/components/ui-kit'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Panel, StatCard } from '@/components/ui-kit'
 import { toast } from 'sonner'
 import {
   contarConformidade,
@@ -44,27 +54,36 @@ import type {
   UnitOption,
 } from '@/lib/types'
 
-// Fusão de "Informações" + "Controle de Inspeções" (eram telas redundantes:
-// as duas listavam unidade x última inspeção, só que uma dava pra iniciar
-// inspeção e a outra dava pra ver o histórico de itens). Agora é uma tela só:
-// cada linha de UH já tem o botão "Iniciar inspeção" de cara, e expandir a
-// linha mostra a lista de TODAS as inspeções já realizadas naquela unidade
-// (não só a última); expandir uma inspeção dentro dessa lista mostra os
-// itens dela (com o mesmo "Histórico do item" cross-inspeções de antes).
+// Fusão de "Informações" + "Controle de Inspeções" + "Rota de Manutenção"
+// (eram 3 telas redundantes, todas girando em torno de UH x inspeções).
+// Agora é uma tela só: cards compactos de Pendentes/Em dia (o que sobrou de
+// útil da Rota de Manutenção — o Treemap e o "modo rota" gamificado viraram
+// só o botão "Iniciar inspeção" por linha, que já existia aqui), colunas
+// ordenáveis (Unidade, Última inspeção) e filtro por Situação. Expandir a
+// UH mostra o histórico completo de inspeções daquela unidade.
+
+type SortField = 'unidade' | 'ultima'
+type SortDir = 'asc' | 'desc'
+type FiltroSituacao = 'todas' | 'pendente' | 'conforme' | 'pendencias'
 
 export function Informacoes({
   unidades,
   itens,
   inspecoes,
   atribuicoes,
+  maxDias,
 }: {
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
   atribuicoes: AtribuicoesPorUnidade
+  maxDias: number
 }) {
   const [pending, startTransition] = useTransition()
   const [busca, setBusca] = useState('')
+  const [situacao, setSituacao] = useState<FiltroSituacao>('todas')
+  const [sortField, setSortField] = useState<SortField>('ultima')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [expandida, setExpandida] = useState<string | null>(null)
   const [inspecaoExpandida, setInspecaoExpandida] = useState<string | null>(null)
   const [historico, setHistorico] = useState<{ unidade: UnitOption; item: ChecklistItem } | null>(null)
@@ -91,20 +110,51 @@ export function Informacoes({
     return m
   }, [itens])
 
+  const todasAsLinhas = useMemo(() => {
+    return unidades.map((u) => {
+      const ult = ultimaMap.get(u.id)
+      const dias = ult ? diasDesde(ult.date) : null
+      const pendente = dias === null || dias >= maxDias
+      return {
+        unidade: u,
+        ultima: ult,
+        dias,
+        pendente,
+        historico: inspecoesPorUnidade.get(u.id) ?? [],
+      }
+    })
+  }, [unidades, ultimaMap, inspecoesPorUnidade, maxDias])
+
+  const pendentesCount = todasAsLinhas.filter((l) => l.pendente).length
+  const emDiaCount = unidades.length - pendentesCount
+
   const linhas = useMemo(() => {
     const q = busca.trim().toLowerCase()
-    return unidades
-      .filter((u) => !q || u.name.toLowerCase().includes(q))
-      .map((u) => {
-        const ult = ultimaMap.get(u.id)
-        return {
-          unidade: u,
-          ultima: ult,
-          dias: ult ? diasDesde(ult.date) : null,
-          historico: inspecoesPorUnidade.get(u.id) ?? [],
-        }
-      })
-  }, [unidades, busca, ultimaMap, inspecoesPorUnidade])
+    let filtradas = todasAsLinhas.filter((l) => !q || l.unidade.name.toLowerCase().includes(q))
+
+    filtradas = filtradas.filter((l) => {
+      if (situacao === 'todas') return true
+      if (situacao === 'pendente') return !l.ultima
+      if (situacao === 'conforme') return !!l.ultima && !temPendencia(l.ultima)
+      if (situacao === 'pendencias') return !!l.ultima && temPendencia(l.ultima)
+      return true
+    })
+
+    const dir = sortDir === 'asc' ? 1 : -1
+    filtradas = [...filtradas].sort((a, b) => {
+      if (sortField === 'unidade') {
+        return a.unidade.name.localeCompare(b.unidade.name, 'pt-BR', { numeric: true }) * dir
+      }
+      // sortField === 'ultima': nunca inspecionada conta como "mais antiga
+      // possível" — asc = mais urgente primeiro (igual a antiga Rota de
+      // Manutenção), desc = inspecionada mais recentemente primeiro.
+      const da = a.ultima ? new Date(a.ultima.date).getTime() : -Infinity
+      const db = b.ultima ? new Date(b.ultima.date).getTime() : -Infinity
+      return (da - db) * dir
+    })
+
+    return filtradas
+  }, [todasAsLinhas, busca, situacao, sortField, sortDir])
 
   const historicoDoItem = useMemo(() => {
     if (!historico) return []
@@ -116,6 +166,15 @@ export function Informacoes({
       })
       .sort((a, b) => b.date.localeCompare(a.date))
   }, [historico, inspecoes])
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
 
   function toggleUnidade(id: string) {
     setExpandida((atual) => (atual === id ? null : id))
@@ -160,20 +219,58 @@ export function Informacoes({
     )
   }
 
+  function SortIcon({ field }: { field: SortField }) {
+    if (sortField !== field) return <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+    return sortDir === 'asc' ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />
+  }
+
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+        <StatCard
+          size="compact"
+          label="Pendentes"
+          value={pendentesCount}
+          tone="warning"
+          icon={<MapPin className="h-4 w-4" />}
+        />
+        <StatCard size="compact" label="Em dia" value={emDiaCount} tone="success" />
+      </div>
+
       <Panel
         title="Inspeções das unidades"
         description="Toque numa unidade pra ver o histórico de inspeções, ou inicie uma nova direto na linha"
         action={
-          <div className="relative w-full max-w-56">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar unidade"
-              className="h-10 rounded-xl pl-9"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={situacao} onValueChange={(v) => setSituacao((v as FiltroSituacao) ?? 'todas')}>
+              <SelectTrigger className="h-10 w-40 rounded-xl">
+                <SelectValue>
+                  {(v: string | null) =>
+                    ({
+                      todas: 'Todas situações',
+                      pendente: 'Nunca inspecionada',
+                      conforme: 'Conforme',
+                      pendencias: 'Com pendências',
+                    })[v ?? 'todas'] ?? 'Todas situações'
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas situações</SelectItem>
+                <SelectItem value="pendente">Nunca inspecionada</SelectItem>
+                <SelectItem value="conforme">Conforme</SelectItem>
+                <SelectItem value="pendencias">Com pendências</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="relative w-full max-w-56">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar unidade"
+                className="h-10 rounded-xl pl-9"
+              />
+            </div>
           </div>
         }
       >
@@ -182,8 +279,24 @@ export function Informacoes({
             <thead>
               <tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <th className="pb-3 pr-4 font-medium" />
-                <th className="pb-3 pr-4 font-medium">Unidade</th>
-                <th className="pb-3 pr-4 font-medium">Última inspeção</th>
+                <th className="pb-3 pr-4 font-medium">
+                  <button
+                    onClick={() => toggleSort('unidade')}
+                    className="flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-foreground"
+                  >
+                    Unidade
+                    <SortIcon field="unidade" />
+                  </button>
+                </th>
+                <th className="pb-3 pr-4 font-medium">
+                  <button
+                    onClick={() => toggleSort('ultima')}
+                    className="flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-foreground"
+                  >
+                    Última inspeção
+                    <SortIcon field="ultima" />
+                  </button>
+                </th>
                 <th className="pb-3 pr-4 font-medium">Situação</th>
                 <th className="pb-3 font-medium" />
               </tr>

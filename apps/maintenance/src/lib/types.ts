@@ -48,7 +48,6 @@ export type ViewId =
   | "gerencial"
   | "evolucao"
   | "informacoes"
-  | "rota"
   | "correcao"
   | "config";
 

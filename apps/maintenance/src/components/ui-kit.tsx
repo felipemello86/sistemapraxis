@@ -7,12 +7,14 @@ export function StatCard({
   hint,
   icon,
   tone = 'default',
+  size = 'default',
 }: {
   label: string
   value: ReactNode
   hint?: string
   icon?: ReactNode
   tone?: 'default' | 'success' | 'warning' | 'danger' | 'primary'
+  size?: 'default' | 'compact'
 }) {
   const toneClasses: Record<string, string> = {
     default: 'bg-accent text-foreground',
@@ -20,6 +22,26 @@ export function StatCard({
     warning: 'bg-[var(--warning)]/12 text-[var(--warning)]',
     danger: 'bg-destructive/12 text-destructive',
     primary: 'bg-primary/12 text-primary',
+  }
+  if (size === 'compact') {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card px-3.5 py-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        {icon && (
+          <span
+            className={cn(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+              toneClasses[tone],
+            )}
+          >
+            {icon}
+          </span>
+        )}
+        <div className="min-w-0 leading-tight">
+          <p className="text-lg font-semibold tracking-tight">{value}</p>
+          <p className="truncate text-xs text-muted-foreground">{label}</p>
+        </div>
+      </div>
+    )
   }
   return (
     <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
