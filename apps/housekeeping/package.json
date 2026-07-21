@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@praxis/core": "workspace:*",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/geolocation": "^6.1.0",
     "@react-pdf/renderer": "^4.5.1",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.383.0",

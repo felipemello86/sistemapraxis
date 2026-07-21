@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, Clock, Camera, ChevronRight, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
+import GeoCheckin from "./GeoCheckin";
 
 // Portado de apps/housekeeping/src/components/camareira/CamareiraView.tsx (v1).
 // Mesma UI, mesmo comportamento. Diferença: o v1 aceitava uma prop `token`
@@ -367,7 +368,7 @@ export default function CamareiraView() {
   // ─── TELA DE FOTOS ──────────────────────────────────────────────────────
   if (fase === "fotos") {
     return (
-      <><div className="min-h-screen bg-gray-50 p-4 max-w-lg mx-auto">
+      <><GeoCheckin /><div className="min-h-screen bg-gray-50 p-4 max-w-lg mx-auto">
         <div className="bg-blue-700 text-white rounded-xl p-4 mb-6">
           <p className="text-sm opacity-80">{assignmentAtivo?.uh.numero}</p>
           <h2 className="text-xl font-bold">Fotos obrigatórias</h2>
@@ -713,6 +714,7 @@ export default function CamareiraView() {
 
     return (
       <>
+      <GeoCheckin />
       <div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
         {/* Header com timer */}
         <div className="bg-blue-700 text-white p-5 sticky top-0 z-10">
@@ -1067,7 +1069,7 @@ export default function CamareiraView() {
   const total = assignments.length;
 
   return (
-    <><div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
+    <><GeoCheckin /><div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
       {/* Header */}
       <div className="bg-blue-700 text-white p-5">
         <p className="text-sm opacity-80">Bom dia,</p>

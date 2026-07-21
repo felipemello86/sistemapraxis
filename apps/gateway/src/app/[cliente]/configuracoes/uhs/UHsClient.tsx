@@ -2,7 +2,13 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 
-type Property = { id: string; nome: string; _count: { uhs: number } };
+type Property = {
+  id: string;
+  nome: string;
+  latitude: number | null;
+  longitude: number | null;
+  _count: { uhs: number };
+};
 type UH = {
   id: string;
   numero: string;
@@ -71,6 +77,15 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
   const [salvandoPropriedade, setSalvandoPropriedade] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [erroPropriedade, setErroPropriedade] = useState<string | null>(null);
+  // Georreferenciamento — edição inline de lat/lng por propriedade (usadas
+  // pelo check-in de chegada da camareira, ver POST /api/geo/checkin no
+  // housekeeping). Guardadas como texto no form pra aceitar vírgula/ponto e
+  // campo vazio (limpa a coordenada) sem briga de tipo a cada tecla.
+  const [editGeoId, setEditGeoId] = useState<string | null>(null);
+  const [editLat, setEditLat] = useState("");
+  const [editLng, setEditLng] = useState("");
+  const [salvandoGeo, setSalvandoGeo] = useState(false);
+  const [erroGeo, setErroGeo] = useState<string | null>(null);
   const [ascending, setAscending] = useState(true);
 
   useEffect(() => {
@@ -111,6 +126,50 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
       setErroPropriedade(e.message || "Erro ao adicionar propriedade");
     }
     setSalvandoPropriedade(false);
+  }
+
+  function abrirEdicaoGeo(p: Property) {
+    setEditGeoId(p.id);
+    setEditLat(p.latitude != null ? String(p.latitude) : "");
+    setEditLng(p.longitude != null ? String(p.longitude) : "");
+    setErroGeo(null);
+  }
+
+  async function salvarGeo() {
+    if (!editGeoId) return;
+    // Vazio = limpar coordenada (volta a desativar o check-in de geo pra
+    // essa property). Parcial (só lat ou só lng preenchido) não é permitido.
+    const latTxt = editLat.trim().replace(",", ".");
+    const lngTxt = editLng.trim().replace(",", ".");
+    if ((latTxt === "") !== (lngTxt === "")) {
+      setErroGeo("Preencha latitude e longitude juntas, ou deixe as duas vazias.");
+      return;
+    }
+    const latitude = latTxt === "" ? null : Number(latTxt);
+    const longitude = lngTxt === "" ? null : Number(lngTxt);
+    if ((latitude !== null && Number.isNaN(latitude)) || (longitude !== null && Number.isNaN(longitude))) {
+      setErroGeo("Coordenadas inválidas.");
+      return;
+    }
+    setErroGeo(null);
+    setSalvandoGeo(true);
+    try {
+      const r = await fetch("/api/properties", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editGeoId, latitude, longitude }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setErroGeo(data.error || `Erro ${r.status}`);
+      } else {
+        setEditGeoId(null);
+        carregar();
+      }
+    } catch (e: any) {
+      setErroGeo(e.message || "Erro ao salvar coordenadas");
+    }
+    setSalvandoGeo(false);
   }
 
   async function adicionar() {
@@ -182,11 +241,70 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
             Agrupamento de UHs (ex: um prédio/empreendimento) — cada UH precisa pertencer a uma.
           </p>
           {properties.length > 0 && (
-            <ul style={{ margin: "0 0 14px", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+            <ul style={{ margin: "0 0 14px", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
               {properties.map((p) => (
-                <li key={p.id} style={{ fontSize: 14, display: "flex", justifyContent: "space-between" }}>
-                  <span>{p.nome}</span>
-                  <span style={{ color: "#6e6e73" }}>{p._count.uhs} UH(s)</span>
+                <li key={p.id} style={{ fontSize: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{p.nome}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ color: "#6e6e73" }}>{p._count.uhs} UH(s)</span>
+                      {editGeoId !== p.id && (
+                        <button
+                          onClick={() => abrirEdicaoGeo(p)}
+                          style={{ background: "none", border: "none", color: "#0071e3", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          {p.latitude != null ? "Editar coordenadas" : "Adicionar coordenadas"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {p.latitude != null && p.longitude != null && editGeoId !== p.id && (
+                    <div style={{ color: "#6e6e73", fontSize: 11, marginTop: 2 }}>
+                      {p.latitude.toFixed(6)}, {p.longitude.toFixed(6)}
+                    </div>
+                  )}
+                  {editGeoId === p.id && (
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 6 }}>
+                      <label style={{ ...labelStyle, flex: 1, minWidth: 120 }}>
+                        Latitude
+                        <input
+                          style={inputStyle}
+                          placeholder="ex: -23.55052"
+                          value={editLat}
+                          onChange={(e) => setEditLat(e.target.value)}
+                        />
+                      </label>
+                      <label style={{ ...labelStyle, flex: 1, minWidth: 120 }}>
+                        Longitude
+                        <input
+                          style={inputStyle}
+                          placeholder="ex: -46.633308"
+                          value={editLng}
+                          onChange={(e) => setEditLng(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        onClick={salvarGeo}
+                        disabled={salvandoGeo}
+                        style={{ background: "none", border: "none", color: "#1d8a3e", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                      >
+                        Salvar
+                      </button>
+                      <button
+                        onClick={() => setEditGeoId(null)}
+                        style={{ background: "none", border: "none", color: "#6e6e73", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                  {editGeoId === p.id && (
+                    <p style={{ color: "#6e6e73", fontSize: 11, marginTop: 4 }}>
+                      Cole as coordenadas do Google Maps (clique com o botão direito no local do prédio → copia o número que aparece).
+                      Deixe os dois campos vazios pra remover a coordenada.
+                    </p>
+                  )}
+                  {editGeoId === p.id && erroGeo && <p style={{ color: "#d70015", fontSize: 12, marginTop: 4 }}>{erroGeo}</p>}
                 </li>
               ))}
             </ul>

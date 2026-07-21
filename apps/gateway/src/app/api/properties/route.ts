@@ -8,8 +8,13 @@ import { bloqueadoParaGerenciarCadastros } from "@/lib/auth-guard";
 // módulo. Nasceu especificamente porque Avaliações (Booking/Airbnb) só
 // identifica a propriedade/anúncio na notificação, nunca a UH específica —
 // então toda UH precisa apontar pra uma Property (ver UH.propertyId no
-// schema). CRUD mínimo por enquanto: listar e criar (renomear/excluir fica
-// pra quando surgir necessidade real).
+// schema). CRUD mínimo por enquanto: listar, criar, e editar latitude/
+// longitude (renomear/excluir fica pra quando surgir necessidade real).
+//
+// latitude/longitude alimentam o georreferenciamento da Governança (ver
+// POST /api/geo/checkin no housekeeping) — são opcionais de propósito, sem
+// coordenada cadastrada o check-in de chegada simplesmente não roda pra essa
+// property.
 
 export async function GET() {
   const session = await getSession();
@@ -17,7 +22,13 @@ export async function GET() {
 
   const properties = await prisma.property.findMany({
     where: { tenantId: session.tenantId },
-    select: { id: true, nome: true, _count: { select: { uhs: true } } },
+    select: {
+      id: true,
+      nome: true,
+      latitude: true,
+      longitude: true,
+      _count: { select: { uhs: true } },
+    },
     orderBy: { nome: "asc" },
   });
   return NextResponse.json(properties);
@@ -40,4 +51,32 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Propriedade já existe" }, { status: 409 });
   }
+}
+
+// PATCH só edita latitude/longitude por enquanto (nome não tem UI de
+// renomear ainda). null explícito limpa a coordenada (volta a desativar o
+// check-in de geo pra essa property).
+export async function PATCH(req: NextRequest) {
+  const session = await getSession();
+  const bloqueado = bloqueadoParaGerenciarCadastros(session);
+  if (bloqueado) return bloqueado;
+
+  const { id, latitude, longitude } = await req.json();
+  if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+
+  if (
+    (latitude !== null && (typeof latitude !== "number" || Number.isNaN(latitude))) ||
+    (longitude !== null && (typeof longitude !== "number" || Number.isNaN(longitude)))
+  ) {
+    return NextResponse.json({ error: "Coordenadas inválidas" }, { status: 400 });
+  }
+
+  const property = await prisma.property.updateMany({
+    where: { id, tenantId: session!.tenantId },
+    data: { latitude, longitude },
+  });
+  if (property.count === 0) {
+    return NextResponse.json({ error: "Propriedade não encontrada" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true });
 }

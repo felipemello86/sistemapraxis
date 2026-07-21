@@ -110,20 +110,54 @@ export async function GET(req: NextRequest) {
       finalizadaEm: { not: null },
       assignment: Object.keys(whereData).length > 0 ? whereData : undefined,
     },
-    select: { id: true, camareiraId: true, uhId: true, iniciadaEm: true, finalizadaEm: true, assignment: { select: { data: true } } },
+    select: {
+      id: true,
+      camareiraId: true,
+      uhId: true,
+      iniciadaEm: true,
+      finalizadaEm: true,
+      assignment: { select: { data: true } },
+      uh: { select: { propertyId: true } },
+    },
   });
   const sessoesPorCamareiraDia = new Map<string, typeof todasSessoesDoPeriodo>();
   for (const s of todasSessoesDoPeriodo) {
     const chave = `${s.camareiraId}|${s.assignment.data}`;
     sessoesPorCamareiraDia.set(chave, [...(sessoesPorCamareiraDia.get(chave) ?? []), s]);
   }
+
+  // Georreferenciamento — chegada confirmada por GPS na Property da UH (ver
+  // GeoArrival, api/geo/checkin/route.ts). Indexado por camareira+dia+property
+  // pra achar rapidinho a chegada relevante de cada sessão abaixo.
+  const geoArrivals = await prisma.geoArrival.findMany({
+    where: { tenantId, ...(Object.keys(whereData).length > 0 ? whereData : {}) },
+    select: { data: true, camareiraId: true, propertyId: true, chegadaEm: true },
+  });
+  const chegadaGeoPorCamareiraDiaProperty = new Map<string, Date>();
+  for (const g of geoArrivals) {
+    chegadaGeoPorCamareiraDiaProperty.set(`${g.camareiraId}|${g.data}|${g.propertyId}`, g.chegadaEm);
+  }
+
   const duracaoEfetivaPorSessao = new Map<string, number>();
   for (const grupo of sessoesPorCamareiraDia.values()) {
     const ordenado = [...grupo].sort((a, b) => a.iniciadaEm.getTime() - b.iniciadaEm.getTime());
     let fimAnterior: Date | null = null;
-    for (const s of ordenado) {
+    ordenado.forEach((s, idx) => {
       const liberadaEm = liberadaEmPorUH.get(`${s.assignment.data}|${s.uhId}`) ?? null;
-      const candidatos = [turnoInicioDate(s.assignment.data), liberadaEm, fimAnterior].filter(
+      // A chegada GPS também entra como candidata à âncora — mas só a partir
+      // da 2ª UH do dia (idx > 0). A 1ª UH do dia sempre conta a partir de
+      // turnoInicioHora, independente de geo (decisão do Felipe: se o GPS
+      // falhar ou a permissão for negada logo cedo, a 1ª UH não pode ficar
+      // sem âncora nenhuma). Da 2ª UH em diante, se ela chegou na property
+      // depois de liberada/do fim da UH anterior, o relógio só começa a
+      // contar a partir da chegada de verdade — sem geo cadastrado ou sem
+      // confirmação no dia, esse candidato simplesmente não entra e tudo
+      // degrada pro comportamento anterior.
+      const chegadaGeoEm =
+        idx === 0
+          ? null
+          : chegadaGeoPorCamareiraDiaProperty.get(`${s.camareiraId}|${s.assignment.data}|${s.uh.propertyId}`) ?? null;
+      const candidatos = [turnoInicioDate(s.assignment.data), liberadaEm, fimAnterior, chegadaGeoEm].filter(
         (d): d is Date => d != null
       );
       const ancora = new Date(Math.max(...candidatos.map((d) => d.getTime())));
@@ -131,7 +165,7 @@ export async function GET(req: NextRequest) {
       const efetivaSegundos = Math.max(0, Math.round((fim.getTime() - ancora.getTime()) / 1000));
       duracaoEfetivaPorSessao.set(s.id, efetivaSegundos);
       fimAnterior = fim;
-    }
+    });
   }
 
   // UHs com mais de uma camareira atribuída no mesmo dia (mutirão/"a duas")

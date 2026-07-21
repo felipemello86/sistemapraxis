@@ -57,6 +57,7 @@ model Tenant {
   cleaningPrograms    CleaningProgram[]
   falhasLavanderia    FalhaLavanderia[]
   guestComplaints     GuestComplaint[]
+  geoArrivals         GeoArrival[]
 
   // Avaliações (Booking-Reviews)
   reviewsConfig        ReviewsConfig?
@@ -142,6 +143,7 @@ model User {
   hkCleaningSessions CleaningSession[]   @relation("HkCamareira")
   hkInspections      InspectionSession[] @relation("HkGovernanta")
   hkPushTokens       PushToken[]
+  hkGeoArrivals      GeoArrival[]
 
   // Queixas de hóspede (ver GuestComplaint) — quem registrou (Atendimento)
   // e, separadamente, a camareira penalizada quando a queixa é de Limpeza.
@@ -273,13 +275,52 @@ model Property {
 
   nome String // ex: "Bnb Flex Suites"
 
-  uhs     UH[]
-  reviews Review[]
+  // Georreferenciamento (Governança) — coordenada do PRÉDIO, não da UH: GPS
+  // não distingue andar/unidade dentro do mesmo prédio, então uma coordenada
+  // por Property já é o nível real de precisão possível. Opcionais/nullable
+  // de propósito — sem coordenada cadastrada, o check-in de chegada (ver
+  // GeoArrival) simplesmente não roda pra essa property, e o score degrada
+  // pro comportamento anterior (âncora só por "fim da UH anterior").
+  latitude  Float?
+  longitude Float?
+
+  uhs         UH[]
+  reviews     Review[]
+  geoArrivals GeoArrival[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([tenantId, nome])
+}
+
+// Confirmação de presença física da camareira num prédio (Property), via
+// GPS do aparelho — insumo do "relógio de disponibilidade" em
+// api/scores/route.ts (housekeeping). Só existe UMA linha por
+// (camareira, property, dia): é a PRIMEIRA vez que o app confirmou ela
+// dentro do raio de tolerância (ver POST /api/geo/checkin) — upsert com
+// update:{} garante isso (nunca sobrescreve pra uma chegada mais tarde).
+//
+// Por que Property e não UH: dentro do mesmo prédio o GPS não diferencia
+// unidades, então a chegada vale pra QUALQUER UH daquele prédio atribuída
+// à camareira naquele dia — não precisa de um check-in por UH.
+model GeoArrival {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  data        String // YYYY-MM-DD
+  camareiraId String
+  camareira   User   @relation(fields: [camareiraId], references: [id], onDelete: Cascade)
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  chegadaEm       DateTime // primeira confirmação dentro do raio (ver HAVERSINE_RAIO_METROS em lib/geo.ts)
+  distanciaMetros Float? // distância real no momento da confirmação — só auditoria/debug
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, data, camareiraId, propertyId])
 }
 
 model UH {
