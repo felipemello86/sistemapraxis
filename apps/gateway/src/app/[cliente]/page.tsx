@@ -3,6 +3,7 @@ import { prisma, getSession, moduleToSlug, MODULE_LABELS, type SuiteModule } fro
 import { logoutAction } from "./actions";
 import { LoginForm } from "./LoginForm";
 import PushRegistration from "./PushRegistration";
+import ModuleTile from "./ModuleTile";
 import { IconBed, IconWrench, IconStar, IconBox, IconCloche, IconGear } from "@/lib/icons";
 import styles from "./page.module.css";
 
@@ -64,10 +65,10 @@ export default async function ClienteHub({
           <p style={{ color: "#6e6e73", margin: 0 }}>
             Nenhum módulo de negócio disponível ainda nesta fundação.
           </p>
-          <a href={`/${tenant.slug}/configuracoes`} className={styles.tile} style={{ width: 96, height: 96 }}>
+          <ModuleTile href={`/${tenant.slug}/configuracoes`} className={styles.tile} style={{ width: 96, height: 96 }}>
             <IconGear />
             <span className={styles.tileLabel}>Configurações</span>
-          </a>
+          </ModuleTile>
         </div>
       ) : (
         <div className={styles.buttonArea}>
@@ -76,17 +77,17 @@ export default async function ClienteHub({
               const slug = moduleToSlug(m.module);
               const Icon = MODULE_ICON[m.module];
               return (
-                <a key={m.id} href={`/${tenant.slug}/${slug}`} className={styles.tile}>
+                <ModuleTile key={m.id} href={`/${tenant.slug}/${slug}`} className={styles.tile}>
                   <Icon />
                   <span className={styles.tileLabel}>{MODULE_LABELS[m.module]}</span>
-                </a>
+                </ModuleTile>
               );
             })}
 
-            <a href={`/${tenant.slug}/configuracoes`} className={`${styles.tile} ${styles.tileConfig}`}>
+            <ModuleTile href={`/${tenant.slug}/configuracoes`} className={`${styles.tile} ${styles.tileConfig}`}>
               <IconGear />
               <span className={styles.tileLabel}>Configurações</span>
-            </a>
+            </ModuleTile>
           </div>
         </div>
       )}
