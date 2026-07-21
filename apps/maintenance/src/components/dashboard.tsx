@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   TrendingUp,
   Info,
-  ClipboardCheck,
   Route,
   Wrench,
   Settings,
@@ -31,7 +30,6 @@ import type {
 import { VisaoGerencial } from '@/components/views/visao-gerencial'
 import { Evolucao } from '@/components/views/evolucao'
 import { Informacoes } from '@/components/views/informacoes'
-import { ControleInspecoes } from '@/components/views/controle-inspecoes'
 import { RotaManutencao } from '@/components/views/rota-manutencao'
 import { RotaCorrecao } from '@/components/views/correcao'
 import { Configuracoes } from '@/components/views/configuracoes'
@@ -65,7 +63,6 @@ const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'gerencial', label: 'Visão Gerencial', icon: LayoutDashboard },
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
   { id: 'informacoes', label: 'Informações', icon: Info },
-  { id: 'controle', label: 'Controle de Inspeções', icon: ClipboardCheck },
   { id: 'rota', label: 'Rota de Manutenção', icon: Route },
   { id: 'correcao', label: 'Rota de Correção', icon: Wrench },
   { id: 'config', label: 'Configurações', icon: Settings },
@@ -221,10 +218,7 @@ export function Dashboard({
           )}
           {view === 'evolucao' && <Evolucao inspecoes={inspecoes} />}
           {view === 'informacoes' && (
-            <Informacoes unidades={unidades} itens={itens} inspecoes={inspecoes} />
-          )}
-          {view === 'controle' && (
-            <ControleInspecoes
+            <Informacoes
               unidades={unidades}
               itens={itens}
               inspecoes={inspecoes}
