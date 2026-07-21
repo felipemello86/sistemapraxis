@@ -13,18 +13,19 @@ import { useEffect } from "react";
 // faltava.
 //
 // BUG ENCONTRADO EM PRODUÇÃO (21/07): a tabela PushToken estava zerada,
-// sempre — o registro nunca completava. Causa: os tiles do hub são <a
-// href> puros (ModuleTile.tsx), e um clique dispara navegação de DOCUMENTO
-// completa (cross-app, não é SPA), o que destrói o contexto JS no meio da
-// cadeia de awaits abaixo. Usuário com um só módulo é redirecionado quase
-// instantaneamente — antes até do diálogo de permissão aparecer.
+// sempre — o registro nunca completava. Causa nº1 corrigida: os tiles do
+// hub eram <a href> puros (ModuleTile.tsx), e um clique disparava
+// navegação de DOCUMENTO completa (cross-app, não é SPA), destruindo o
+// contexto JS no meio da cadeia de awaits abaixo.
 //
-// Fix: expõe `pushRegistrationSettled`, uma promise que o ModuleTile espera
-// antes de navegar (com timeout de segurança, pra nunca travar quem não usa
-// push/não é nativo). `settle()` é chamado o quanto antes em cada saída
-// antecipada (não-nativo, permissão negada) — só no caminho de sucesso ela
-// espera o evento "registration" de verdade completar o POST antes de
-// liberar a navegação.
+// Depois desse fix, MESMO parado na tela do hub (sem navegar pra lugar
+// nenhum), o diálogo de permissão nativo continuou nunca aparecendo — nem
+// em instalação 100% limpa (uninstall manual + reinstall). Ou seja, tem
+// uma segunda causa, ainda não identificada, que impede a cadeia de sequer
+// chegar em requestPermissions(). Os `console.log` com prefixo
+// "[PRAXIS-PUSH]" abaixo existem só pra depuração ao vivo via Logcat
+// (filtro "PRAXIS-PUSH") — podem ser removidos depois que o fluxo for
+// confirmado funcionando de ponta a ponta.
 let resolveSettled: () => void = () => {};
 
 export const pushRegistrationSettled: Promise<void> = new Promise((resolve) => {
@@ -33,73 +34,91 @@ export const pushRegistrationSettled: Promise<void> = new Promise((resolve) => {
 
 const TIMEOUT_MS = 5000;
 
+const LOG = (...args: unknown[]) => console.log("[PRAXIS-PUSH]", ...args);
+
 export default function PushRegistration() {
   useEffect(() => {
     let cancelled = false;
     let settled = false;
-    function settle() {
+    function settle(motivo: string) {
+      LOG("settle():", motivo);
       if (settled) return;
       settled = true;
       resolveSettled();
     }
     // Nunca segura a navegação por mais que isso, mesmo se o FCM demorar
     // ou travar por algum motivo.
-    const timeoutId = setTimeout(settle, TIMEOUT_MS);
+    const timeoutId = setTimeout(() => settle("timeout de 5s atingido"), TIMEOUT_MS);
+
+    LOG("useEffect montado");
 
     (async () => {
-      // Guard duplo antes de tocar em qualquer coisa do Capacitor: em
-      // qualquer navegador comum (Safari, Chrome, preview no desktop) isso
-      // não deve rodar nada — só dentro do app nativo, onde o shell injeta
-      // window.Capacitor antes do JS da página carregar.
-      if (typeof window === "undefined" || !(window as any).Capacitor) {
-        settle();
-        return;
-      }
+      try {
+        LOG("verificando window.Capacitor:", typeof window !== "undefined" && !!(window as any).Capacitor);
 
-      const { Capacitor } = await import("@capacitor/core");
-      if (!Capacitor.isNativePlatform()) {
-        settle();
-        return;
-      }
-
-      const { PushNotifications } = await import("@capacitor/push-notifications");
-
-      const atual = await PushNotifications.checkPermissions();
-      let concedida = atual.receive === "granted";
-      if (!concedida && atual.receive !== "denied") {
-        const pedido = await PushNotifications.requestPermissions();
-        concedida = pedido.receive === "granted";
-      }
-      if (!concedida || cancelled) {
-        settle();
-        return;
-      }
-
-      PushNotifications.addListener("registration", async (token) => {
-        try {
-          await fetch("/api/push/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: token.value, platform: Capacitor.getPlatform() }),
-          });
-        } catch {
-          // Melhor esforço — se a rede falhar aqui, tenta de novo na
-          // próxima vez que o app abrir (register() é idempotente).
-        } finally {
-          settle();
+        if (typeof window === "undefined" || !(window as any).Capacitor) {
+          settle("window.Capacitor ausente (não é app nativo / navegador comum)");
+          return;
         }
-      });
 
-      PushNotifications.addListener("registrationError", (err) => {
-        console.warn("[push] erro ao registrar token", err);
-        settle();
-      });
+        LOG("importando @capacitor/core...");
+        const { Capacitor } = await import("@capacitor/core");
+        LOG("Capacitor.isNativePlatform():", Capacitor.isNativePlatform(), "| getPlatform():", Capacitor.getPlatform());
 
-      // Não chama settle() aqui: register() só confirma que o pedido foi
-      // feito ao SO — o token de verdade chega depois, assíncrono, via
-      // listener "registration" (ou falha via "registrationError"). É o
-      // listener quem libera a navegação.
-      await PushNotifications.register();
+        if (!Capacitor.isNativePlatform()) {
+          settle("isNativePlatform() = false");
+          return;
+        }
+
+        LOG("importando @capacitor/push-notifications...");
+        const { PushNotifications } = await import("@capacitor/push-notifications");
+        LOG("plugin carregado, chamando checkPermissions()...");
+
+        const atual = await PushNotifications.checkPermissions();
+        LOG("checkPermissions() retornou:", JSON.stringify(atual));
+
+        let concedida = atual.receive === "granted";
+        if (!concedida && atual.receive !== "denied") {
+          LOG("permissão ainda não decidida, chamando requestPermissions() — diálogo deveria aparecer agora...");
+          const pedido = await PushNotifications.requestPermissions();
+          LOG("requestPermissions() retornou:", JSON.stringify(pedido));
+          concedida = pedido.receive === "granted";
+        }
+
+        if (!concedida || cancelled) {
+          settle(`permissão não concedida (concedida=${concedida}, cancelled=${cancelled})`);
+          return;
+        }
+
+        LOG("permissão concedida, registrando listeners e chamando register()...");
+
+        PushNotifications.addListener("registration", async (token) => {
+          LOG("evento 'registration' recebido, token:", token.value.slice(0, 12) + "...");
+          try {
+            const res = await fetch("/api/push/register", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token: token.value, platform: Capacitor.getPlatform() }),
+            });
+            LOG("POST /api/push/register status:", res.status);
+          } catch (err) {
+            LOG("erro no fetch de /api/push/register:", String(err));
+          } finally {
+            settle("token registrado (ou tentativa de POST concluída)");
+          }
+        });
+
+        PushNotifications.addListener("registrationError", (err) => {
+          LOG("evento 'registrationError':", JSON.stringify(err));
+          settle("registrationError");
+        });
+
+        await PushNotifications.register();
+        LOG("register() chamado com sucesso, aguardando evento 'registration'...");
+      } catch (err) {
+        LOG("ERRO inesperado na cadeia:", err instanceof Error ? err.message : String(err));
+        settle("exceção capturada");
+      }
     })();
 
     return () => {
