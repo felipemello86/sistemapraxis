@@ -27,7 +27,7 @@ export async function GET() {
       nome: true,
       latitude: true,
       longitude: true,
-      _count: { select: { uhs: true } },
+      _count: { select: { uhs: { where: { ativo: true } } } },
     },
     orderBy: { nome: "asc" },
   });
