@@ -132,7 +132,13 @@ export function ControleInspecoes({
                 <Label>Unidade</Label>
                 <Select value={unidadeId} onValueChange={(v) => setUnidadeId(v ?? '')}>
                   <SelectTrigger className="h-10 rounded-xl">
-                    <SelectValue placeholder="Selecione" />
+                    <SelectValue placeholder="Selecione">
+                      {(v: string | null) =>
+                        v
+                          ? `Unidade ${unidades.find((u) => u.id === v)?.name ?? v}`
+                          : 'Selecione'
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {unidades.map((u) => (
