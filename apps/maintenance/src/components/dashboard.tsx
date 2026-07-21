@@ -4,7 +4,7 @@ import { useState } from 'react'
 import {
   LayoutDashboard,
   TrendingUp,
-  Info,
+  Route,
   Wrench,
   Settings,
   Menu,
@@ -60,7 +60,7 @@ const MARK_SRC = '/upkeep/praxis-mark.png'
 const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'gerencial', label: 'Visão Gerencial', icon: LayoutDashboard },
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
-  { id: 'informacoes', label: 'Inspeções', icon: Info },
+  { id: 'informacoes', label: 'Inspeções', icon: Route },
   { id: 'correcao', label: 'Rota de Correção', icon: Wrench },
   { id: 'config', label: 'Configurações', icon: Settings },
 ]
