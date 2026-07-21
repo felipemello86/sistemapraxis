@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import type { SuiteModule } from "../generated";
+import { DEFAULT_MAINTENANCE_ITEMS } from "./maintenance-defaults";
 
 // Ponto único de criação de cliente (tenant) + usuário MASTER inicial.
 //
@@ -42,6 +43,26 @@ export async function createTenant(input: CreateTenantInput): Promise<CreateTena
       update: { enabled: true },
       create: { tenantId: tenant.id, module, enabled: true },
     });
+  }
+
+  // Seed de dados padrão por módulo — hoje só a Manutenção tem catálogo
+  // inicial (checklist de 40 itens, ver maintenance-defaults.ts). Só roda se
+  // o tenant ainda não tiver nenhum item (evita duplicar em upserts repetidos
+  // do script de criação, ex. rodando de novo pra atualizar o usuário).
+  if (modules.includes("MAINTENANCE")) {
+    const jaTemItens = await prisma.maintenanceChecklistItem.count({
+      where: { tenantId: tenant.id },
+    });
+    if (jaTemItens === 0) {
+      await prisma.maintenanceChecklistItem.createMany({
+        data: DEFAULT_MAINTENANCE_ITEMS.map((it) => ({
+          tenantId: tenant.id,
+          name: it.name,
+          category: it.category,
+          subDescription: it.subDescription,
+        })),
+      });
+    }
   }
 
   const passwordHash = await bcrypt.hash(senha, 10);
