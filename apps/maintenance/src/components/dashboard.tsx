@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard,
   TrendingUp,
@@ -10,6 +10,8 @@ import {
   Menu,
   X,
   Home,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -57,6 +59,11 @@ function hubUrl(tenantSlug?: string) {
 // apiFetch.ts hardcodar BASE_PATH nos outros módulos.
 const MARK_SRC = '/upkeep/praxis-mark.png'
 
+// Só afeta o rail no desktop (md+) — no mobile a sidebar continua sendo o
+// overlay de tela cheia controlado por `mobileOpen`, colapsar não faz
+// sentido ali. Preferência persistida por navegador (não por usuário).
+const SIDEBAR_COLLAPSED_KEY = 'praxis-maintenance-sidebar-collapsed'
+
 const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'gerencial', label: 'Visão Gerencial', icon: LayoutDashboard },
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
@@ -84,6 +91,23 @@ export function Dashboard({
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+
+  // Lido depois do mount (não no useState inicial) pra não divergir do HTML
+  // renderizado no servidor — evita mismatch de hidratação.
+  useEffect(() => {
+    if (window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') {
+      setCollapsed(true)
+    }
+  }, [])
+
+  function toggleCollapsed() {
+    setCollapsed((v) => {
+      const next = !v
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+      return next
+    })
+  }
 
   const iniciais = user.name
     .split(' ')
@@ -102,8 +126,9 @@ export function Dashboard({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-sidebar/80 backdrop-blur-xl transition-transform duration-300 md:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border/70 bg-sidebar/80 backdrop-blur-xl transition-[transform,width] duration-300 md:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          collapsed ? 'md:w-16' : 'md:w-64',
         )}
         // No app nativo (Capacitor/iOS), `env()` resolve pra 0 em navegador
         // comum (desktop), então esse padding só afeta mesmo o app nativo —
@@ -112,13 +137,26 @@ export function Dashboard({
         // apps/housekeeping/src/components/layout/Sidebar.tsx.
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
-        <div className="flex h-16 items-center gap-3 px-5">
+        {/* Botão de colapsar — só faz sentido no desktop (md+); no mobile a
+            sidebar já é um overlay de tela cheia controlado por mobileOpen. */}
+        <button
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+          title={collapsed ? 'Expandir menu' : 'Recolher menu'}
+          className="absolute -right-3 top-20 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-border/70 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground md:flex"
+        >
+          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        </button>
+
+        <div className={cn('flex h-16 items-center gap-3', collapsed ? 'justify-center px-2' : 'px-5')}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={MARK_SRC} alt="Praxis" className="h-8 w-8 shrink-0 object-contain rounded-md" />
-          <div className="leading-tight min-w-0">
-            <p className="truncate text-sm font-semibold tracking-tight">{user.tenantSlug || 'Praxis'}</p>
-            <p className="text-xs text-muted-foreground">Manutenção</p>
-          </div>
+          {!collapsed && (
+            <div className="leading-tight min-w-0">
+              <p className="truncate text-sm font-semibold tracking-tight">{user.tenantSlug || 'Praxis'}</p>
+              <p className="text-xs text-muted-foreground">Manutenção</p>
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 space-y-1 px-3 py-4">
@@ -129,15 +167,17 @@ export function Dashboard({
               <button
                 key={item.id}
                 onClick={() => go(item.id)}
+                title={collapsed ? item.label : undefined}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                  'flex w-full items-center rounded-xl py-2.5 text-sm font-medium transition-colors',
+                  collapsed ? 'justify-center px-0' : 'gap-3 px-3',
                   active
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
                 <Icon className="h-[18px] w-[18px] shrink-0" />
-                <span className="truncate text-pretty">{item.label}</span>
+                {!collapsed && <span className="truncate text-pretty">{item.label}</span>}
               </button>
             )
           })}
@@ -146,23 +186,29 @@ export function Dashboard({
         <div className="border-t border-border/70 p-3">
           <a
             href={hubUrl(user.tenantSlug)}
-            className="mb-1 flex w-full items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title={collapsed ? 'Home' : undefined}
+            className={cn(
+              'mb-1 flex w-full items-center rounded-xl py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+              collapsed ? 'justify-center px-0' : 'gap-3 px-2',
+            )}
           >
             <Home className="h-[18px] w-[18px] shrink-0" />
-            Home
+            {!collapsed && 'Home'}
           </a>
-          <div className="flex items-center gap-3 rounded-xl px-2 py-2">
+          <div className={cn('flex items-center rounded-xl py-2', collapsed ? 'justify-center px-0' : 'gap-3 px-2')}>
             <Avatar className="h-9 w-9">
               <AvatarFallback className="bg-accent text-xs font-semibold text-foreground">
                 {iniciais}
               </AvatarFallback>
             </Avatar>
-            <div className="min-w-0 flex-1 leading-tight">
-              <p className="truncate text-sm font-medium">{user.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {user.email}
-              </p>
-            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="truncate text-sm font-medium">{user.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {user.email}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </aside>
@@ -177,7 +223,7 @@ export function Dashboard({
       )}
 
       {/* Conteúdo */}
-      <div className="flex flex-1 flex-col md:pl-64">
+      <div className={cn('flex flex-1 flex-col transition-[padding] duration-300', collapsed ? 'md:pl-16' : 'md:pl-64')}>
         <header
           className="sticky top-0 z-20 flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 backdrop-blur-xl md:px-8"
           style={{ height: 'calc(4rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
