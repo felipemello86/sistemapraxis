@@ -228,6 +228,7 @@ export function Dashboard({
               unidades={unidades}
               itens={itens}
               inspecoes={inspecoes}
+              atribuicoes={atribuicoes}
             />
           )}
           {view === 'rota' && (

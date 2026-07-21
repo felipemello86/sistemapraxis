@@ -1,9 +1,8 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
-import { Plus, Trash2, Check, AlertTriangle, ClipboardList } from 'lucide-react'
+import { useState, useTransition } from 'react'
+import { Plus, Trash2, ClipboardList } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -27,67 +26,60 @@ import { toast } from 'sonner'
 import {
   contarConformidade,
   formatarData,
+  itensParaUnidade,
   labelResultado,
   temPendencia,
 } from '@/lib/domain'
-import { createInspecaoAction, deleteInspecaoAction } from '@/app/actions/data'
+import { deleteInspecaoAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
+import { InspecaoWizard } from '@/components/inspecao-wizard'
 import type {
+  AtribuicoesPorUnidade,
   InspecaoComUnidade,
   ChecklistItem,
   UnitOption,
 } from '@/lib/types'
 
+// "Nova inspeção" aqui precisa do mesmo modo gamificado (item a item, com
+// observação e foto na não conformidade) que a Rota de Manutenção — só a
+// forma de chegar até a unidade muda (seleção manual num dialog em vez da
+// rota priorizada por dias sem inspeção). A execução em si vive em
+// components/inspecao-wizard.tsx, reaproveitada pelas duas telas.
+
 export function ControleInspecoes({
   unidades,
   itens,
   inspecoes,
+  atribuicoes,
 }: {
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
+  atribuicoes: AtribuicoesPorUnidade
 }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
-
   const [unidadeId, setUnidadeId] = useState<string>('')
-  const [statusItens, setStatusItens] = useState<Record<string, boolean>>({})
-  const [obsItens, setObsItens] = useState<Record<string, string>>({})
+  const [unidadeAtiva, setUnidadeAtiva] = useState<UnitOption | null>(null)
 
-  function resetForm() {
-    setUnidadeId('')
-    setStatusItens({})
-    setObsItens({})
-  }
-
-  function handleSubmit() {
-    if (!unidadeId) {
+  function iniciarInspecao() {
+    const unidade = unidades.find((u) => u.id === unidadeId)
+    if (!unidade) {
       toast.error('Selecione uma unidade.')
       return
     }
-    const itensPayload = itens.map((it) => ({
-      checklistItemId: it.id,
-      status: (statusItens[it.id] === false
-        ? 'NAO_CONFORME'
-        : 'CONFORME') as 'CONFORME' | 'NAO_CONFORME',
-      comment: obsItens[it.id] || undefined,
-    }))
+    const itensFiltrados = itensParaUnidade(unidade.id, itens, atribuicoes)
+    if (itensFiltrados.length === 0) {
+      toast.error('Essa unidade não tem itens de checklist atribuídos.')
+      return
+    }
+    setUnidadeAtiva(unidade)
+    setOpen(false)
+    setUnidadeId('')
+  }
 
-    startTransition(async () => {
-      try {
-        unwrapSafeAction(
-          await createInspecaoAction({
-            uhId: unidadeId,
-            itens: itensPayload,
-          }),
-        )
-        toast.success('Inspeção registrada com sucesso.')
-        resetForm()
-        setOpen(false)
-      } catch {
-        toast.error('Não foi possível salvar a inspeção.')
-      }
-    })
+  function encerrarInspecao() {
+    setUnidadeAtiva(null)
   }
 
   function handleDelete(id: string) {
@@ -101,9 +93,17 @@ export function ControleInspecoes({
     })
   }
 
-  const problemasSelecionados = itens.filter(
-    (it) => statusItens[it.id] === false,
-  ).length
+  if (unidadeAtiva) {
+    const itensDaUnidade = itensParaUnidade(unidadeAtiva.id, itens, atribuicoes)
+    return (
+      <InspecaoWizard
+        unidade={unidadeAtiva}
+        itens={itensDaUnidade}
+        onCancel={encerrarInspecao}
+        onSaved={encerrarInspecao}
+      />
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -120,134 +120,36 @@ export function ControleInspecoes({
                 </Button>
               }
             />
-            <DialogContent className="max-h-[88svh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+            <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
               <DialogHeader className="border-b border-border/70 px-6 py-4">
                 <DialogTitle>Nova inspeção</DialogTitle>
                 <DialogDescription>
-                  Avalie cada item e marque os que apresentam problema.
+                  Selecione a unidade para iniciar a avaliação item a item.
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="max-h-[60svh] space-y-5 overflow-y-auto px-6 py-5">
-                <div className="flex flex-col gap-2">
-                  <Label>Unidade</Label>
-                  <Select
-                    value={unidadeId}
-                    onValueChange={(v) => setUnidadeId(v ?? '')}
-                  >
-                    <SelectTrigger className="h-10 rounded-xl">
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {unidades.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          Unidade {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <Label>Itens de inspeção</Label>
-                    <span className="text-xs text-muted-foreground">
-                      {problemasSelecionados} marcados com problema
-                    </span>
-                  </div>
-                  <div className="space-y-2 rounded-2xl border border-border/70 p-2">
-                    {itens.map((it) => {
-                      const problema = statusItens[it.id] === false
-                      return (
-                        <div
-                          key={it.id}
-                          className="rounded-xl px-3 py-2.5 transition-colors hover:bg-accent/50"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">
-                                {it.name}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {it.category}
-                              </p>
-                            </div>
-                            <div className="flex shrink-0 gap-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setStatusItens((s) => ({
-                                    ...s,
-                                    [it.id]: true,
-                                  }))
-                                }
-                                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                                  !problema
-                                    ? 'border-[var(--success)]/40 bg-[var(--success)]/15 text-[var(--success)]'
-                                    : 'border-border text-muted-foreground hover:bg-accent'
-                                }`}
-                                aria-label="Conforme"
-                              >
-                                <Check className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setStatusItens((s) => ({
-                                    ...s,
-                                    [it.id]: false,
-                                  }))
-                                }
-                                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                                  problema
-                                    ? 'border-[var(--warning)]/40 bg-[var(--warning)]/15 text-[var(--warning)]'
-                                    : 'border-border text-muted-foreground hover:bg-accent'
-                                }`}
-                                aria-label="Problema"
-                              >
-                                <AlertTriangle className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                          {problema && (
-                            <Input
-                              value={obsItens[it.id] ?? ''}
-                              onChange={(e) =>
-                                setObsItens((s) => ({
-                                  ...s,
-                                  [it.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Descreva o problema"
-                              className="mt-2 h-9 rounded-lg"
-                            />
-                          )}
-                        </div>
-                      )
-                    })}
-                    {itens.length === 0 && (
-                      <p className="py-4 text-center text-sm text-muted-foreground">
-                        Nenhum item cadastrado no catálogo ainda.
-                      </p>
-                    )}
-                  </div>
-                </div>
+              <div className="space-y-2 px-6 py-5">
+                <Label>Unidade</Label>
+                <Select value={unidadeId} onValueChange={(v) => setUnidadeId(v ?? '')}>
+                  <SelectTrigger className="h-10 rounded-xl">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {unidades.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        Unidade {u.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <DialogFooter className="border-t border-border/70 px-6 py-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => setOpen(false)}
-                  className="rounded-xl"
-                >
+                <Button variant="ghost" onClick={() => setOpen(false)} className="rounded-xl">
                   Cancelar
                 </Button>
-                <Button
-                  onClick={handleSubmit}
-                  disabled={pending}
-                  className="rounded-xl"
-                >
-                  {pending ? 'Salvando...' : 'Salvar inspeção'}
+                <Button onClick={iniciarInspecao} className="rounded-xl">
+                  Iniciar inspeção
                 </Button>
               </DialogFooter>
             </DialogContent>
