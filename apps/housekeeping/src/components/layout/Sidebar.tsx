@@ -50,6 +50,13 @@ function hubUrl(tenantSlug: string) {
   return tenantSlug ? `${base}/${tenantSlug}` : base;
 }
 
+// Preferência de sidebar recolhida persistida por navegador (localStorage) —
+// como todos os módulos ficam no mesmo domínio via rewrite do gateway
+// (basePaths diferentes, mesma origem), a chave leva o nome do módulo pra
+// não colidir com a mesma preferência de housekeeping/estoque/restaurante/
+// upkeep. Mesmo padrão introduzido em apps/maintenance/src/components/dashboard.tsx.
+const SIDEBAR_COLLAPSED_KEY = "praxis-housekeeping-sidebar-collapsed";
+
 function NavContent({
   nome, role, tenantSlug, pathname, onClose, collapsible,
 }: {
@@ -119,6 +126,19 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
+  // Lido depois do mount (não no useState inicial) pra não divergir do HTML
+  // renderizado no servidor — evita mismatch de hidratação.
+  useEffect(() => {
+    if (window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
+      setCollapsed(true);
+    }
+  }, []);
+
+  function setCollapsedPersist(next: boolean) {
+    setCollapsed(next);
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+  }
+
   const navProps = { nome, role, tenantSlug, pathname };
 
   return (
@@ -131,7 +151,7 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
         {collapsed ? (
           <div className="flex flex-col h-full">
             <div className="p-2 flex justify-center border-b border-gray-100">
-              <button onClick={() => setCollapsed(false)} className="text-gray-400 hover:text-gray-700 p-1.5 rounded">
+              <button onClick={() => setCollapsedPersist(false)} className="text-gray-400 hover:text-gray-700 p-1.5 rounded">
                 <Menu className="w-5 h-5" />
               </button>
             </div>
@@ -153,7 +173,7 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
             </div>
           </div>
         ) : (
-          <NavContent {...navProps} onClose={() => setCollapsed(true)} collapsible />
+          <NavContent {...navProps} onClose={() => setCollapsedPersist(true)} collapsible />
         )}
       </aside>
 
