@@ -171,15 +171,44 @@ export default function PushRegistration() {
         // iOS ignoramos esse evento e usamos o plugin local FcmTokenPlugin
         // (ver AppDelegate.swift), que expõe o token FCM de verdade,
         // convertido pelo FirebaseMessaging internamente.
+        //
+        // 2ª RODADA (22/07): a primeira versão dependia só do evento
+        // "fcmToken" (passivo, dispara quando o Firebase decide). Nunca
+        // chegou a disparar — o Firebase provavelmente já tinha tentado
+        // gerar o token cedo demais no boot do app, antes do plugin nativo
+        // conseguir se inscrever como delegate, perdendo esse disparo
+        // único pra sempre naquela sessão. Correção: chamar
+        // FcmToken.getToken() ATIVAMENTE (busca o token na hora, não
+        // depende de pegar um callback no timing certo). O listener de
+        // "fcmToken" continua registrado como bônus, só pra capturar
+        // eventuais refreshes espontâneos de token depois do registro
+        // inicial.
         const plataforma = Capacitor.getPlatform();
+
+        if (plataforma === "ios") {
+          FcmToken.addListener("fcmToken", async (data) => {
+            LOG("evento 'fcmToken' (iOS, refresh) recebido:", data.value.slice(0, 12) + "...");
+            await postToken(data.value, "ios");
+          });
+        }
 
         PushNotifications.addListener("registration", async (token) => {
           LOG("evento 'registration' recebido, token:", token.value.slice(0, 12) + "...");
           if (plataforma === "android") {
             await postToken(token.value, "android");
             settle("token Android registrado");
-          } else {
-            LOG("iOS: token bruto do APNs ignorado, aguardando evento 'fcmToken'...");
+            return;
+          }
+
+          LOG("iOS: token bruto do APNs ignorado, chamando FcmToken.getToken() ativamente...");
+          try {
+            const { token: fcmToken } = await FcmToken.getToken();
+            LOG("FcmToken.getToken() (iOS) retornou:", fcmToken.slice(0, 12) + "...");
+            await postToken(fcmToken, "ios");
+            settle("token FCM (iOS) registrado via getToken()");
+          } catch (err) {
+            LOG("erro no FcmToken.getToken() (iOS):", String(err));
+            settle("erro ao buscar token FCM (iOS)");
           }
         });
 
@@ -187,14 +216,6 @@ export default function PushRegistration() {
           LOG("evento 'registrationError':", JSON.stringify(err));
           settle("registrationError");
         });
-
-        if (plataforma === "ios") {
-          FcmToken.addListener("fcmToken", async (data) => {
-            LOG("evento 'fcmToken' (iOS) recebido:", data.value.slice(0, 12) + "...");
-            await postToken(data.value, "ios");
-            settle("token FCM (iOS) registrado");
-          });
-        }
 
         await PushNotifications.register();
         LOG("register() chamado com sucesso, aguardando token...");
