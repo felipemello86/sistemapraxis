@@ -63,6 +63,19 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
       tokens: tokens.map((t) => t.token),
       notification: { title: payload.title, body: payload.body },
       data: payload.data,
+      // BUG ENCONTRADO EM PRODUÇÃO (22/07): banner aparecia mas sem som.
+      // O campo genérico `notification` não inclui som — no iOS, o APNs só
+      // toca som se `aps.sound` vier explícito no payload; sem isso, fica
+      // mudo mesmo com presentationOptions permitindo som (ver
+      // capacitor.config.json). "default" usa o som padrão do sistema.
+      apns: {
+        payload: {
+          aps: { sound: "default" },
+        },
+      },
+      android: {
+        notification: { sound: "default" },
+      },
     });
 
     // Token deixa de ser válido quando o usuário desinstala o app ou o SO
