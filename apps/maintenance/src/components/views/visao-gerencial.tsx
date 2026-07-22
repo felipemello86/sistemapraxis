@@ -98,18 +98,23 @@ export function VisaoGerencial({
     return total > 0 ? Math.round((ok / total) * 100) : null
   }, [ultimaMap])
 
-  // Barras: uma por UH (mesmo sem inspeção ainda — aparece com 0%),
-  // ordenadas da pior pra melhor conformidade (esq → dir), igual ao
-  // protótipo original.
+  // Barras: uma por UH. Prioridade da esquerda pra direita (pedido
+  // explícito): 1) inspecionadas com pior conformidade, 2) inspecionadas com
+  // melhor conformidade, 3) nunca inspecionadas por último — nesse grupo não
+  // tem "pontuação" pra ordenar, então cai por nome de UH. Antes essas
+  // ficavam misturadas com as piores porque ambas tinham value=0.
   const barData = useMemo(() => {
-    return unidades
-      .map((u) => {
-        const ult = ultimaMap.get(u.id)
-        const { ok, total } = ult ? contarConformidade(ult) : { ok: 0, total: 0 }
-        const value = total > 0 ? Math.round((ok / total) * 100) : 0
-        return { unitId: u.id, label: u.name, value }
-      })
-      .sort((a, b) => a.value - b.value)
+    const comInspecao: { unitId: string; label: string; value: number }[] = []
+    const semInspecao: { unitId: string; label: string; value: number }[] = []
+    for (const u of unidades) {
+      const ult = ultimaMap.get(u.id)
+      const { ok, total } = ult ? contarConformidade(ult) : { ok: 0, total: 0 }
+      const entry = { unitId: u.id, label: u.name, value: total > 0 ? Math.round((ok / total) * 100) : 0 }
+      ;(total > 0 ? comInspecao : semInspecao).push(entry)
+    }
+    comInspecao.sort((a, b) => a.value - b.value)
+    semInspecao.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { numeric: true }))
+    return [...comInspecao, ...semInspecao]
   }, [unidades, ultimaMap])
 
   function corBarra(value: number) {
@@ -214,7 +219,7 @@ export function VisaoGerencial({
           <div className="overflow-x-auto">
             <div style={{ minWidth: larguraGrafico }}>
               <ChartContainer config={{ value: { label: 'Conformidade' } }} className="h-72 w-full">
-                <BarChart data={barData} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                <BarChart data={barData} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
                   <XAxis
                     dataKey="label"
@@ -230,7 +235,7 @@ export function VisaoGerencial({
                   <YAxis
                     tickLine={false}
                     axisLine={false}
-                    width={32}
+                    width={40}
                     domain={[0, 100]}
                     tickFormatter={(v) => `${v}%`}
                   />
