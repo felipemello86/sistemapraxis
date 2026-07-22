@@ -1,4 +1,5 @@
 import { prisma, sendPushToUser } from "@praxis/core";
+import { dataAtualSP, horaAtualSP } from "./timezone";
 
 // Late Check-out — Atendimento marca uma UH pra ser liberada mais tarde (com
 // hora de saída obrigatória) em vez de seguir o fluxo normal, onde alguém
@@ -7,20 +8,8 @@ import { prisma, sendPushToUser } from "@praxis/core";
 //
 // Comparação de horário sempre em America/Sao_Paulo (mesmo fuso operacional
 // usado no resto do app, ver api/uh-detail/route.ts) — nunca UTC puro, que é
-// o fuso da Vercel.
-
-function horaAtualSP(): string {
-  return new Date().toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "America/Sao_Paulo",
-  });
-}
-
-function dataAtualSP(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
+// o fuso da Vercel. dataAtualSP/horaAtualSP agora vêm de ./timezone
+// (extraído daqui pra ser reaproveitado em outras rotas — ver comentário lá).
 
 /**
  * Libera automaticamente as UHs marcadas como Late Check-out cuja hora de

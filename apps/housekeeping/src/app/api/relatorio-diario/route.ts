@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { getRelatorioData } from "@/lib/relatorio-dados";
 import { RelatorioPDF } from "@/lib/relatorio-pdf";
 import { enviarRelatorioPDF } from "@/lib/telegram";
-import { format } from "date-fns";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/relatorio-diario/route.ts (v1).
 // hotelId → tenantId. Único ponto do v2 que gera PDF (@react-pdf/renderer)
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const tenantId = session.tenantId;
   const body = await req.json().catch(() => ({}));
-  const data = body.data || format(new Date(), "yyyy-MM-dd");
+  const data = body.data || dataAtualSP();
 
   try {
     const relData = await getRelatorioData(tenantId, data);
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
   }
 
   const tenantId = session.tenantId;
-  const data = req.nextUrl.searchParams.get("data") || format(new Date(), "yyyy-MM-dd");
+  const data = req.nextUrl.searchParams.get("data") || dataAtualSP();
 
   try {
     const relData = await getRelatorioData(tenantId, data);

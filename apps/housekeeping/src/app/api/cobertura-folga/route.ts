@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/cobertura-folga/route.ts (v1) —
 // só o GET por enquanto (consulta se há cobertura ativa num dia, usado pelo
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
   }
   const tenantId = session.tenantId;
-  const hoje = format(new Date(), "yyyy-MM-dd");
+  const hoje = dataAtualSP();
 
   const data = req.nextUrl.searchParams.get("data") || hoje;
   const cobertura = await prisma.coberturaFolga.findUnique({

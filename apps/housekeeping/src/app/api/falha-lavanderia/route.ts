@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, getSession } from "@praxis/core";
-import { format } from "date-fns";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/falha-lavanderia/route.ts (v1).
 // Notificação via Telegram fica como TODO (ver mesmo comentário em sessoes/route.ts).
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "uhNumero obrigatório" }, { status: 400 });
   }
 
-  const data = format(new Date(), "yyyy-MM-dd");
+  const data = dataAtualSP();
 
   await prisma.falhaLavanderia.create({
     data: {

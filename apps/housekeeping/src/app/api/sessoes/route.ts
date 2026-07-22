@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma, getSession, hasModuleAccess } from "@praxis/core";
-import { format } from "date-fns";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/sessoes/route.ts (v1). Diferenças:
 // - hotelId virou tenantId (mesmo Tenant do suite_core, sem soft-link)
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dateParam = req.nextUrl.searchParams.get("date");
-  const dateStr = dateParam || format(new Date(), "yyyy-MM-dd");
+  const dateStr = dateParam || dataAtualSP();
 
   const [assignments, selecoes] = await Promise.all([
     prisma.dailyAssignment.findMany({

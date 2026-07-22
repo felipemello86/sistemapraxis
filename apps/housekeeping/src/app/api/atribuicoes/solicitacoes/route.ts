@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/atribuicoes/solicitacoes/route.ts
 // (v1) — sem o caminho de token, só sessão. Lista solicitações de troca
@@ -11,7 +11,7 @@ export async function GET() {
   if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
     return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
   }
-  const hoje = format(new Date(), "yyyy-MM-dd");
+  const hoje = dataAtualSP();
 
   const solicitacoes = await prisma.dailyAssignment.findMany({
     where: { tenantId: session.tenantId, data: hoje, solicitacaoStatus: "PENDENTE" },

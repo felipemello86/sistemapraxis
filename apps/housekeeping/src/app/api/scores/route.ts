@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 import { calcularScoreUH, calcularScoreSuperLimpeza } from "@/lib/scoring";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/scores/route.ts (v1).
 // hotelId → tenantId; hotelConfig → HkConfig.
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const periodo = req.nextUrl.searchParams.get("periodo") || "hoje";
   // Usa a data enviada pelo cliente (evita bug de timezone: Vercel usa UTC)
-  const hoje = req.nextUrl.searchParams.get("data") || format(new Date(), "yyyy-MM-dd");
+  const hoje = req.nextUrl.searchParams.get("data") || dataAtualSP();
 
   let whereData: any = {};
   if (periodo === "hoje") {

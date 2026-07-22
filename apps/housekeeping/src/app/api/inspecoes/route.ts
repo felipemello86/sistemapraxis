@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/inspecoes/route.ts (v1).
 // Diferenças conscientes desta fatia:
@@ -50,7 +50,7 @@ export async function GET() {
     return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
   }
   const tenantId = session.tenantId;
-  const hoje = format(new Date(), "yyyy-MM-dd");
+  const hoje = dataAtualSP();
 
   const sessions = await prisma.cleaningSession.findMany({
     where: {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/atribuicoes/route.ts (v1) — agora
 // completo (GET, POST, PATCH decidir_alteracao, DELETE), além do
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   }
   const tenantId = session.tenantId;
 
-  const data = req.nextUrl.searchParams.get("data") || format(new Date(), "yyyy-MM-dd");
+  const data = req.nextUrl.searchParams.get("data") || dataAtualSP();
 
   const [assignments, selecoes] = await Promise.all([
     prisma.dailyAssignment.findMany({
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "data, uhId e camareiraId são obrigatórios" }, { status: 400 });
   }
 
-  const hoje = format(new Date(), "yyyy-MM-dd");
+  const hoje = dataAtualSP();
   if ((data === hoje || !data) && session.role === "GOVERNANTA") {
     const cobertura = await prisma.coberturaFolga.findUnique({
       where: { tenantId_data: { tenantId, data: hoje } },
@@ -154,7 +154,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (action === "notificar_dia") {
-    const dataAtual = data || format(new Date(), "yyyy-MM-dd");
+    const dataAtual = data || dataAtualSP();
     const assignments = await prisma.dailyAssignment.findMany({
       where: { tenantId, data: dataAtual },
       select: { camareiraId: true },

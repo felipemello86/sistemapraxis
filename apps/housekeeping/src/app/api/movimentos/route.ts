@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, prisma } from "@praxis/core";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/movimentos/route.ts (v1). hotelId → tenantId.
 // GET /api/movimentos?periodo=hoje|mes|alltime|custom&data=yyyy-MM-dd&dataIni=&dataFim=
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
 
   const p = req.nextUrl.searchParams;
   const periodo = p.get("periodo") || "alltime";
-  const dataCliente = p.get("data") || format(new Date(), "yyyy-MM-dd");
+  const dataCliente = p.get("data") || dataAtualSP();
 
   // Super Limpeza ⭐️ entra na mesma exclusão de LIMPEZA_COMPLETA: sem
   // monitoramento de tempo (ver src/lib/scoring.ts), então a duração dos

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
-import { format } from "date-fns";
 import { distanciaMetros, HAVERSINE_RAIO_METROS } from "@/lib/geo";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Georreferenciamento (Governança) — check-in de chegada da camareira.
 // Chamado periodicamente pelo GeoCheckin (componente client, ver
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const tenantId = session.tenantId;
   const camareiraId = session.userId;
-  const hoje = format(new Date(), "yyyy-MM-dd");
+  const hoje = dataAtualSP();
 
   const atribuicoesHoje = await prisma.dailyAssignment.findMany({
     where: { tenantId, camareiraId, data: hoje },

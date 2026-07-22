@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 import { calcularScoreUH } from "@/lib/scoring";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/logs/route.ts (v1). Não existe
 // tabela de log/auditoria dedicada — os eventos são montados on-the-fly a
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   const params = req.nextUrl.searchParams;
   // data do cliente para evitar bug de timezone
-  const dataParam = params.get("data") || new Date().toISOString().slice(0, 10);
+  const dataParam = params.get("data") || dataAtualSP();
   const tipoParam = params.get("tipo") || "";
   const atorParam = params.get("ator") || "";
 

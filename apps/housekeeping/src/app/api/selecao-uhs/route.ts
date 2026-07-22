@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Igual ao addBusinessDays de apps/booking-reviews/src/lib/scoring.ts —
 // duplicado aqui (não é exportado por @praxis/core) só pra calcular o prazo
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
   }
   const tenantId = session.tenantId;
 
-  const data = req.nextUrl.searchParams.get("data") || format(new Date(), "yyyy-MM-dd");
+  const data = req.nextUrl.searchParams.get("data") || dataAtualSP();
 
   // Best-effort: se alguma UH marcada como Late Check-out já passou da hora
   // de saída, libera sozinha antes de montar a resposta. Nunca deve travar

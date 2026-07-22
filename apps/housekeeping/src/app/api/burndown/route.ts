@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { format } from "date-fns";
 import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
+import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/burndown/route.ts (v1).
 // Alimenta o dashboard "Tempo Real" (BurndownChart) — a tela mais valiosa
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     console.error("[late-checkout] falha ao liberar automaticamente:", e);
   }
 
-  const data = req.nextUrl.searchParams.get("data") || format(new Date(), "yyyy-MM-dd");
+  const data = req.nextUrl.searchParams.get("data") || dataAtualSP();
 
   const assignments = await prisma.dailyAssignment.findMany({
     where: { tenantId, data },
