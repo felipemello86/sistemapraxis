@@ -74,6 +74,7 @@ const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
 
 export function Dashboard({
   user,
+  podeOperar,
   unidades,
   itens,
   inspecoes,
@@ -82,6 +83,10 @@ export function Dashboard({
   config,
 }: {
   user: DashboardUser
+  // false = usuário pode ver todas as telas normalmente, mas os botões de
+  // ação (criar, editar, excluir, iniciar inspeção etc.) ficam desabilitados
+  // — ver comentário em app/page.tsx.
+  podeOperar: boolean
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
@@ -240,10 +245,18 @@ export function Dashboard({
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <div className="flex-1">
+          <div className="flex flex-1 items-center gap-2">
             <h1 className="text-lg font-semibold tracking-tight">
               {NAV.find((n) => n.id === view)?.label}
             </h1>
+            {!podeOperar && (
+              <span
+                className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                title="Você não tem acesso a este módulo — pode ver as telas, mas as ações ficam bloqueadas."
+              >
+                Somente visualização
+              </span>
+            )}
           </div>
           <a
             href={hubUrl(user.tenantSlug)}
@@ -267,6 +280,7 @@ export function Dashboard({
           {view === 'evolucao' && <Evolucao inspecoes={inspecoes} />}
           {view === 'informacoes' && (
             <Informacoes
+              podeOperar={podeOperar}
               unidades={unidades}
               itens={itens}
               inspecoes={inspecoes}
@@ -276,6 +290,7 @@ export function Dashboard({
           )}
           {view === 'correcao' && (
             <RotaCorrecao
+              podeOperar={podeOperar}
               unidades={unidades}
               itens={itens}
               inspecoes={inspecoes}
@@ -284,6 +299,7 @@ export function Dashboard({
           )}
           {view === 'config' && (
             <Configuracoes
+              podeOperar={podeOperar}
               itens={itens}
               unidades={unidades}
               atribuicoes={atribuicoes}

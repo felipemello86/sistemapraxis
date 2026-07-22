@@ -50,12 +50,14 @@ import type {
 // no gateway). A única aba que continua com CRUD de verdade nesta tela é o
 // catálogo de itens de inspeção.
 export function Configuracoes({
+  podeOperar,
   itens,
   unidades,
   atribuicoes,
   config,
   user,
 }: {
+  podeOperar: boolean
   itens: ChecklistItem[]
   unidades: UnitOption[]
   atribuicoes: AtribuicoesPorUnidade
@@ -86,6 +88,7 @@ export function Configuracoes({
   }
 
   function salvarAtribuicao(uhId: string) {
+    if (!podeOperar) return
     const checklistItemIds = itens.filter((it) => selecaoAtual[it.id]).map((it) => it.id)
     if (checklistItemIds.length === 0) {
       toast.error('Selecione ao menos um item, ou use "Restaurar padrão".')
@@ -103,6 +106,7 @@ export function Configuracoes({
   }
 
   function restaurarPadrao(uhId: string) {
+    if (!podeOperar) return
     startTransition(async () => {
       try {
         unwrapSafeAction(await setAtribuicaoUnidadeAction({ uhId, checklistItemIds: [] }))
@@ -119,6 +123,7 @@ export function Configuracoes({
   const [meta, setMeta] = useState(String(config.goal))
 
   function salvarConfig() {
+    if (!podeOperar) return
     const maxDiasNum = Number(maxDias)
     const metaNum = Number(meta)
     if (!Number.isFinite(maxDiasNum) || maxDiasNum < 1 || maxDiasNum > 365) {
@@ -147,6 +152,7 @@ export function Configuracoes({
   )
 
   function addItem() {
+    if (!podeOperar) return
     if (!itemNome.trim()) {
       toast.error('Informe o nome do item.')
       return
@@ -170,6 +176,7 @@ export function Configuracoes({
   }
 
   function removeItem(id: string) {
+    if (!podeOperar) return
     startTransition(async () => {
       try {
         unwrapSafeAction(await deleteItemAction(id))
@@ -248,7 +255,8 @@ export function Configuracoes({
             <div className="mt-4 flex justify-end">
               <Button
                 onClick={addItem}
-                disabled={pending}
+                disabled={pending || !podeOperar}
+                title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
                 className="h-10 rounded-xl"
               >
                 <Plus className="h-4 w-4" />
@@ -277,8 +285,9 @@ export function Configuracoes({
                   </div>
                   <button
                     onClick={() => removeItem(it.id)}
-                    disabled={pending}
-                    className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    disabled={pending || !podeOperar}
+                    title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                    className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
                     aria-label="Remover item"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -367,7 +376,8 @@ export function Configuracoes({
                               variant="outline"
                               size="sm"
                               onClick={() => restaurarPadrao(u.id)}
-                              disabled={pending}
+                              disabled={pending || !podeOperar}
+                              title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
                               className="rounded-lg"
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
@@ -376,7 +386,8 @@ export function Configuracoes({
                             <Button
                               size="sm"
                               onClick={() => salvarAtribuicao(u.id)}
-                              disabled={pending}
+                              disabled={pending || !podeOperar}
+                              title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
                               className="rounded-lg"
                             >
                               Salvar
@@ -431,7 +442,12 @@ export function Configuracoes({
               </div>
             </div>
             <div className="mt-4 flex justify-end">
-              <Button onClick={salvarConfig} disabled={pending} className="h-10 rounded-xl">
+              <Button
+                onClick={salvarConfig}
+                disabled={pending || !podeOperar}
+                title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                className="h-10 rounded-xl"
+              >
                 Salvar configuração
               </Button>
             </div>

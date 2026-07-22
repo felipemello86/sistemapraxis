@@ -23,10 +23,15 @@ export default async function Home() {
   if (!session) {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
-  const podeAcessar = await hasModuleAccess(session, "MAINTENANCE");
-  if (!podeAcessar) {
-    redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
-  }
+  // Visualização é liberada pra qualquer usuário autenticado do tenant,
+  // independente de o módulo estar contratado ou de acesso individual (ver
+  // hasModuleAccess) — restrição de acesso agora só bloqueia OPERAR (criar,
+  // editar, excluir, iniciar inspeção etc.), nunca ver a tela. `podeOperar`
+  // desce pro Dashboard e pras views que têm ações de escrita, que desabilitam
+  // os botões correspondentes quando false. As Server Actions em
+  // app/actions/data.ts continuam com o próprio check (requireModuleSession)
+  // — a UI desabilitada aqui é só a primeira camada, não a de verdade.
+  const podeOperar = await hasModuleAccess(session, "MAINTENANCE");
 
   const [uhs, checklistItems, inspections, unitChecklistItems, corrections, config] = await Promise.all([
     prisma.uH.findMany({
@@ -132,6 +137,7 @@ export default async function Home() {
         role: session.role,
         tenantSlug: session.tenantSlug,
       }}
+      podeOperar={podeOperar}
       unidades={unidades}
       itens={itens}
       inspecoes={inspecoes}

@@ -39,11 +39,13 @@ import type {
 const MAX_FOTOS = 4
 
 export function RotaCorrecao({
+  podeOperar,
   unidades,
   itens,
   inspecoes,
   correcoesRecentes,
 }: {
+  podeOperar: boolean
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
@@ -85,6 +87,7 @@ export function RotaCorrecao({
   }, [unidadeAtual, ultimaMap])
 
   function escolherUnidade(u: UnitOption) {
+    if (!podeOperar) return
     setUnidadeAtual(u)
     setEtapa('item')
   }
@@ -166,7 +169,11 @@ export function RotaCorrecao({
         <>
           <Panel
             title="Rota de Correção"
-            description="Selecione a unidade com pendência para registrar o reparo"
+            description={
+              podeOperar
+                ? 'Selecione a unidade com pendência para registrar o reparo'
+                : 'Você não tem acesso para registrar reparos neste módulo'
+            }
           >
             {unidadesComPendencia.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-10 text-center">
@@ -181,7 +188,9 @@ export function RotaCorrecao({
                   <li key={r.unidade.id}>
                     <button
                       onClick={() => escolherUnidade(r.unidade)}
-                      className="flex w-full items-center gap-4 rounded-xl border border-border/70 px-4 py-3 text-left transition-colors hover:bg-accent/50"
+                      disabled={!podeOperar}
+                      title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                      className="flex w-full items-center gap-4 rounded-xl border border-border/70 px-4 py-3 text-left transition-colors hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                     >
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-destructive/12 text-destructive">
                         <AlertTriangle className="h-4 w-4" />

@@ -67,12 +67,14 @@ type SortDir = 'asc' | 'desc'
 type FiltroSituacao = 'todas' | 'pendente' | 'conforme' | 'pendencias'
 
 export function Informacoes({
+  podeOperar,
   unidades,
   itens,
   inspecoes,
   atribuicoes,
   maxDias,
 }: {
+  podeOperar: boolean
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
@@ -183,6 +185,7 @@ export function Informacoes({
 
   function iniciarInspecao(unidade: UnitOption, e: React.MouseEvent) {
     e.stopPropagation()
+    if (!podeOperar) return
     const itensFiltrados = itensParaUnidade(unidade.id, itens, atribuicoes)
     if (itensFiltrados.length === 0) {
       toast.error('Essa unidade não tem itens de checklist atribuídos.')
@@ -197,6 +200,7 @@ export function Informacoes({
 
   function handleDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation()
+    if (!podeOperar) return
     startTransition(async () => {
       try {
         unwrapSafeAction(await deleteInspecaoAction(id))
@@ -210,6 +214,10 @@ export function Informacoes({
   if (unidadeAtiva) {
     const itensDaUnidade = itensParaUnidade(unidadeAtiva.id, itens, atribuicoes)
     return (
+      // Sem prop podeOperar aqui: o wizard só é alcançável clicando em
+      // "Iniciar inspeção", que já fica desabilitado (e ignora o clique,
+      // ver iniciarInspecao acima) quando !podeOperar — então quem chega
+      // até aqui sempre tem permissão de operar.
       <InspecaoWizard
         unidade={unidadeAtiva}
         itens={itensDaUnidade}
@@ -277,8 +285,9 @@ export function Informacoes({
                 </Badge>
                 <button
                   onClick={(e) => handleDelete(insp.id, e)}
-                  disabled={pending}
-                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  disabled={pending || !podeOperar}
+                  title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
                   aria-label="Remover inspeção"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -458,6 +467,8 @@ export function Informacoes({
                 <Button
                   size="sm"
                   onClick={(e) => iniciarInspecao(unidade, e)}
+                  disabled={!podeOperar}
+                  title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
                   className="mt-2 h-8 w-full rounded-lg"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -558,6 +569,8 @@ export function Informacoes({
                         <Button
                           size="sm"
                           onClick={(e) => iniciarInspecao(unidade, e)}
+                          disabled={!podeOperar}
+                          title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
                           className="h-8 rounded-lg"
                         >
                           <Plus className="h-3.5 w-3.5" />
