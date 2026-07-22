@@ -263,38 +263,55 @@ export function VisaoGerencial({
         )}
       </Panel>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Unidades"
-          value={totalUnidades}
-          hint={`${inspecionadas} já inspecionadas`}
-          tone="primary"
-          icon={<Building2 className="h-[18px] w-[18px]" />}
-        />
-        <StatCard
-          label="Cobertura"
-          value={`${cobertura}%`}
-          hint="das unidades cobertas"
-          tone="success"
-          icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
-        />
-        <StatCard
-          label="Inspeções"
-          value={totalInspecoes}
-          hint="realizadas no total"
-          tone="default"
-          icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
-        />
-        <StatCard
-          label="Com pendências"
-          value={comPendencias}
-          hint="exigem ação"
-          tone="warning"
-          icon={<AlertTriangle className="h-[18px] w-[18px]" />}
-        />
-      </div>
-
+      {/* Detalhamento vem logo após o gráfico (mesma lógica: são o par
+          "resumo visual" + "lista pra investigar"), e o painel de detalhe do
+          item selecionado agora fica abaixo da tabela, não acima. */}
       <div className="space-y-6">
+        <Panel
+          title={nomeUhSelecionada ? `Não conformes — ${nomeUhSelecionada}` : 'Detalhamento (Não Conformes)'}
+        >
+          <div className="max-h-[28rem] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="pb-2 pr-2 font-medium">UH</th>
+                  <th className="pb-2 pr-2 font-medium">Item</th>
+                  <th className="pb-2 font-medium">Categoria</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {ncList.slice(0, 60).map((r, i) => {
+                  const ativo =
+                    ncSelecionado?.unitId === r.unitId && ncSelecionado?.checklistItemId === r.checklistItemId
+                  return (
+                    <tr
+                      key={`${r.unitId}-${r.checklistItemId}-${i}`}
+                      onClick={() => clicarLinhaNc(r)}
+                      className={`cursor-pointer transition-colors ${ativo ? 'bg-accent' : 'hover:bg-accent/40'}`}
+                    >
+                      <td className="py-2 pr-2 font-medium">{r.unitName}</td>
+                      <td className="py-2 pr-2 text-muted-foreground">{r.itemName}</td>
+                      <td className="py-2">
+                        <Badge
+                          variant="outline"
+                          style={{ borderColor: corCategoria(r.category), color: corCategoria(r.category) }}
+                        >
+                          {r.category}
+                        </Badge>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            {ncList.length === 0 && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                ✅ Tudo conforme.
+              </p>
+            )}
+          </div>
+        </Panel>
+
         {ncSelecionado && (
             <Panel>
               <div className="mb-4 flex items-start justify-between gap-3">
@@ -392,51 +409,37 @@ export function VisaoGerencial({
               </div>
             </Panel>
         )}
+      </div>
 
-        <Panel
-          title={nomeUhSelecionada ? `Não conformes — ${nomeUhSelecionada}` : 'Detalhamento (Não Conformes)'}
-        >
-          <div className="max-h-[28rem] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 pr-2 font-medium">UH</th>
-                  <th className="pb-2 pr-2 font-medium">Item</th>
-                  <th className="pb-2 font-medium">Categoria</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
-                {ncList.slice(0, 60).map((r, i) => {
-                  const ativo =
-                    ncSelecionado?.unitId === r.unitId && ncSelecionado?.checklistItemId === r.checklistItemId
-                  return (
-                    <tr
-                      key={`${r.unitId}-${r.checklistItemId}-${i}`}
-                      onClick={() => clicarLinhaNc(r)}
-                      className={`cursor-pointer transition-colors ${ativo ? 'bg-accent' : 'hover:bg-accent/40'}`}
-                    >
-                      <td className="py-2 pr-2 font-medium">{r.unitName}</td>
-                      <td className="py-2 pr-2 text-muted-foreground">{r.itemName}</td>
-                      <td className="py-2">
-                        <Badge
-                          variant="outline"
-                          style={{ borderColor: corCategoria(r.category), color: corCategoria(r.category) }}
-                        >
-                          {r.category}
-                        </Badge>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {ncList.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                ✅ Tudo conforme.
-              </p>
-            )}
-          </div>
-        </Panel>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Unidades"
+          value={totalUnidades}
+          hint={`${inspecionadas} já inspecionadas`}
+          tone="primary"
+          icon={<Building2 className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Cobertura"
+          value={`${cobertura}%`}
+          hint="das unidades cobertas"
+          tone="success"
+          icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Inspeções"
+          value={totalInspecoes}
+          hint="realizadas no total"
+          tone="default"
+          icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Com pendências"
+          value={comPendencias}
+          hint="exigem ação"
+          tone="warning"
+          icon={<AlertTriangle className="h-[18px] w-[18px]" />}
+        />
       </div>
 
       <Panel title="Inspeções recentes" description="Últimos registros">
