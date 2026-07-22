@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import PushTapHandler from "./PushTapHandler";
 
 export const metadata: Metadata = {
   title: "Governança — Praxis",
@@ -14,7 +15,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        {children}
+        <PushTapHandler />
+      </body>
     </html>
   );
 }

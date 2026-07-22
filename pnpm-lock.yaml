@@ -163,6 +163,9 @@ importers:
       '@capacitor/geolocation':
         specifier: ^6.1.0
         version: 6.1.1(@capacitor/core@6.2.1)
+      '@capacitor/push-notifications':
+        specifier: ^6.0.3
+        version: 6.0.5(@capacitor/core@6.2.1)
       '@praxis/core':
         specifier: workspace:*
         version: link:../../packages/core
