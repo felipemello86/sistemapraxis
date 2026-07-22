@@ -48,13 +48,25 @@ export default async function ClienteHub({
   const session = await getSession();
   const boundLogout = logoutAction.bind(null, tenant.slug);
 
+  // Quando há módulos (o caso normal, com os tiles), o logo + nome do tenant
+  // entra dentro de .buttonArea junto com o grid — pedido explícito pra
+  // ficar mais perto dos tiles em vez de grudado no topo da tela, já que
+  // .buttonArea centraliza tudo verticalmente no espaço livre abaixo do
+  // topo. Nos outros dois casos (login, sem módulos) o header continua fixo
+  // no topo, como sempre foi.
+  const hasTiles = !!session && tenant.modules.length > 0;
+
+  const header = (
+    <div className={styles.header}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/praxis-logo.png" alt="Praxis" className={styles.logo} />
+      <h1 className={styles.title}>{tenant.name}</h1>
+    </div>
+  );
+
   return (
     <main className={styles.main}>
-      <div className={styles.header}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/praxis-logo.png" alt="Praxis" className={styles.logo} />
-        <h1 className={styles.title}>{tenant.name}</h1>
-      </div>
+      {!hasTiles && header}
 
       {!session ? (
         <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -72,6 +84,7 @@ export default async function ClienteHub({
         </div>
       ) : (
         <div className={styles.buttonArea}>
+          {header}
           <div className={styles.grid}>
             {tenant.modules.map((m) => {
               const slug = moduleToSlug(m.module);
