@@ -386,8 +386,32 @@ export function Informacoes({
         }
       >
         {/* Mobile (<sm): cards empilhados — a tabela abaixo não cabe numa
-            tela estreita sem rolagem lateral, então aqui viram linhas full-width. */}
-        <div className="divide-y divide-border/70 sm:hidden">
+            tela estreita sem rolagem lateral, então aqui viram linhas full-width.
+            A ordenação da tabela (cabeçalho clicável) não existe em formato de
+            card, então vira uma barrinha de botões equivalente aqui. */}
+        <div className="sm:hidden">
+          <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+            <span className="shrink-0">Ordenar por</span>
+            <button
+              onClick={() => toggleSort('unidade')}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 transition-colors ${
+                sortField === 'unidade' ? 'bg-accent text-foreground' : 'hover:text-foreground'
+              }`}
+            >
+              Unidade
+              <SortIcon field="unidade" />
+            </button>
+            <button
+              onClick={() => toggleSort('ultima')}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 transition-colors ${
+                sortField === 'ultima' ? 'bg-accent text-foreground' : 'hover:text-foreground'
+              }`}
+            >
+              Última inspeção
+              <SortIcon field="ultima" />
+            </button>
+          </div>
+          <div className="divide-y divide-border/70">
           {linhas.map(({ unidade, ultima, dias, historico: historicoDaUnidade }) => {
             const aberta = expandida === unidade.id
             return (
@@ -455,6 +479,7 @@ export function Informacoes({
               <p className="text-sm text-muted-foreground">Nenhuma unidade encontrada.</p>
             </div>
           )}
+          </div>
         </div>
 
         {/* sm e acima: tabela original */}
