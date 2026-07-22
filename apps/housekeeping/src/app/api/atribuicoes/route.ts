@@ -151,6 +151,12 @@ export async function PATCH(req: NextRequest) {
       include: { uh: true, camareira: { select: { id: true, nome: true, role: true, foto: true, telegramChatId: true } } },
     });
     await prisma.uH.update({ where: { id: assignment.uhId }, data: { status: "DISPONIVEL" } });
+    // Push notification quando quarto é liberado
+    await sendPushToUser(assignment.camareiraId, {
+      title: "Quarto liberado",
+      body: `UH ${assignment.uh.numero} foi liberada para limpeza.`,
+      data: { tipo: "quarto_liberado", uhId: assignment.uhId, data: assignment.data },
+    });
     // TODO: notificar camareira via Telegram
     return NextResponse.json(assignment);
   }
