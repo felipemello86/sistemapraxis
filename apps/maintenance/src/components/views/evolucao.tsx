@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   Area,
   AreaChart,
@@ -84,9 +84,19 @@ export function Evolucao({
   // Gerencial (rolagem só dentro do bloco do gráfico, não na tela inteira).
   const larguraGraficoDiario = Math.max(serieDiaria.length * 44, 600)
 
+  // O dia mais recente (hoje) é o último ponto da série, então já nasce
+  // rolado pro final — sem isso o usuário abre a tela e cai no dia mais
+  // antigo, tendo que arrastar manualmente até achar "hoje" (pedido
+  // explícito pra abrir direto no dia mais recente).
+  const scrollGraficoRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = scrollGraficoRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [serieDiaria])
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-4">
         <StatCard
           label="Conformidade geral"
           value={`${conformidadeGeral}%`}
@@ -106,7 +116,7 @@ export function Evolucao({
         title="Conformidade ao longo do tempo"
         description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias). Arraste pros lados pra ver os outros dias.`}
       >
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" ref={scrollGraficoRef}>
           <div style={{ minWidth: larguraGraficoDiario }}>
             <ChartContainer
               config={{
