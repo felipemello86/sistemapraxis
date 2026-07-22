@@ -188,14 +188,22 @@ export function VisaoGerencial({
     <div className="space-y-6">
       {/* Conformidade é a métrica-resumo desta tela — vem primeiro, seguida
           do gráfico que a detalha por UH. Os demais cards (contagens brutas)
-          vêm depois, como apoio. */}
-      <div className="sm:max-w-xs">
+          vêm depois, como apoio. Unidades divide a linha com Conformidade
+          pra esse card não ocupar a largura inteira sozinho. */}
+      <div className="grid grid-cols-2 gap-4 sm:max-w-md">
         <StatCard
           label="Conformidade"
           value={conformidade === null ? '—' : `${conformidade}%`}
           hint={`meta: ${meta}%`}
           tone={conformidade !== null && conformidade >= meta ? 'success' : 'warning'}
           icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Unidades"
+          value={totalUnidades}
+          hint={`${inspecionadas} já inspecionadas`}
+          tone="primary"
+          icon={<Building2 className="h-[18px] w-[18px]" />}
         />
       </div>
 
@@ -411,14 +419,7 @@ export function VisaoGerencial({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Unidades"
-          value={totalUnidades}
-          hint={`${inspecionadas} já inspecionadas`}
-          tone="primary"
-          icon={<Building2 className="h-[18px] w-[18px]" />}
-        />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Cobertura"
           value={`${cobertura}%`}
