@@ -179,6 +179,7 @@ export function Uh3D({
   const pinchStartRef = useRef<{ dist: number; zoom: number } | null>(null)
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const draggedRef = useRef(false)
+  const pressedSpotIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     setZoom(1)
@@ -207,6 +208,11 @@ export function Uh3D({
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
     draggedRef.current = false
+    // setPointerCapture redireciona o clique nativo pro palco (perde o
+    // target original) — por isso guardamos aqui, no pointerdown, qual spot
+    // (se algum) recebeu o toque, pra decidir manualmente no pointerup.
+    const spotEl = (e.target as HTMLElement).closest?.('[data-spot-id]') as HTMLElement | null
+    pressedSpotIdRef.current = spotEl?.dataset.spotId ?? null
     if (pointersRef.current.size === 1 && zoom > 1) {
       panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
     } else if (pointersRef.current.size === 2) {
@@ -241,7 +247,16 @@ export function Uh3D({
   function onStagePointerUp(e: React.PointerEvent) {
     pointersRef.current.delete(e.pointerId)
     if (pointersRef.current.size < 2) pinchStartRef.current = null
-    if (pointersRef.current.size === 0) panStartRef.current = null
+    if (pointersRef.current.size === 0) {
+      panStartRef.current = null
+      // Abre o spot aqui (em vez de um onClick nele) porque o clique nativo
+      // não chega mais até o botão depois do setPointerCapture acima.
+      if (!draggedRef.current && pressedSpotIdRef.current) {
+        const spot = spotsDaImagem.find((s) => s.id === pressedSpotIdRef.current)
+        if (spot) setDetailSpot(spot)
+      }
+      pressedSpotIdRef.current = null
+    }
   }
 
   function onStageDoubleClick() {
@@ -257,11 +272,6 @@ export function Uh3D({
     const it = statusPorItem.get(spot.checklistItemId)
     if (!it) return 'NAO_AVALIADO'
     return it.status
-  }
-
-  function abrirSpot(spot: UhSpot) {
-    if (draggedRef.current) return
-    setDetailSpot(spot)
   }
 
   return (
@@ -307,7 +317,17 @@ export function Uh3D({
               return (
                 <button
                   key={spot.id}
-                  onClick={() => abrirSpot(spot)}
+                  type="button"
+                  data-spot-id={spot.id}
+                  onKeyDown={(e) => {
+                    // Clique de mouse/toque é tratado no pointerup do palco
+                    // (ver onStagePointerUp) — aqui só cobre ativação por
+                    // teclado, que não passa pelo pointer capture.
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setDetailSpot(spot)
+                    }
+                  }}
                   style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
                   className={cn(
                     'group absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-[opacity,transform] duration-700 ease-out',
@@ -531,13 +551,22 @@ function SpotDetailDialog({
         fd.append('pasta', `uh3d-edicoes/${unidadeNome}`)
         fd.append('tipo', 'inspecao')
         const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-        if (!res.ok) throw new Error('Falha no upload.')
+        if (!res.ok) {
+          let msg = `Falha no upload (HTTP ${res.status}).`
+          try {
+            const errBody = await res.json()
+            if (errBody?.error) msg = errBody.error
+          } catch {
+            // resposta não era JSON — mantém a mensagem com o status.
+          }
+          throw new Error(msg)
+        }
         const data = await res.json()
         urls.push(data.url as string)
       }
       setFotos((f) => [...f, ...urls])
-    } catch {
-      toast.error('Não foi possível enviar a(s) foto(s).')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível enviar a(s) foto(s).')
     } finally {
       setUploading(false)
     }
