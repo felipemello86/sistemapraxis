@@ -303,8 +303,13 @@ const STATUS_LABEL: Record<string, string> = {
   INSPECIONADO: "Liberado para check-in",
 };
 
-export default function SelecaoView({ role }: { role: string }) {
+export default function SelecaoView({ role, podeOperar }: { role: string; podeOperar: boolean }) {
+  // somenteLeitura é restrição de CARGO (Manutenção só visualiza aqui);
+  // podeOperar é a restrição de ACESSO AO MÓDULO (ver comentário em
+  // apps/maintenance/src/app/page.tsx) — visualização sempre liberada, só
+  // operar fica bloqueado. Os botões de ação checam os dois.
   const somenteLeitura = role === "MANUTENCAO";
+  const tituloSemAcesso = "Você não tem acesso para operar este módulo";
   // Comentário na UH é restrito a MASTER/GERENTE/ATENDIMENTO (decisão
   // explícita do Felipe) — diferente de somenteLeitura, que também libera
   // GOVERNANTA pras demais ações desta tela.
@@ -356,7 +361,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function confirmarLateCheckout() {
-    if (!lateCheckoutModal || !lateCheckoutHoraInput) return;
+    if (!lateCheckoutModal || !lateCheckoutHoraInput || !podeOperar) return;
     setSalvandoLateCheckout(true);
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
@@ -374,7 +379,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function desativarLateCheckout() {
-    if (!lateCheckoutModal) return;
+    if (!lateCheckoutModal || !podeOperar) return;
     setSalvandoLateCheckout(true);
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
@@ -423,6 +428,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function salvarSelecao() {
+    if (!podeOperar) return;
     setSalvando(true);
     await apiFetch("/api/selecao-uhs", {
       method: "POST",
@@ -433,6 +439,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function confirmar() {
+    if (!podeOperar) return;
     setSalvando(true);
     await apiFetch("/api/selecao-uhs", {
       method: "POST",
@@ -449,6 +456,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function reeditar() {
+    if (!podeOperar) return;
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -459,6 +467,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function desistirEdicao() {
+    if (!podeOperar) return;
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -469,6 +478,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function toggleReserva(uh: UHSel) {
+    if (!podeOperar) return;
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -478,6 +488,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   function toggleManutencao(uh: UHSel) {
+    if (!podeOperar) return;
     if (!uh.emManutencao) {
       setManutencaoDescricaoInput("");
       setManutencaoModal(uh);
@@ -487,6 +498,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function confirmarManutencao(uh: UHSel, descricao: string | null) {
+    if (!podeOperar) return;
     setManutencaoModal(null);
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
@@ -539,7 +551,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function registrarQueixa() {
-    if (!queixaModal || !queixaTituloInput.trim() || !queixaDescricaoInput.trim()) return;
+    if (!queixaModal || !queixaTituloInput.trim() || !queixaDescricaoInput.trim() || !podeOperar) return;
     setEnviandoQueixa(true);
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
@@ -561,6 +573,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function salvarComentario(uh: UHSel) {
+    if (!podeOperar) return;
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -571,7 +584,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function liberarUH(uh: UHSel) {
-    if (uh.liberada) return;
+    if (uh.liberada || !podeOperar) return;
     setLiberandoId(uh.uhId);
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
@@ -583,6 +596,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function renovarUH(uh: UHSel) {
+    if (!podeOperar) return;
     setConfirmandoRenovar(null);
     setRenovandoId(uh.uhId);
     const res = await apiFetch("/api/selecao-uhs", {
@@ -599,6 +613,7 @@ export default function SelecaoView({ role }: { role: string }) {
   }
 
   async function desfazerLiberacao(uh: UHSel) {
+    if (!podeOperar) return;
     setConfirmandoDesfazer(null);
     setDesfazendoId(uh.uhId);
     const res = await apiFetch("/api/selecao-uhs", {
@@ -699,7 +714,8 @@ export default function SelecaoView({ role }: { role: string }) {
               </button>
               {lateCheckoutModal.lateCheckout && (
                 <button
-                  disabled={salvandoLateCheckout}
+                  disabled={salvandoLateCheckout || !podeOperar}
+                  title={!podeOperar ? tituloSemAcesso : undefined}
                   onClick={desativarLateCheckout}
                   className="flex-1 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -707,7 +723,8 @@ export default function SelecaoView({ role }: { role: string }) {
                 </button>
               )}
               <button
-                disabled={!lateCheckoutHoraInput || salvandoLateCheckout}
+                disabled={!lateCheckoutHoraInput || salvandoLateCheckout || !podeOperar}
+                title={!podeOperar ? tituloSemAcesso : undefined}
                 onClick={confirmarLateCheckout}
                 className="flex-1 py-2 rounded-lg bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -742,7 +759,8 @@ export default function SelecaoView({ role }: { role: string }) {
                 Cancelar
               </button>
               <button
-                disabled={!manutencaoDescricaoInput.trim()}
+                disabled={!manutencaoDescricaoInput.trim() || !podeOperar}
+                title={!podeOperar ? tituloSemAcesso : undefined}
                 onClick={() => confirmarManutencao(manutencaoModal, manutencaoDescricaoInput.trim())}
                 className="flex-1 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -857,7 +875,8 @@ export default function SelecaoView({ role }: { role: string }) {
                 Cancelar
               </button>
               <button
-                disabled={!queixaTituloInput.trim() || !queixaDescricaoInput.trim() || enviandoQueixa}
+                disabled={!queixaTituloInput.trim() || !queixaDescricaoInput.trim() || enviandoQueixa || !podeOperar}
+                title={!podeOperar ? tituloSemAcesso : undefined}
                 onClick={registrarQueixa}
                 className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
@@ -957,12 +976,12 @@ export default function SelecaoView({ role }: { role: string }) {
 
           {!somenteLeitura && (
             <div className="flex gap-3 flex-wrap">
-              <button onClick={confirmar} disabled={salvando || selecionadas.size === 0} className="btn-primary flex items-center gap-2">
+              <button onClick={confirmar} disabled={salvando || selecionadas.size === 0 || !podeOperar} title={!podeOperar ? tituloSemAcesso : undefined} className="btn-primary flex items-center gap-2 disabled:opacity-50">
                 <Check className="w-4 h-4" />
                 {salvando ? "Confirmando..." : `Confirmar seleção (${selecionadas.size} UHs)`}
               </button>
               {modoReedicao && (
-                <button onClick={desistirEdicao} className="btn-secondary flex items-center gap-2 text-gray-600">
+                <button onClick={desistirEdicao} disabled={!podeOperar} title={!podeOperar ? tituloSemAcesso : undefined} className="btn-secondary flex items-center gap-2 text-gray-600 disabled:opacity-50">
                   <X className="w-4 h-4" />
                   Desistir da edição
                 </button>
@@ -1158,7 +1177,9 @@ export default function SelecaoView({ role }: { role: string }) {
                         />
                         <div className="flex flex-col gap-1">
                           <button onClick={() => salvarComentario(uh)}
-                            className="p-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600">
+                            disabled={!podeOperar}
+                            title={!podeOperar ? tituloSemAcesso : undefined}
+                            className="p-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40">
                             <Check className="w-3.5 h-3.5" />
                           </button>
                           <button onClick={() => setEditandoComentarioId(null)}
@@ -1239,8 +1260,9 @@ export default function SelecaoView({ role }: { role: string }) {
                           <>
                             <button
                               onClick={() => toggleManutencao(uh)}
-                              title={uh.emManutencao ? "Remover manutenção" : "Marcar em manutenção"}
-                              className={`p-1.5 rounded-lg transition-colors ${
+                              disabled={!podeOperar}
+                              title={!podeOperar ? tituloSemAcesso : uh.emManutencao ? "Remover manutenção" : "Marcar em manutenção"}
+                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
                                 uh.emManutencao
                                   ? "bg-orange-100 text-orange-600 hover:bg-orange-200"
                                   : "text-gray-300 hover:text-orange-400 hover:bg-orange-50"
@@ -1250,8 +1272,9 @@ export default function SelecaoView({ role }: { role: string }) {
                             </button>
                             <button
                               onClick={() => toggleReserva(uh)}
-                              title={uh.temReserva ? "Remover reserva" : "Marcar com reserva"}
-                              className={`p-1.5 rounded-lg transition-colors ${
+                              disabled={!podeOperar}
+                              title={!podeOperar ? tituloSemAcesso : uh.temReserva ? "Remover reserva" : "Marcar com reserva"}
+                              className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
                                 uh.temReserva
                                   ? "bg-red-100 text-red-600 hover:bg-red-200"
                                   : "text-gray-300 hover:text-red-400 hover:bg-red-50"
@@ -1267,8 +1290,9 @@ export default function SelecaoView({ role }: { role: string }) {
                                   ) : (
                                     <span className="text-xs text-purple-700 font-medium">Excluir da lista?</span>
                                   )}
-                                  <button onClick={() => renovarUH(uh)} disabled={renovandoId === uh.uhId}
-                                    className={`text-xs text-white px-2 py-1 rounded-lg ${uh.assignmentStatus === "EM_ANDAMENTO" ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"}`}>
+                                  <button onClick={() => renovarUH(uh)} disabled={renovandoId === uh.uhId || !podeOperar}
+                                    title={!podeOperar ? tituloSemAcesso : undefined}
+                                    className={`text-xs text-white px-2 py-1 rounded-lg disabled:opacity-40 ${uh.assignmentStatus === "EM_ANDAMENTO" ? "bg-red-600 hover:bg-red-700" : "bg-purple-600 hover:bg-purple-700"}`}>
                                     {renovandoId === uh.uhId ? "..." : "Sim"}
                                   </button>
                                   <button onClick={() => setConfirmandoRenovar(null)}
@@ -1278,8 +1302,9 @@ export default function SelecaoView({ role }: { role: string }) {
                                 </div>
                               ) : (
                                 <button onClick={() => setConfirmandoRenovar(uh.uhId)}
-                                  title="Remover UH da lista do dia"
-                                  className="p-1.5 rounded-lg transition-colors text-gray-300 hover:text-purple-500 hover:bg-purple-50">
+                                  disabled={!podeOperar}
+                                  title={!podeOperar ? tituloSemAcesso : "Remover UH da lista do dia"}
+                                  className="p-1.5 rounded-lg transition-colors text-gray-300 hover:text-purple-500 hover:bg-purple-50 disabled:opacity-40">
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               )
@@ -1287,16 +1312,18 @@ export default function SelecaoView({ role }: { role: string }) {
                           </>
                         )}
                         {!liberada && !somenteLeitura ? (
-                          <button onClick={() => liberarUH(uh)} disabled={isLiberando}
-                            className="btn-primary text-sm py-1 px-3">
+                          <button onClick={() => liberarUH(uh)} disabled={isLiberando || !podeOperar}
+                            title={!podeOperar ? tituloSemAcesso : undefined}
+                            className="btn-primary text-sm py-1 px-3 disabled:opacity-50">
                             {isLiberando ? "..." : "Liberar"}
                           </button>
                         ) : (uh.assignmentStatus === "LIBERADO" || (uh.liberada && !uh.assignmentStatus)) && !somenteLeitura ? (
                           confirmandoDesfazer === uh.uhId ? (
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-red-600 font-medium">Confirmar?</span>
-                              <button onClick={() => desfazerLiberacao(uh)} disabled={desfazendoId === uh.uhId}
-                                className="text-xs bg-red-600 text-white px-2 py-1 rounded-lg hover:bg-red-700">
+                              <button onClick={() => desfazerLiberacao(uh)} disabled={desfazendoId === uh.uhId || !podeOperar}
+                                title={!podeOperar ? tituloSemAcesso : undefined}
+                                className="text-xs bg-red-600 text-white px-2 py-1 rounded-lg hover:bg-red-700 disabled:opacity-40">
                                 {desfazendoId === uh.uhId ? "..." : "Sim"}
                               </button>
                               <button onClick={() => setConfirmandoDesfazer(null)}
@@ -1306,7 +1333,9 @@ export default function SelecaoView({ role }: { role: string }) {
                             </div>
                           ) : (
                             <button onClick={() => setConfirmandoDesfazer(uh.uhId)}
-                              className="flex items-center gap-1 text-xs text-orange-600 border border-orange-300 px-2 py-1 rounded-lg hover:bg-orange-50">
+                              disabled={!podeOperar}
+                              title={!podeOperar ? tituloSemAcesso : undefined}
+                              className="flex items-center gap-1 text-xs text-orange-600 border border-orange-300 px-2 py-1 rounded-lg hover:bg-orange-50 disabled:opacity-40">
                               <Undo2 className="w-3.5 h-3.5" /> Desfazer
                             </button>
                           )

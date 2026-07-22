@@ -8,10 +8,9 @@ export default async function ConfiguracoesPage() {
   if (!session) {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
-  const podeAcessar = await hasModuleAccess(session, "HOUSEKEEPING");
-  if (!podeAcessar) {
-    redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
-  }
+  // Visualização liberada mesmo sem acesso ao módulo — só operar fica
+  // restrito (ver comentário em apps/maintenance/src/app/page.tsx).
+  const podeOperar = await hasModuleAccess(session, "HOUSEKEEPING");
 
-  return <ConfiguracoesClient role={session.role} />;
+  return <ConfiguracoesClient role={session.role} podeOperar={podeOperar} />;
 }

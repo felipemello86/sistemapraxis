@@ -9,10 +9,10 @@ export default async function MovimentosPage() {
   if (!session) {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
-  const podeAcessar = await hasModuleAccess(session, "HOUSEKEEPING");
-  if (!podeAcessar) {
-    redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
-  }
+  // Visualização liberada mesmo sem acesso ao módulo — só operar (aba
+  // Performance tem edição) fica restrito (ver comentário em
+  // apps/maintenance/src/app/page.tsx).
+  const podeOperar = await hasModuleAccess(session, "HOUSEKEEPING");
 
-  return <MovimentosContainer isMaster={session.role === "MASTER"} />;
+  return <MovimentosContainer isMaster={session.role === "MASTER"} podeOperar={podeOperar} />;
 }

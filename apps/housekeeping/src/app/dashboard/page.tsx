@@ -11,13 +11,12 @@ export default async function DashboardPage() {
   if (!session) {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
-  const podeAcessar = await hasModuleAccess(session, "HOUSEKEEPING");
-  if (!podeAcessar) {
-    redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
-  }
   if (session.role === "CAMAREIRA") {
     redirect("/camareira");
   }
+  // Visualização liberada mesmo sem acesso ao módulo — só operar fica
+  // restrito (ver comentário em apps/maintenance/src/app/page.tsx).
+  const podeOperar = await hasModuleAccess(session, "HOUSEKEEPING");
 
-  return <BurndownChart role={session.role} />;
+  return <BurndownChart role={session.role} podeOperar={podeOperar} />;
 }

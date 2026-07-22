@@ -102,8 +102,14 @@ type FinalizacaoDia = {
 
 type Fase = "lista" | "inspecao" | "finalizacao";
 
-export default function GovernantaView({ role }: { role: string }) {
+export default function GovernantaView({ role, podeOperar }: { role: string; podeOperar: boolean }) {
+  // somenteLeitura é uma restrição de CARGO, pré-existente (Manutenção nunca
+  // opera aqui) — continua escondendo os botões, como sempre fez.
+  // podeOperar é a restrição de ACESSO AO MÓDULO (ver comentário em
+  // apps/maintenance/src/app/page.tsx): visualização sempre liberada, então
+  // aqui os botões ficam visíveis e desabilitados em vez de escondidos.
   const somenteLeitura = role === "MANUTENCAO";
+  const tituloSemAcesso = "Você não tem acesso para operar este módulo";
   const [sessoes, setSessoes] = useState<Sessao[]>([]);
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +145,7 @@ export default function GovernantaView({ role }: { role: string }) {
   useEffect(() => { carregar(); }, [carregar]);
 
   async function decidir(assignmentId: string, aprovado: boolean) {
+    if (!podeOperar) return;
     setDecidindo(assignmentId);
     await apiFetch("/api/atribuicoes", {
       method: "PATCH",
@@ -150,7 +157,7 @@ export default function GovernantaView({ role }: { role: string }) {
   }
 
   async function salvarCorrecao() {
-    if (!inspecaoId) return;
+    if (!inspecaoId || !podeOperar) return;
     setSalvandoCorrecao(true);
 
     await Promise.all(
@@ -192,6 +199,9 @@ export default function GovernantaView({ role }: { role: string }) {
       setItens(s.inspection.itens);
       setItemAtualIdx(0);
     } else if (!s.inspection) {
+      // Criar a inspeção é uma operação de escrita — sem acesso ao módulo,
+      // não tem o que exibir ainda (a UH nem começou a ser inspecionada).
+      if (!podeOperar) { setFase("lista"); setSessaoAtiva(null); return; }
       const res = await apiFetch("/api/inspecoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,7 +223,7 @@ export default function GovernantaView({ role }: { role: string }) {
 
   async function avaliarItem(resultado: "OK" | "FALHA", tipoFalha?: "CAMAREIRA" | "GERENCIAL") {
     const item = itens[itemAtualIdx];
-    if (!item || !inspecaoId) return;
+    if (!item || !inspecaoId || !podeOperar) return;
 
     setSalvando(true);
     await apiFetch("/api/inspecoes", {
@@ -236,7 +246,7 @@ export default function GovernantaView({ role }: { role: string }) {
   }
 
   async function finalizarInspecao() {
-    if (!inspecaoId) return;
+    if (!inspecaoId || !podeOperar) return;
     setFinalizando(true);
     await apiFetch("/api/inspecoes", {
       method: "PATCH",
@@ -251,7 +261,7 @@ export default function GovernantaView({ role }: { role: string }) {
   }
 
   async function excluirUh(sessaoId: string) {
-    if (!justificativaTexto.trim()) return;
+    if (!justificativaTexto.trim() || !podeOperar) return;
     setSalvandoExclusao(true);
     await apiFetch("/api/finalizacao-dia", {
       method: "PATCH",
@@ -265,6 +275,7 @@ export default function GovernantaView({ role }: { role: string }) {
   }
 
   async function reincluirUh(sessaoId: string) {
+    if (!podeOperar) return;
     await apiFetch("/api/finalizacao-dia", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -274,7 +285,7 @@ export default function GovernantaView({ role }: { role: string }) {
   }
 
   async function confirmarDia() {
-    if (!finalizacao) return;
+    if (!finalizacao || !podeOperar) return;
     setConfirmandoDia(true);
     await apiFetch("/api/finalizacao-dia", {
       method: "PATCH",
@@ -350,11 +361,11 @@ export default function GovernantaView({ role }: { role: string }) {
                       </span>
                       {!somenteLeitura && !finalizacao.finalizado && !uh.multiplaCamareira && (
                         uh.excluidoDoScore ? (
-                          <button onClick={() => reincluirUh(uh.sessaoId)} className="text-xs text-indigo-600 font-medium flex items-center gap-1 flex-shrink-0">
+                          <button onClick={() => reincluirUh(uh.sessaoId)} disabled={!podeOperar} title={!podeOperar ? tituloSemAcesso : undefined} className="text-xs text-indigo-600 font-medium flex items-center gap-1 flex-shrink-0 disabled:opacity-40">
                             <Undo2 className="w-3 h-3" /> Reincluir
                           </button>
                         ) : (
-                          <button onClick={() => { setExcluindoUh(uh.sessaoId); setJustificativaTexto(""); }} className="text-xs text-red-500 font-medium flex-shrink-0">
+                          <button onClick={() => { setExcluindoUh(uh.sessaoId); setJustificativaTexto(""); }} disabled={!podeOperar} title={!podeOperar ? tituloSemAcesso : undefined} className="text-xs text-red-500 font-medium flex-shrink-0 disabled:opacity-40">
                             Excluir do ranking
                           </button>
                         )
@@ -382,7 +393,8 @@ export default function GovernantaView({ role }: { role: string }) {
                           </button>
                           <button
                             onClick={() => excluirUh(uh.sessaoId)}
-                            disabled={!justificativaTexto.trim() || salvandoExclusao}
+                            disabled={!justificativaTexto.trim() || salvandoExclusao || !podeOperar}
+                            title={!podeOperar ? tituloSemAcesso : undefined}
                             className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-bold disabled:opacity-50"
                           >
                             {salvandoExclusao ? "Salvando..." : "Confirmar exclusão"}
@@ -400,7 +412,8 @@ export default function GovernantaView({ role }: { role: string }) {
             <>
               <button
                 onClick={confirmarDia}
-                disabled={confirmandoDia || !finalizacao.pronta}
+                disabled={confirmandoDia || !finalizacao.pronta || !podeOperar}
+                title={!podeOperar ? tituloSemAcesso : undefined}
                 className="btn-primary w-full mt-2 py-4 text-base disabled:opacity-50"
               >
                 {confirmandoDia ? "Enviando..." : "✅ Confirmar e Finalizar o Dia"}
@@ -493,7 +506,7 @@ export default function GovernantaView({ role }: { role: string }) {
                   >
                     Cancelar
                   </button>
-                  <button onClick={salvarCorrecao} disabled={salvandoCorrecao} className="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold">
+                  <button onClick={salvarCorrecao} disabled={salvandoCorrecao || !podeOperar} title={!podeOperar ? tituloSemAcesso : undefined} className="flex-1 py-3 rounded-xl bg-indigo-600 text-white font-bold disabled:opacity-50">
                     {salvandoCorrecao ? "Salvando..." : "Salvar correção"}
                   </button>
                 </div>
@@ -546,7 +559,9 @@ export default function GovernantaView({ role }: { role: string }) {
                 {!somenteLeitura && (
                   <button
                     onClick={() => { setModoEdicao(true); setItens(sessaoAtiva.inspection!.itens); }}
-                    className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-indigo-300 text-indigo-600 font-medium text-sm"
+                    disabled={!podeOperar}
+                    title={!podeOperar ? tituloSemAcesso : undefined}
+                    className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-indigo-300 text-indigo-600 font-medium text-sm disabled:opacity-40"
                   >
                     <Pencil className="w-4 h-4" /> Corrigir inspeção
                   </button>
@@ -592,7 +607,7 @@ export default function GovernantaView({ role }: { role: string }) {
                 />
               </div>
 
-              <button onClick={finalizarInspecao} disabled={finalizando} className="btn-primary w-full mt-4 py-4 text-base">
+              <button onClick={finalizarInspecao} disabled={finalizando || !podeOperar} title={!podeOperar ? tituloSemAcesso : undefined} className="btn-primary w-full mt-4 py-4 text-base disabled:opacity-50">
                 {finalizando ? "Salvando..." : "✓ Finalizar Inspeção"}
               </button>
             </div>
@@ -611,23 +626,26 @@ export default function GovernantaView({ role }: { role: string }) {
                   <div className="flex flex-col gap-2">
                     <button
                       onClick={() => avaliarItem("OK")}
-                      disabled={salvando}
-                      className="flex items-center justify-center gap-2 bg-green-100 text-green-700 font-bold py-4 rounded-xl hover:bg-green-200 transition-colors text-base w-full"
+                      disabled={salvando || !podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex items-center justify-center gap-2 bg-green-100 text-green-700 font-bold py-4 rounded-xl hover:bg-green-200 transition-colors text-base w-full disabled:opacity-50"
                     >
                       <CheckCircle2 className="w-5 h-5" /> OK — Aprovado
                     </button>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={() => avaliarItem("FALHA", "CAMAREIRA")}
-                        disabled={salvando}
-                        className="flex items-center justify-center gap-1.5 bg-red-100 text-red-700 font-bold py-4 rounded-xl hover:bg-red-200 transition-colors text-sm"
+                        disabled={salvando || !podeOperar}
+                        title={!podeOperar ? tituloSemAcesso : undefined}
+                        className="flex items-center justify-center gap-1.5 bg-red-100 text-red-700 font-bold py-4 rounded-xl hover:bg-red-200 transition-colors text-sm disabled:opacity-50"
                       >
                         <UserX className="w-4 h-4" /> Falha Camareira
                       </button>
                       <button
                         onClick={() => avaliarItem("FALHA", "GERENCIAL")}
-                        disabled={salvando}
-                        className="flex items-center justify-center gap-1.5 bg-orange-100 text-orange-700 font-bold py-4 rounded-xl hover:bg-orange-200 transition-colors text-sm"
+                        disabled={salvando || !podeOperar}
+                        title={!podeOperar ? tituloSemAcesso : undefined}
+                        className="flex items-center justify-center gap-1.5 bg-orange-100 text-orange-700 font-bold py-4 rounded-xl hover:bg-orange-200 transition-colors text-sm disabled:opacity-50"
                       >
                         <Building2 className="w-4 h-4" /> Falha Gerencial
                       </button>
@@ -749,15 +767,17 @@ export default function GovernantaView({ role }: { role: string }) {
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => decidir(s.id, true)}
-                          disabled={decidindo === s.id}
-                          className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200"
+                          disabled={decidindo === s.id || !podeOperar}
+                          title={!podeOperar ? tituloSemAcesso : undefined}
+                          className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200 disabled:opacity-40"
                         >
                           <ThumbsUp className="w-3 h-3" /> Aprovar
                         </button>
                         <button
                           onClick={() => decidir(s.id, false)}
-                          disabled={decidindo === s.id}
-                          className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200"
+                          disabled={decidindo === s.id || !podeOperar}
+                          title={!podeOperar ? tituloSemAcesso : undefined}
+                          className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200 disabled:opacity-40"
                         >
                           <ThumbsDown className="w-3 h-3" /> {ehSuperLimpeza ? "Indeferir" : "Rejeitar"}
                         </button>

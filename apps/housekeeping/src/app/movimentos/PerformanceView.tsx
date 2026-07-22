@@ -89,7 +89,7 @@ function CustomTooltip({ active, payload, label, isTime }: any) {
   );
 }
 
-export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
+export default function PerformanceView({ isMaster, podeOperar }: { isMaster?: boolean; podeOperar: boolean }) {
   const [periodo, setPeriodo] = useState<Periodo>({ tipo: "hoje", data: hoje() });
   const [scores, setScores] = useState<Score[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,6 +109,7 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
   }, []);
 
   const toggleExcluir = async (sessaoId: string) => {
+    if (!podeOperar) return;
     setToggling(sessaoId);
     await apiFetch("/api/scores/excluir", {
       method: "PATCH",
@@ -120,6 +121,7 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
   };
 
   const excluirTodos = async (camareiraId: string, excluir: boolean) => {
+    if (!podeOperar) return;
     setExcluindoTodos(camareiraId);
     await apiFetch("/api/scores/excluir-todos", {
       method: "PATCH",
@@ -253,8 +255,8 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                     {isMaster && (
                       <button
                         onClick={(e) => { e.stopPropagation(); excluirTodos(cam.id, true); }}
-                        disabled={excluindoTodos === cam.id}
-                        title="Excluir TODOS os scores desta camareira (all time)"
+                        disabled={excluindoTodos === cam.id || !podeOperar}
+                        title={!podeOperar ? "Você não tem acesso para operar este módulo" : "Excluir TODOS os scores desta camareira (all time)"}
                         className="flex-shrink-0 p-2 rounded text-red-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
                       >
                         {excluindoTodos === cam.id
@@ -304,8 +306,8 @@ export default function PerformanceView({ isMaster }: { isMaster?: boolean }) {
                             {isMaster && !d.multiplaCamareira && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); toggleExcluir(d.sessaoId); }}
-                                disabled={toggling === d.sessaoId}
-                                title={d.excluidoDoScore ? "Reincluir no score" : "Excluir do score"}
+                                disabled={toggling === d.sessaoId || !podeOperar}
+                                title={!podeOperar ? "Você não tem acesso para operar este módulo" : d.excluidoDoScore ? "Reincluir no score" : "Excluir do score"}
                                 className={`ml-auto flex-shrink-0 p-1 rounded transition-colors disabled:opacity-40 ${
                                   d.excluidoDoScore
                                     ? "text-green-500 hover:bg-green-100"

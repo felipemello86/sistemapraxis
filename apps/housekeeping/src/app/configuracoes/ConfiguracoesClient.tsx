@@ -51,14 +51,17 @@ function RedirectTab({ titulo, descricao, path }: { titulo: string; descricao: s
   );
 }
 
-export default function ConfiguracoesClient({ role }: { role: string }) {
+export default function ConfiguracoesClient({ role, podeOperar }: { role: string; podeOperar: boolean }) {
   const TABS = ALL_TABS;
   const [tab, setTab] = useState("");
   // ATENDIMENTO tem as mesmas permissões de GERENTE no resto do módulo
   // Governança (ver comentário em api/selecao-uhs/route.ts), mas
   // Configurações é a exceção explícita — aqui fica somente leitura, igual
-  // MANUTENÇÃO.
-  const somenteLeitura = role === "MANUTENCAO" || role === "ATENDIMENTO";
+  // MANUTENÇÃO. !podeOperar (falta de acesso ao módulo — ver comentário em
+  // apps/maintenance/src/app/page.tsx) entra na mesma variável porque as
+  // abas já tratam somenteLeitura mostrando um banner "modo somente leitura"
+  // em vez do formulário de escrita — mesmo tratamento visual, causa diferente.
+  const somenteLeitura = role === "MANUTENCAO" || role === "ATENDIMENTO" || !podeOperar;
 
   const tabAtiva = tab || TABS[0]?.id || "";
 

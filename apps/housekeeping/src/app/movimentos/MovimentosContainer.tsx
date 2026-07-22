@@ -127,7 +127,7 @@ const ABAS: { id: Aba; label: string; icon: React.ReactNode }[] = [
   { id: "lavanderia",   label: "Lavanderia",   icon: <WashingMachine className="w-4 h-4" /> },
 ];
 
-export default function MovimentosContainer({ isMaster }: { isMaster?: boolean }) {
+export default function MovimentosContainer({ isMaster, podeOperar }: { isMaster?: boolean; podeOperar: boolean }) {
   const [aba, setAba] = useState<Aba>("performance");
 
   return (
@@ -164,7 +164,7 @@ export default function MovimentosContainer({ isMaster }: { isMaster?: boolean }
       </div>
 
       {/* Conteúdo */}
-      {aba === "performance"  && <PerformanceView isMaster={isMaster} />}
+      {aba === "performance"  && <PerformanceView isMaster={isMaster} podeOperar={podeOperar} />}
       {aba === "etapas"       && <EtapasView />}
       {aba === "lavanderia"   && <LavandariaView />}
     </div>

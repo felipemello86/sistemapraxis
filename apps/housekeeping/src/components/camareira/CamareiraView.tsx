@@ -42,7 +42,8 @@ const FOTO_LABELS: Record<string, string> = {
   banheiro: "🚿 Banheiro",
 };
 
-export default function CamareiraView() {
+export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
+  const tituloSemAcesso = "Você não tem acesso para operar este módulo";
   const [data, setData] = useState<{ assignments: Assignment[]; user: any } | null>(null);
   const [loading, setLoading] = useState(true);
   const [fase, setFase] = useState<Fase>("lista");
@@ -83,7 +84,7 @@ export default function CamareiraView() {
   const [erroEdicaoFotos, setErroEdicaoFotos] = useState<string | null>(null);
 
   async function solicitarAlteracao(assignmentId: string) {
-    if (!solicitacaoMsg.trim()) return;
+    if (!solicitacaoMsg.trim() || !podeOperar) return;
     setEnviandoSolicitacao(true);
     await apiFetch("/api/atribuicoes", {
       method: "PATCH",
@@ -121,7 +122,7 @@ export default function CamareiraView() {
   }
 
   async function solicitarSuperLimpeza(assignmentId: string) {
-    if (!superLimpezaMsg.trim()) return;
+    if (!superLimpezaMsg.trim() || !podeOperar) return;
     setEnviandoSuperLimpeza(true);
     await apiFetch("/api/atribuicoes", {
       method: "PATCH",
@@ -160,6 +161,7 @@ export default function CamareiraView() {
   }, [fase, inicioTime]);
 
   async function iniciarLimpeza(a: Assignment) {
+    if (!podeOperar) return;
     setAssignmentAtivo(a);
     const inicio = new Date();
     setInicioTime(inicio);
@@ -326,7 +328,7 @@ export default function CamareiraView() {
   // (fotosEdicao) até a camareira apertar "Salvar alterações", que manda o
   // mapa inteiro pra ação "editar_fotos".
   function abrirEdicaoFotos(a: Assignment) {
-    if (!a.cleaningSession) return;
+    if (!a.cleaningSession || !podeOperar) return;
     let parsed: Record<string, string[]> = {};
     try {
       const raw = JSON.parse(a.cleaningSession.fotos || "{}");
@@ -376,7 +378,7 @@ export default function CamareiraView() {
   }
 
   async function salvarEdicaoFotos() {
-    if (!editandoFotosId) return;
+    if (!editandoFotosId || !podeOperar) return;
     setSalvandoFotosEdicao(true);
     setErroEdicaoFotos(null);
     try {
@@ -1281,7 +1283,9 @@ export default function CamareiraView() {
                   {!bloqueado && !concluido && (
                     <button
                       onClick={() => iniciarLimpeza(a)}
-                      className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium ${
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className={`flex items-center gap-1 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40 ${
                         emAndamento ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
                       }`}
                     >
@@ -1292,7 +1296,9 @@ export default function CamareiraView() {
                   {liberado && (!a.solicitacaoStatus || a.solicitacaoStatus === "REJEITADO") && a.program?.tipo !== "LIMPEZA_COMPLETA" && (
                     <button
                       onClick={() => { setSolicitandoId(a.id); setSolicitacaoMsg(""); }}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600"
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600 disabled:opacity-40"
                     >
                       <MessageSquarePlus className="w-3 h-3" /> Solicitar alteração
                     </button>
@@ -1300,7 +1306,9 @@ export default function CamareiraView() {
                   {liberado && (!a.solicitacaoStatus || a.solicitacaoStatus === "REJEITADO") && a.program?.tipo !== "SUPER_LIMPEZA" && (
                     <button
                       onClick={() => { setSuperLimpezaId(a.id); setSuperLimpezaMsg(""); setSuperLimpezaFotos([]); }}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 font-medium"
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 font-medium disabled:opacity-40"
                     >
                       <Star className="w-3 h-3 fill-current" /> Super Limpeza
                     </button>
@@ -1308,7 +1316,9 @@ export default function CamareiraView() {
                   {concluido && a.cleaningSession && (
                     <button
                       onClick={() => abrirEdicaoFotos(a)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600"
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600 disabled:opacity-40"
                     >
                       <Camera className="w-3 h-3" /> Editar fotos
                     </button>

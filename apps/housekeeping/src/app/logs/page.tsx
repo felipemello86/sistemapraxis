@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, prisma } from "@praxis/core";
 import LogView from "./LogView";
 
 // Portado de apps/housekeeping/src/app/logs/page.tsx (v1). Cadastro único:
@@ -10,10 +10,8 @@ export default async function LogsPage() {
   if (!session) {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
-  const podeAcessar = await hasModuleAccess(session, "HOUSEKEEPING");
-  if (!podeAcessar) {
-    redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
-  }
+  // Tela só de leitura — visualização liberada mesmo sem acesso ao módulo
+  // (ver comentário em apps/maintenance/src/app/page.tsx).
 
   const camareiras = await prisma.user.findMany({
     where: { tenantId: session.tenantId, role: "CAMAREIRA", ativo: true },

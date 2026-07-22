@@ -11,10 +11,9 @@ export default async function SelecaoPage() {
   if (!session) {
     redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
   }
-  const podeAcessar = await hasModuleAccess(session, "HOUSEKEEPING");
-  if (!podeAcessar) {
-    redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
-  }
+  // Visualização liberada mesmo sem acesso ao módulo — só operar fica
+  // restrito (ver comentário em apps/maintenance/src/app/page.tsx).
+  const podeOperar = await hasModuleAccess(session, "HOUSEKEEPING");
 
-  return <SelecaoView role={session.role} />;
+  return <SelecaoView role={session.role} podeOperar={podeOperar} />;
 }

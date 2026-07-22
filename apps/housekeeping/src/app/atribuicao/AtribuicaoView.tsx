@@ -170,8 +170,14 @@ function AssignmentCard({
   );
 }
 
-export default function AtribuicaoView({ role, userId }: { role: string; userId: string }) {
-  const somenteLeitura = role === "MANUTENCAO";
+export default function AtribuicaoView({ role, userId, podeOperar }: { role: string; userId: string; podeOperar: boolean }) {
+  // somenteLeitura já cobre tanto restrição de CARGO (Manutenção) quanto,
+  // agora, falta de ACESSO AO MÓDULO (!podeOperar — ver comentário em
+  // apps/maintenance/src/app/page.tsx): esta tela já esconde os controles de
+  // escrita via somenteLeitura (formulário de adicionar, remover, editar
+  // programa/observações), então visualização continua liberada e só o
+  // "operar" desaparece, igual já fazia pro cargo Manutenção.
+  const somenteLeitura = role === "MANUTENCAO" || !podeOperar;
   const [data, setData] = useState(format(new Date(), "yyyy-MM-dd"));
   const [coberturaAtiva, setCoberturaAtiva] = useState(false);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -231,7 +237,7 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
   }
 
   async function criarAtribuicao() {
-    if (novasUHs.length === 0 || !novaCamareira || !novoPrograma) return;
+    if (novasUHs.length === 0 || !novaCamareira || !novoPrograma || !podeOperar) return;
     setSalvando("new");
     setErroAtribuicao(null);
     const respostas = await Promise.all(
@@ -255,12 +261,13 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
   }
 
   async function remover(id: string) {
-    if (!confirm("Remover esta atribuição?")) return;
+    if (!podeOperar || !confirm("Remover esta atribuição?")) return;
     await apiFetch(`/api/atribuicoes?id=${id}`, { method: "DELETE" });
     carregar();
   }
 
   async function alterarPrograma(id: string, programId: string) {
+    if (!podeOperar) return;
     const a = assignments.find((x) => x.id === id);
     if (!a) return;
     await apiFetch("/api/atribuicoes", {
@@ -272,6 +279,7 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
   }
 
   async function alterarObservacoes(id: string, observacoes: string) {
+    if (!podeOperar) return;
     const a = assignments.find((x) => x.id === id);
     if (!a) return;
     await apiFetch("/api/atribuicoes", {
@@ -282,6 +290,7 @@ export default function AtribuicaoView({ role, userId }: { role: string; userId:
   }
 
   async function notificarDia() {
+    if (!podeOperar) return;
     setNotificando(true);
     await apiFetch("/api/atribuicoes", {
       method: "PATCH",

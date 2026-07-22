@@ -323,7 +323,7 @@ function SerieCard({
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export default function BurndownChart({ role }: { role: string }) {
+export default function BurndownChart({ role, podeOperar }: { role: string; podeOperar: boolean }) {
   const [data, setData] = useState<BurndownData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hoveredDot, setHoveredDot] = useState<HoveredDot | null>(null);
@@ -354,6 +354,7 @@ export default function BurndownChart({ role }: { role: string }) {
   }, []);
 
   const enviarRelatorio = async () => {
+    if (!podeOperar) return;
     setEnviandoRelatorio(true);
     setRelatorioMsg(null);
     try {
@@ -613,8 +614,8 @@ export default function BurndownChart({ role }: { role: string }) {
               <div className="flex items-center gap-2 ml-2">
                 <button
                   onClick={enviarRelatorio}
-                  disabled={enviandoRelatorio}
-                  title="Enviar Relatório Gerencial via Telegram"
+                  disabled={enviandoRelatorio || !podeOperar}
+                  title={!podeOperar ? "Você não tem acesso para operar este módulo" : "Enviar Relatório Gerencial via Telegram"}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   <Send className="w-3 h-3" />
