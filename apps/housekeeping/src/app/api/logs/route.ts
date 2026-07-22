@@ -26,7 +26,8 @@ export type LogEvento = {
     | "LIMPEZA_CONCLUIDA"
     | "INSPECAO_INICIADA"
     | "INSPECAO_CONCLUIDA"
-    | "COBERTURA_CRIADA";
+    | "COBERTURA_CRIADA"
+    | "FOTOS_EDITADAS";
   timestamp: string;
   uhNumero: string;
   atoreNome: string; // camareira ou governanta
@@ -135,6 +136,21 @@ export async function GET(req: NextRequest) {
         atoreNome: s.camareira.nome,
         atoreRole: "CAMAREIRA",
         extra: { duracaoSegundos: s.duracaoSegundos },
+      });
+    }
+
+    // Edição de fotos pós-conclusão (ver PATCH /api/sessoes, ação
+    // "editar_fotos") — só guarda a ÚLTIMA edição (mesmo limite de
+    // DailyUHSelection.liberadaEm/comentarioEm), então se a camareira editar
+    // mais de uma vez no mesmo dia, só a mais recente aparece aqui.
+    if ((s as any).fotosEditadasEm) {
+      eventos.push({
+        id: `fotos-edit-${s.id}`,
+        tipo: "FOTOS_EDITADAS",
+        timestamp: (s as any).fotosEditadasEm.toISOString(),
+        uhNumero: s.uh.numero,
+        atoreNome: (s as any).fotosEditadasPorNome ?? s.camareira.nome,
+        atoreRole: "CAMAREIRA",
       });
     }
 

@@ -187,5 +187,34 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(sessaoAtualizada);
   }
 
+  // "Editar fotos" — a camareira já concluiu a UH (ver Minhas UHs) e percebeu
+  // que anexou foto errada ou no lugar errado. Restrito à própria camareira
+  // dona da sessão; só se aplica depois de finalizada (antes disso, a edição
+  // já acontece naturalmente na tela de fotos, sem precisar desta ação).
+  // Registra quem/quando editou por último pra aparecer no Log do Sistema
+  // (ver /api/logs, evento FOTOS_EDITADAS) — mesmo padrão "timestamp + nome"
+  // já usado em outros lugares deste domínio (ex: DailyUHSelection).
+  if (action === "editar_fotos") {
+    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
+    if (sessao.camareiraId !== session.userId) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
+    }
+    if (!sessao.finalizadaEm) {
+      return NextResponse.json({ error: "Só é possível editar fotos de uma UH já concluída." }, { status: 400 });
+    }
+
+    const sessaoAtualizada = await prisma.cleaningSession.update({
+      where: { id: sessaoId },
+      data: {
+        fotos: JSON.stringify(fotos || {}),
+        fotosEditadasEm: agora,
+        fotosEditadasPorNome: session.nome,
+      },
+    });
+
+    return NextResponse.json(sessaoAtualizada);
+  }
+
   return NextResponse.json({ error: "Ação desconhecida" }, { status: 400 });
 }

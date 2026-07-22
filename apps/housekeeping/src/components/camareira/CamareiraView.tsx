@@ -27,6 +27,7 @@ type Assignment = {
     id: string;
     iniciadaEm: string;
     finalizadaEm: string | null;
+    fotos: string; // JSON: { [tipo]: string[] }
     steps: { id: string; stepId: string; ordem: number; iniciadoEm: string; finalizadoEm: string | null; step: { titulo: string; descricao: string } }[];
   } | null;
 };
@@ -71,6 +72,15 @@ export default function CamareiraView() {
   const [fotoLavanderia, setFotoLavanderia] = useState<string | null>(null);
   const [uploadandoFotoLav, setUploadandoFotoLav] = useState(false);
   const [enviandoLavanderia, setEnviandoLavanderia] = useState(false);
+
+  // Edição de fotos de uma UH já concluída (ver "Editar fotos" em Minhas
+  // UHs) — editandoFotosId guarda o id da CleaningSession sendo editada, não
+  // do assignment, porque é o que a action "editar_fotos" espera.
+  const [editandoFotosId, setEditandoFotosId] = useState<string | null>(null);
+  const [fotosEdicao, setFotosEdicao] = useState<Record<string, string[]>>({});
+  const [uploadingEdicao, setUploadingEdicao] = useState<string | null>(null);
+  const [salvandoFotosEdicao, setSalvandoFotosEdicao] = useState(false);
+  const [erroEdicaoFotos, setErroEdicaoFotos] = useState<string | null>(null);
 
   async function solicitarAlteracao(assignmentId: string) {
     if (!solicitacaoMsg.trim()) return;
@@ -305,6 +315,86 @@ export default function CamareiraView() {
       setErroUpload(`Falha ao enviar foto. Tente novamente. (${err.message})`);
     } finally {
       setUploading(null);
+    }
+  }
+
+  // ─── Edição de fotos de UH já concluída ────────────────────────────────
+  // Reaproveita comprimirImagem/upload iguais a handleFotoUpload — a única
+  // diferença é que aqui a sessão já está finalizada, então em vez de
+  // acumular em `fotos` (usado só durante o fluxo ativo de limpeza) e
+  // enviar tudo junto no "finalizar", cada alteração fica só em memória
+  // (fotosEdicao) até a camareira apertar "Salvar alterações", que manda o
+  // mapa inteiro pra ação "editar_fotos".
+  function abrirEdicaoFotos(a: Assignment) {
+    if (!a.cleaningSession) return;
+    let parsed: Record<string, string[]> = {};
+    try {
+      const raw = JSON.parse(a.cleaningSession.fotos || "{}");
+      // Sessões antigas/nunca editadas guardam "[]" (array vazio) — vira
+      // objeto vazio aqui pra caber no mesmo formato { tipo: string[] }.
+      parsed = Array.isArray(raw) ? {} : raw;
+    } catch {
+      parsed = {};
+    }
+    setFotosEdicao(parsed);
+    setEditandoFotosId(a.cleaningSession.id);
+    setErroEdicaoFotos(null);
+  }
+
+  async function handleFotoEdicaoUpload(tipo: string, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !editandoFotosId) return;
+
+    setUploadingEdicao(tipo);
+    setErroEdicaoFotos(null);
+
+    try {
+      const fileComprimido = await comprimirImagem(file);
+      const fd = new FormData();
+      fd.append("file", fileComprimido);
+      fd.append("sessaoId", editandoFotosId);
+      fd.append("tipo", tipo);
+
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Erro ${res.status}`);
+      }
+      const { url } = await res.json();
+      if (!url) throw new Error("URL não retornada pelo servidor");
+      setFotosEdicao((prev) => ({ ...prev, [tipo]: [...(prev[tipo] ?? []), url] }));
+    } catch (err: any) {
+      setErroEdicaoFotos(`Falha ao enviar foto. Tente novamente. (${err.message})`);
+    } finally {
+      setUploadingEdicao(null);
+    }
+  }
+
+  function removerFotoEdicao(tipo: string, idx: number) {
+    setFotosEdicao((prev) => ({ ...prev, [tipo]: (prev[tipo] ?? []).filter((_, i) => i !== idx) }));
+  }
+
+  async function salvarEdicaoFotos() {
+    if (!editandoFotosId) return;
+    setSalvandoFotosEdicao(true);
+    setErroEdicaoFotos(null);
+    try {
+      const res = await apiFetch("/api/sessoes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "editar_fotos", sessaoId: editandoFotosId, fotos: fotosEdicao }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Erro ${res.status}`);
+      }
+      setEditandoFotosId(null);
+      await carregar();
+    } catch (err: any) {
+      setErroEdicaoFotos(`Falha ao salvar. Tente novamente. (${err.message})`);
+    } finally {
+      setSalvandoFotosEdicao(false);
     }
   }
 
@@ -1215,6 +1305,14 @@ export default function CamareiraView() {
                       <Star className="w-3 h-3 fill-current" /> Super Limpeza
                     </button>
                   )}
+                  {concluido && a.cleaningSession && (
+                    <button
+                      onClick={() => abrirEdicaoFotos(a)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600"
+                    >
+                      <Camera className="w-3 h-3" /> Editar fotos
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1313,6 +1411,90 @@ export default function CamareiraView() {
                 className="mt-3 w-full py-3 rounded-xl bg-amber-500 text-white font-bold disabled:opacity-50"
               >
                 {enviandoSuperLimpeza ? "Enviando..." : "⭐️ Enviar solicitação"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de edição de fotos — UH já concluída, camareira percebeu foto
+          errada/no lugar errado (ver abrirEdicaoFotos). Mesmo padrão visual
+          da tela de fotos obrigatórias (tela "fotos"), mas com "Remover" em
+          cada foto já existente, não só nas recém-tiradas. */}
+      {editandoFotosId && (
+        <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => !salvandoFotosEdicao && setEditandoFotosId(null)}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative bg-white w-full rounded-t-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-bold text-gray-800">Editar fotos</h3>
+                </div>
+                <button onClick={() => setEditandoFotosId(null)}><X className="w-5 h-5 text-gray-400" /></button>
+              </div>
+              <p className="text-sm text-gray-500 mb-3">
+                Remova fotos erradas ou tire novas fotos pros ambientes abaixo.
+              </p>
+
+              {erroEdicaoFotos && (
+                <div className="mb-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 flex items-start gap-2">
+                  <span className="mt-0.5 flex-shrink-0">⚠️</span>
+                  <span>{erroEdicaoFotos}</span>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {FOTO_TIPOS.map((tipo) => {
+                  const lista = fotosEdicao[tipo] ?? [];
+                  return (
+                    <div key={tipo} className="card">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="font-medium">{FOTO_LABELS[tipo]}</p>
+                          {lista.length > 0 ? (
+                            <p className="text-xs text-green-600 mt-0.5">✓ {lista.length} foto{lista.length > 1 ? "s" : ""}</p>
+                          ) : (
+                            <p className="text-xs text-gray-400">Sem foto</p>
+                          )}
+                        </div>
+                        <label className={`cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-blue-100 text-blue-700 ${uploadingEdicao === tipo ? "opacity-50 pointer-events-none" : ""}`}>
+                          <Camera className="w-4 h-4" />
+                          {uploadingEdicao === tipo ? "Enviando..." : "+ Adicionar"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => handleFotoEdicaoUpload(tipo, e)}
+                            disabled={uploadingEdicao === tipo}
+                          />
+                        </label>
+                      </div>
+                      {lista.length > 0 && (
+                        <div className="flex gap-2 flex-wrap mt-1">
+                          {lista.map((url, idx) => (
+                            <div key={idx} className="relative">
+                              <img src={url} alt={`${tipo}-${idx}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                              <button
+                                onClick={() => removerFotoEdicao(tipo, idx)}
+                                className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                              >×</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={salvarEdicaoFotos}
+                disabled={salvandoFotosEdicao}
+                className="btn-primary w-full mt-4 py-3"
+              >
+                {salvandoFotosEdicao ? "Salvando..." : "Salvar alterações"}
               </button>
             </div>
           </div>

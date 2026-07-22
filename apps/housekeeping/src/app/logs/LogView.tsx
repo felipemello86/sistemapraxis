@@ -19,6 +19,7 @@ const TIPO_META: Record<string, { label: string; cor: string; icon: string }> = 
   INSPECAO_INICIADA: { label: "Inspeção iniciada",     cor: "bg-orange-50 text-orange-700 border-orange-200",  icon: "🔍" },
   INSPECAO_CONCLUIDA:{ label: "Inspeção concluída",    cor: "bg-green-50 text-green-700 border-green-200",     icon: "🏁" },
   COBERTURA_CRIADA:  { label: "Cobertura registrada",  cor: "bg-indigo-50 text-indigo-700 border-indigo-200",  icon: "🔄" },
+  FOTOS_EDITADAS:    { label: "Fotos editadas",        cor: "bg-pink-50 text-pink-700 border-pink-200",        icon: "📷" },
 };
 
 const LINHA_COR: Record<string, string> = {
@@ -29,6 +30,7 @@ const LINHA_COR: Record<string, string> = {
   INSPECAO_INICIADA:  "bg-orange-400",
   INSPECAO_CONCLUIDA: "bg-green-500",
   COBERTURA_CRIADA:   "bg-indigo-400",
+  FOTOS_EDITADAS:     "bg-pink-400",
 };
 
 function formatDuracao(seg: number) {
@@ -63,6 +65,8 @@ function Descricao({ ev }: { ev: LogEvento }) {
       return <span><b>{ev.atoreNome}</b> iniciou a limpeza da UH <b>{ev.uhNumero}</b></span>;
     case "LIMPEZA_CONCLUIDA":
       return <span><b>{ev.atoreNome}</b> concluiu a limpeza da UH <b>{ev.uhNumero}</b>{extra?.duracaoSegundos ? ` em ${formatDuracao(extra.duracaoSegundos)}` : ""}</span>;
+    case "FOTOS_EDITADAS":
+      return <span><b>{ev.atoreNome}</b> editou as fotos da UH <b>{ev.uhNumero}</b> (já concluída)</span>;
     case "INSPECAO_INICIADA":
       return <span><b>{ev.atoreNome}</b> iniciou a inspeção da UH <b>{ev.uhNumero}</b></span>;
     case "INSPECAO_CONCLUIDA":

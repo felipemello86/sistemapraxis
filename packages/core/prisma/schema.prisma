@@ -507,8 +507,17 @@ model CleaningSession {
   iniciadaEm      DateTime
   finalizadaEm    DateTime?
   duracaoSegundos Int?
-  fotos           String    @default("[]") // JSON array de URLs (Cloudinary)
+  fotos           String    @default("[]") // JSON: { [tipo]: string[] } (Cloudinary) — apesar do nome/default, nunca foi de fato um array desde que passou a existir mais de um tipo de foto obrigatória; o default "[]" só é o estado inicial antes da 1ª foto.
   observacoes     String?
+
+  // Rastro da última edição de fotos feita pela camareira depois de já ter
+  // concluído a UH (ver "Editar fotos" em Minhas UHs) — mesmo padrão
+  // "timestamp + nome" já usado em DailyUHSelection (liberadaEm/
+  // liberadoPorNome, comentarioEm/comentarioPorNome): só guarda a ÚLTIMA
+  // edição, não um histórico completo. Usado por /api/logs pra gerar o
+  // evento FOTOS_EDITADAS no Log do Sistema.
+  fotosEditadasEm      DateTime?
+  fotosEditadasPorNome String?
 
   comentarioCamareira   String?
   excluidoDoScore       Boolean @default(false)
