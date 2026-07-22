@@ -188,20 +188,28 @@ export function Uh3D({
     setNaturalSize(null)
   }, [imagemAtual?.id])
 
-  // A foto preenche o palco por "cover" (mesma lógica do object-cover), mas
-  // calculamos a escala nós mesmos — assim sabemos exatamente quanto ficou
-  // cortado em cada eixo e liberamos pan pra revelar isso, mesmo com zoom
-  // "normal" (1x). É o que faz uma panorâmica (bem mais larga que a tela)
-  // ser navegável de cara, sem precisar ampliar primeiro.
-  function getMaxPan(z: number) {
+  // A foto preenche o palco por "cover" (mesma ideia do object-cover), mas
+  // calculada por nós (não pelo CSS) — a imagem é renderizada no tamanho
+  // real calculado aqui, não com object-fit + transform num container de
+  // tamanho fixo. Isso importa porque object-fit corta a imagem UMA vez, no
+  // tamanho do container, e transform só amplia visualmente o que já foi
+  // cortado — nunca revela o que ficou fora, mesmo arrastando. Calculando o
+  // tamanho nós mesmos, a imagem inteira existe no DOM (só que maior que a
+  // tela) e dá pra arrastar até a borda real dela, sem nunca expor área
+  // preta além da foto.
+  function getDisplayedSize(z: number) {
     const rect = stageRef.current?.getBoundingClientRect()
-    if (!rect || !naturalSize) return { maxX: 0, maxY: 0 }
+    if (!rect || !naturalSize) return null
     const coverScale = Math.max(rect.width / naturalSize.w, rect.height / naturalSize.h)
-    const displayedW = naturalSize.w * coverScale * z
-    const displayedH = naturalSize.h * coverScale * z
+    return { w: naturalSize.w * coverScale * z, h: naturalSize.h * coverScale * z, rect }
+  }
+
+  function getMaxPan(z: number) {
+    const size = getDisplayedSize(z)
+    if (!size) return { maxX: 0, maxY: 0 }
     return {
-      maxX: Math.max(0, (displayedW - rect.width) / 2),
-      maxY: Math.max(0, (displayedH - rect.height) / 2),
+      maxX: Math.max(0, (size.w - size.rect.width) / 2),
+      maxY: Math.max(0, (size.h - size.rect.height) / 2),
     }
   }
 
@@ -293,6 +301,7 @@ export function Uh3D({
 
   const { maxX: maxPanX, maxY: maxPanY } = getMaxPan(zoom)
   const podeArrastar = maxPanX > 0 || maxPanY > 0
+  const displayed = getDisplayedSize(zoom)
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
@@ -311,30 +320,58 @@ export function Uh3D({
           style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
           className="absolute inset-0 transition-transform duration-150 ease-out"
         >
-          <div style={{ transform: `scale(${zoom})` }} className="absolute inset-0 transition-transform duration-150 ease-out">
-            {prevSrc && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={prevSrc} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
-            )}
-            {displaySrc && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={displaySrc}
-                src={displaySrc}
-                alt={unidadeAtual ? `Unidade ${unidadeAtual.name} — ${ROOM_TYPE_LABELS[currentRoom]}` : ''}
-                draggable={false}
-                onLoad={(e) => setNaturalSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-                className={cn(
-                  'absolute inset-0 h-full w-full object-cover transition-[opacity,transform] duration-[1100ms] ease-out',
-                  revealed ? 'scale-100 opacity-100' : 'scale-[1.06] opacity-0',
-                )}
-              />
-            )}
+          {/* Foto anterior — fica só de pano de fundo durante o crossfade,
+              sempre coberta pela nova foto, então não precisa do mesmo
+              cálculo de tamanho/posição preciso. */}
+          {prevSrc && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={prevSrc} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+          )}
 
-            {/* Spots de verificação */}
-            {spotsDaImagem.map((spot) => {
+          {displaySrc && !displayed && (
+            // Enquanto o tamanho natural ainda não chegou (onLoad não disparou),
+            // mostra com cover simples — assim que carrega, o bloco de baixo
+            // assume com o tamanho calculado (pannable).
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={displaySrc}
+              alt=""
+              draggable={false}
+              onLoad={(e) => setNaturalSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+              className="absolute inset-0 h-full w-full object-cover opacity-0"
+            />
+          )}
+
+          {displaySrc && displayed && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={displaySrc}
+              src={displaySrc}
+              alt={unidadeAtual ? `Unidade ${unidadeAtual.name} — ${ROOM_TYPE_LABELS[currentRoom]}` : ''}
+              draggable={false}
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: displayed.w,
+                height: displayed.h,
+                maxWidth: 'none',
+                transform: `translate(-50%, -50%) scale(${revealed ? 1 : 1.06})`,
+                opacity: revealed ? 1 : 0,
+              }}
+              className="transition-[opacity,transform] duration-[1100ms] ease-out"
+            />
+          )}
+
+          {/* Spots de verificação — posicionados em px a partir do tamanho
+              real exibido da foto (não em % do palco), pra continuarem
+              grudados no ponto certo da imagem mesmo com pan/zoom. */}
+          {displayed &&
+            spotsDaImagem.map((spot) => {
               const status = statusDoSpot(spot)
               const item = itemPorId.get(spot.checklistItemId)
+              const offsetX = (spot.x / 100 - 0.5) * displayed.w
+              const offsetY = (spot.y / 100 - 0.5) * displayed.h
               return (
                 <button
                   key={spot.id}
@@ -349,11 +386,14 @@ export function Uh3D({
                       setDetailSpot(spot)
                     }
                   }}
-                  style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
-                  className={cn(
-                    'group absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-[opacity,transform] duration-700 ease-out',
-                    revealed ? 'scale-100 opacity-100 delay-300' : 'scale-75 opacity-0',
-                  )}
+                  style={{
+                    left: '50%',
+                    top: '50%',
+                    transform: `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px)) scale(${revealed ? 1 : 0.75})`,
+                    opacity: revealed ? 1 : 0,
+                    transitionDelay: revealed ? '300ms' : '0ms',
+                  }}
+                  className="group absolute z-20 transition-[opacity,transform] duration-700 ease-out"
                   title={item?.name ?? 'Item'}
                 >
                   {status === 'NAO_CONFORME' && (
@@ -377,7 +417,6 @@ export function Uh3D({
                 </button>
               )
             })}
-          </div>
         </div>
       </div>
 
