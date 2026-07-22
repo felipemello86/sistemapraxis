@@ -441,14 +441,22 @@ export function Uh3D({
         <button
           onClick={onAbrirMenu}
           aria-label="Abrir menu"
-          className="absolute bottom-6 left-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white shadow-lg backdrop-blur-md transition-colors hover:bg-black/55 md:hidden"
+          style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+          className="absolute left-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white shadow-lg backdrop-blur-md transition-colors hover:bg-black/55 md:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>
       )}
 
-      {/* Seletor de UH — canto superior esquerdo */}
-      <div className="absolute left-4 top-4 z-30 sm:left-6 sm:top-6">
+      {/* Seletor de UH — canto superior esquerdo. Offset por env() porque,
+          no app nativo (Capacitor), essa tela não tem a barra de topo que
+          normalmente empurra o conteúdo pra baixo do notch/status bar (ver
+          comentário em dashboard.tsx) — sem isso, o card ficava atrás do
+          relógio/wifi/bateria em modo retrato. */}
+      <div
+        style={{ top: 'calc(1rem + env(safe-area-inset-top))' }}
+        className="absolute left-4 z-30 sm:left-6"
+      >
         {uhDropdownOpen && (
           <div className="fixed inset-0 z-10" onClick={() => setUhDropdownOpen(false)} aria-hidden />
         )}
@@ -484,7 +492,10 @@ export function Uh3D({
 
       {/* Card de conformidade — canto superior direito */}
       {uhId && (
-        <div className="pointer-events-none absolute right-4 top-4 z-20 rounded-2xl bg-black/40 px-4 py-3 text-right text-white shadow-lg backdrop-blur-md sm:right-6 sm:top-6">
+        <div
+          style={{ top: 'calc(1rem + env(safe-area-inset-top))' }}
+          className="pointer-events-none absolute right-4 z-20 rounded-2xl bg-black/40 px-4 py-3 text-right text-white shadow-lg backdrop-blur-md sm:right-6"
+        >
           {percentual !== null ? (
             <>
               <p className="text-2xl font-semibold leading-none tabular-nums">{percentual}%</p>
@@ -515,7 +526,10 @@ export function Uh3D({
           >
             <ChevronRight className="h-4 w-4" />
           </button>
-          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-md">
+          <div
+            style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+            className="absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-md"
+          >
             {imagensDoRoom.map((img, i) => (
               <button
                 key={img.id}
@@ -530,7 +544,10 @@ export function Uh3D({
 
       {/* Balões de navegação entre cômodos — canto inferior direito */}
       {roomsDisponiveis.length > 1 && (
-        <div className="absolute bottom-6 right-4 z-20 flex flex-col items-end gap-2 sm:right-6">
+        <div
+          style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+          className="absolute right-4 z-20 flex flex-col items-end gap-2 sm:right-6"
+        >
           {roomsDisponiveis
             .filter((r) => r !== currentRoom)
             .map((r) => {
@@ -583,6 +600,7 @@ function SpotDetailDialog({
   const [fotos, setFotos] = useState<string[]>(inspectionItem?.photos ?? [])
   const [uploading, setUploading] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null)
 
   useEffect(() => {
     setStatus(inspectionItem?.status ?? 'CONFORME')
@@ -659,8 +677,9 @@ function SpotDetailDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+    <>
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{item?.name ?? 'Item removido do catálogo'}</DialogTitle>
           <DialogDescription>
@@ -722,11 +741,21 @@ function SpotDetailDialog({
                   <div className="flex flex-wrap gap-2">
                     {fotos.map((url) => (
                       <div key={url} className="group/foto relative h-16 w-16 overflow-hidden rounded-lg border border-border/70">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="Evidência" className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setFotoAmpliada(url)}
+                          className="block h-full w-full"
+                          aria-label="Ver foto ampliada"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="Evidência" className="h-full w-full object-cover" />
+                        </button>
                         {podeOperar && (
                           <button
-                            onClick={() => setFotos((f) => f.filter((p) => p !== url))}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setFotos((f) => f.filter((p) => p !== url))
+                            }}
                             className="absolute right-0.5 top-0.5 rounded-full bg-foreground/70 p-0.5 text-background opacity-0 transition-opacity group-hover/foto:opacity-100"
                             aria-label="Remover foto"
                           >
@@ -784,7 +813,29 @@ function SpotDetailDialog({
             </Button>
           </DialogFooter>
         )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox — fora do Dialog de propósito (position:fixed dentro de um
+          ancestral com transform, como a animação de abertura do Dialog,
+          fica preso ao ancestral em vez do viewport inteiro). */}
+      {fotoAmpliada && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setFotoAmpliada(null)}
+        >
+          <button
+            onClick={() => setFotoAmpliada(null)}
+            aria-label="Fechar"
+            style={{ top: 'calc(1rem + env(safe-area-inset-top))' }}
+            className="absolute right-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={fotoAmpliada} alt="Evidência ampliada" className="max-h-full max-w-full rounded-lg object-contain" />
+        </div>
+      )}
+    </>
   )
 }
