@@ -34,6 +34,13 @@
   flex-shrink: 0;
 }
 
+/* Espaço extra entre o header e o grid de tiles quando o header entra
+   dentro de .buttonArea (tela com módulos) — ficou colado demais só com o
+   margin-bottom padrão do .header. */
+.headerAboveTiles {
+  margin-bottom: 34px;
+}
+
 .logo {
   height: auto;
   width: 130px;
@@ -53,6 +60,9 @@
   .header {
     margin-bottom: 10px;
     gap: 8px;
+  }
+  .headerAboveTiles {
+    margin-bottom: 26px;
   }
   .logo {
     width: 180px;

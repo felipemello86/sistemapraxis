@@ -84,7 +84,11 @@ export default async function ClienteHub({
         </div>
       ) : (
         <div className={styles.buttonArea}>
-          {header}
+          <div className={`${styles.header} ${styles.headerAboveTiles}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/praxis-logo.png" alt="Praxis" className={styles.logo} />
+            <h1 className={styles.title}>{tenant.name}</h1>
+          </div>
           <div className={styles.grid}>
             {tenant.modules.map((m) => {
               const slug = moduleToSlug(m.module);
