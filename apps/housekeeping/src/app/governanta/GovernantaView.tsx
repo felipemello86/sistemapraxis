@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil, Star } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil, Star, Undo2, Flag } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/g/[token]/GovernantaView.tsx (v1),
@@ -9,9 +9,12 @@ import { apiFetch } from "@/lib/apiFetch";
 // do link público /g/[token] — mesma decisão de arquitetura da camareira
 // (ver mudança de fluxo conversada com o Felipe).
 //
+// Fluxo de Finalização do Dia (ranking + exclusão de UH do score com
+// justificativa + confirmação) portado em cima de /api/finalizacao-dia —
+// ver comentário lá pras diferenças em relação ao v1 (sem PDF; push de "dia
+// finalizado" vai pra todos os usuários do tenant, não só MASTER/governanta).
+//
 // Deliberadamente FORA desta fatia (ficam pra depois):
-//   - Fluxo de finalização do dia (ranking, exclusão de UH do score,
-//     confirmação, PDF) — depende de /api/finalizacao-dia, não portado.
 //   - Botões de reportar falha de lavanderia / solicitar bloqueio de UH
 //     dentro da tela de inspeção (a camareira já tem os dela em
 //     CamareiraView; a versão da governanta é replicação, não essencial
@@ -66,7 +69,38 @@ const CATEGORIA_ICONS: Record<string, string> = {
   CAMA: "🛏️", BANHEIRO: "🚿", QUARTO: "🏠", COZINHA: "🍳", GERAL: "✅",
 };
 
-type Fase = "lista" | "inspecao";
+type UhRanking = {
+  sessaoId: string;
+  uhNumero: string;
+  falhas: number;
+  score: number;
+  excluidoDoScore: boolean;
+  justificativaExclusao: string | null;
+  multiplaCamareira: boolean;
+};
+
+type CamareiraRanking = {
+  camareiraId: string;
+  nome: string;
+  foto: string | null;
+  totalUHs: number;
+  totalFalhas: number;
+  mediaScore: number | null;
+  uhs: UhRanking[];
+};
+
+type FinalizacaoDia = {
+  data: string;
+  pronta: boolean;
+  totalUHsAtribuidas: number;
+  totalInspecionadas: number;
+  finalizado: boolean;
+  finalizadoEm: string | null;
+  finalizadoPorNome: string | null;
+  ranking: CamareiraRanking[];
+};
+
+type Fase = "lista" | "inspecao" | "finalizacao";
 
 export default function GovernantaView({ role }: { role: string }) {
   const somenteLeitura = role === "MANUTENCAO";
@@ -84,14 +118,21 @@ export default function GovernantaView({ role }: { role: string }) {
   const [decidindo, setDecidindo] = useState<string | null>(null);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [salvandoCorrecao, setSalvandoCorrecao] = useState(false);
+  const [finalizacao, setFinalizacao] = useState<FinalizacaoDia | null>(null);
+  const [confirmandoDia, setConfirmandoDia] = useState(false);
+  const [excluindoUh, setExcluindoUh] = useState<string | null>(null);
+  const [justificativaTexto, setJustificativaTexto] = useState("");
+  const [salvandoExclusao, setSalvandoExclusao] = useState(false);
 
   const carregar = useCallback(async () => {
-    const [insp, sol] = await Promise.all([
+    const [insp, sol, fin] = await Promise.all([
       apiFetch("/api/inspecoes").then((r) => r.json()),
       apiFetch("/api/atribuicoes/solicitacoes").then((r) => r.json()),
+      apiFetch("/api/finalizacao-dia").then((r) => r.json()),
     ]);
     setSessoes(Array.isArray(insp) ? insp : []);
     setSolicitacoes(Array.isArray(sol) ? sol : []);
+    setFinalizacao(fin && typeof fin === "object" && !Array.isArray(fin) ? fin : null);
     setLoading(false);
   }, []);
 
@@ -209,6 +250,41 @@ export default function GovernantaView({ role }: { role: string }) {
     await carregar();
   }
 
+  async function excluirUh(sessaoId: string) {
+    if (!justificativaTexto.trim()) return;
+    setSalvandoExclusao(true);
+    await apiFetch("/api/finalizacao-dia", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "excluir_uh", sessaoId, justificativa: justificativaTexto.trim() }),
+    });
+    setSalvandoExclusao(false);
+    setExcluindoUh(null);
+    setJustificativaTexto("");
+    await carregar();
+  }
+
+  async function reincluirUh(sessaoId: string) {
+    await apiFetch("/api/finalizacao-dia", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reincluir_uh", sessaoId }),
+    });
+    await carregar();
+  }
+
+  async function confirmarDia() {
+    if (!finalizacao) return;
+    setConfirmandoDia(true);
+    await apiFetch("/api/finalizacao-dia", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "confirmar_dia", data: finalizacao.data }),
+    });
+    setConfirmandoDia(false);
+    await carregar();
+  }
+
   const itemAtual = itens[itemAtualIdx];
   const progresso = itens.length > 0 ? (itemAtualIdx / itens.length) * 100 : 0;
   const falhasCamareira = itens.filter((i) => i.resultado === "FALHA" && i.tipoFalha === "CAMAREIRA").length;
@@ -219,6 +295,124 @@ export default function GovernantaView({ role }: { role: string }) {
 
   if (loading) {
     return <div className="p-4 text-gray-400">Carregando...</div>;
+  }
+
+  // ─── FINALIZAÇÃO DO DIA ──────────────────────────────────────────────────
+  if (fase === "finalizacao" && finalizacao) {
+    return (
+      <div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
+        <div className="bg-indigo-700 text-white p-5 sticky top-0 z-10">
+          <button onClick={() => setFase("lista")} className="flex items-center gap-1 text-sm opacity-80 hover:opacity-100 mb-2">
+            <ArrowLeft className="w-4 h-4" /> Voltar
+          </button>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Flag className="w-5 h-5" /> Finalização do Dia
+          </h2>
+          <p className="text-sm opacity-80 mt-0.5">
+            {finalizacao.finalizado
+              ? `Finalizado por ${finalizacao.finalizadoPorNome ?? "—"}`
+              : `${finalizacao.totalInspecionadas}/${finalizacao.totalUHsAtribuidas} UHs inspecionadas`}
+          </p>
+        </div>
+
+        <div className="p-4">
+          {finalizacao.ranking.length === 0 && (
+            <div className="card text-center py-8 text-gray-400">Nenhuma UH pontuável hoje.</div>
+          )}
+
+          {finalizacao.ranking.map((cam, idx) => (
+            <div key={cam.camareiraId} className="card mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg font-bold text-gray-400 w-7 flex-shrink-0">{idx + 1}º</span>
+                  {cam.foto ? (
+                    <img src={cam.foto} alt={cam.nome} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold flex-shrink-0">
+                      {cam.nome.charAt(0)}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-800 truncate">{cam.nome}</p>
+                    <p className="text-xs text-gray-500">{cam.totalUHs} UH(s) · {cam.totalFalhas} falha(s)</p>
+                  </div>
+                </div>
+                <p className="text-xl font-bold text-indigo-600 flex-shrink-0">{cam.mediaScore ?? "—"}</p>
+              </div>
+
+              <div className="space-y-1.5 mt-2">
+                {cam.uhs.map((uh) => (
+                  <div key={uh.sessaoId} className={`text-sm rounded-lg px-2 py-1.5 ${uh.excluidoDoScore ? "bg-gray-100 text-gray-400" : "bg-gray-50"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={uh.excluidoDoScore ? "line-through" : ""}>
+                        UH {uh.uhNumero} {uh.multiplaCamareira ? "(mutirão)" : `— ${uh.score} pts`}
+                        {uh.falhas > 0 && <span className="text-red-500 ml-1">· {uh.falhas} falha(s)</span>}
+                      </span>
+                      {!somenteLeitura && !finalizacao.finalizado && !uh.multiplaCamareira && (
+                        uh.excluidoDoScore ? (
+                          <button onClick={() => reincluirUh(uh.sessaoId)} className="text-xs text-indigo-600 font-medium flex items-center gap-1 flex-shrink-0">
+                            <Undo2 className="w-3 h-3" /> Reincluir
+                          </button>
+                        ) : (
+                          <button onClick={() => { setExcluindoUh(uh.sessaoId); setJustificativaTexto(""); }} className="text-xs text-red-500 font-medium flex-shrink-0">
+                            Excluir do ranking
+                          </button>
+                        )
+                      )}
+                    </div>
+                    {uh.excluidoDoScore && uh.justificativaExclusao && (
+                      <p className="text-xs text-gray-400 mt-0.5 italic">Motivo: {uh.justificativaExclusao}</p>
+                    )}
+                    {excluindoUh === uh.sessaoId && (
+                      <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2">
+                        <textarea
+                          rows={2}
+                          autoFocus
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-red-300"
+                          placeholder="Justificativa obrigatória (ex: camareira ajudou em outra UH)..."
+                          value={justificativaTexto}
+                          onChange={(e) => setJustificativaTexto(e.target.value)}
+                        />
+                        <div className="flex gap-2 mt-1.5">
+                          <button
+                            onClick={() => { setExcluindoUh(null); setJustificativaTexto(""); }}
+                            className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => excluirUh(uh.sessaoId)}
+                            disabled={!justificativaTexto.trim() || salvandoExclusao}
+                            className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-bold disabled:opacity-50"
+                          >
+                            {salvandoExclusao ? "Salvando..." : "Confirmar exclusão"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {!finalizacao.finalizado && !somenteLeitura && (
+            <>
+              <button
+                onClick={confirmarDia}
+                disabled={confirmandoDia || !finalizacao.pronta}
+                className="btn-primary w-full mt-2 py-4 text-base disabled:opacity-50"
+              >
+                {confirmandoDia ? "Enviando..." : "✅ Confirmar e Finalizar o Dia"}
+              </button>
+              <p className="text-xs text-gray-400 text-center mt-2">
+                Ao confirmar, o ranking do dia é enviado por notificação pra toda a equipe.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
   }
 
   // ─── TELA DE INSPEÇÃO ────────────────────────────────────────────────────
@@ -485,6 +679,31 @@ export default function GovernantaView({ role }: { role: string }) {
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">Controle de Inspeções</h1>
         <p className="text-gray-500 text-sm mt-0.5">Acompanhe e realize as inspeções do dia</p>
       </div>
+
+      {finalizacao?.finalizado && (
+        <div
+          className="card mb-4 border-l-4 border-l-green-400 bg-green-50/40 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => setFase("finalizacao")}
+        >
+          <div>
+            <p className="font-bold text-green-700 flex items-center gap-1.5"><Flag className="w-4 h-4" /> Dia finalizado</p>
+            <p className="text-xs text-gray-500 mt-0.5">por {finalizacao.finalizadoPorNome} — toque pra ver o ranking</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-green-500 flex-shrink-0" />
+        </div>
+      )}
+      {!finalizacao?.finalizado && finalizacao?.pronta && !somenteLeitura && (
+        <div
+          className="card mb-4 border-l-4 border-l-indigo-400 bg-indigo-50/40 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => setFase("finalizacao")}
+        >
+          <div>
+            <p className="font-bold text-indigo-700 flex items-center gap-1.5"><Flag className="w-4 h-4" /> Todas as UHs foram inspecionadas</p>
+            <p className="text-xs text-gray-500 mt-0.5">Revise o ranking e finalize o dia</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-indigo-500 flex-shrink-0" />
+        </div>
+      )}
 
       {solicitacoes.length > 0 && (
         <div className="mb-6">

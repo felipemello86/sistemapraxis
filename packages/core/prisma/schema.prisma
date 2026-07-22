@@ -415,6 +415,23 @@ model DailySelectionStatus {
   @@unique([tenantId, data])
 }
 
+// Fecho oficial do dia (fluxo "Finalização do Dia") — distinto de
+// DailySelectionStatus.confirmado, que é a confirmação da SELEÇÃO de UHs
+// feita de manhã pelo Atendimento/Gerente. Este aqui marca que a governanta
+// já revisou o ranking do dia (podendo excluir UHs pontuais do score, com
+// justificativa — ver CleaningSession.excluidoDoScore/justificativaExclusao)
+// e confirmou o fechamento, disparando o push de "dia finalizado" pra todo
+// mundo. Ver apps/housekeeping/src/app/api/finalizacao-dia/route.ts.
+model DailyClosure {
+  id                String   @id @default(cuid())
+  tenantId          String
+  data              String // YYYY-MM-DD
+  finalizadoEm      DateTime @default(now())
+  finalizadoPorNome String
+
+  @@unique([tenantId, data])
+}
+
 model CleaningProgram {
   id       String @id @default(cuid())
   tenantId String
