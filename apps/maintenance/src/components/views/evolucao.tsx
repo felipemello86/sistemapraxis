@@ -74,10 +74,25 @@ export function Evolucao({
   }, [inspecoes])
 
   const contagensGerais = useMemo(() => inspecoes.map(contarConformidade), [inspecoes])
-  const totalItens = contagensGerais.reduce((s, x) => s + x.total, 0)
+  const totalAvaliacoes = contagensGerais.reduce((s, x) => s + x.total, 0)
   const totalOk = contagensGerais.reduce((s, x) => s + x.ok, 0)
   const conformidadeGeral =
-    totalItens > 0 ? Math.round((totalOk / totalItens) * 100) : 0
+    totalAvaliacoes > 0 ? Math.round((totalOk / totalAvaliacoes) * 100) : 0
+
+  // "Total de itens avaliados" é a UNIÃO de itens distintos já avaliados em
+  // QUALQUER UH — não a soma bruta de avaliações (que infla com inspeções
+  // repetidas) nem algo restrito aos itens que TODAS as UHs têm em comum.
+  // Um item avaliado numa única UH já entra aqui, mesmo que não esteja
+  // atribuído a nenhuma outra unidade (pedido explícito).
+  const totalItens = useMemo(() => {
+    const ids = new Set<string>()
+    for (const insp of inspecoes) {
+      for (const it of insp.items) {
+        if (it.checklistItemId) ids.add(it.checklistItemId)
+      }
+    }
+    return ids.size
+  }, [inspecoes])
 
   // Largura mínima do gráfico diário — cada dia precisa de espaço pra
   // legenda não amontoar, mesma lógica aplicada no gráfico de UHs da Visão
