@@ -1,6 +1,20 @@
 "use client";
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { registerPlugin } from "@capacitor/core";
+
+// Plugin nativo LOCAL (não é pacote npm — só existe em
+// apps/mobile-app/ios/App/App/AppDelegate.swift, registrado via
+// capacitor.config.json → packageClassList). Ver comentário grande logo
+// abaixo do "registration" listener pra entender por que ele existe.
+interface FcmTokenPlugin {
+  getToken(): Promise<{ token: string }>;
+  addListener(
+    eventName: "fcmToken",
+    listenerFunc: (data: { value: string }) => void
+  ): Promise<{ remove: () => void }>;
+}
+const FcmToken = registerPlugin<FcmTokenPlugin>("FcmToken");
 
 // Monta silenciosamente (sem UI, `return null`) no hub do cliente
 // ([cliente]/page.tsx), que é a primeira tela que o app nativo (Capacitor)
@@ -133,19 +147,39 @@ export default function PushRegistration() {
 
         LOG("permissão concedida, registrando listeners e chamando register()...");
 
-        PushNotifications.addListener("registration", async (token) => {
-          LOG("evento 'registration' recebido, token:", token.value.slice(0, 12) + "...");
+        const postToken = async (token: string, platform: string) => {
           try {
             const res = await fetch("/api/push/register", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ token: token.value, platform: Capacitor.getPlatform() }),
+              body: JSON.stringify({ token, platform }),
             });
             LOG("POST /api/push/register status:", res.status);
           } catch (err) {
             LOG("erro no fetch de /api/push/register:", String(err));
-          } finally {
-            settle("token registrado (ou tentativa de POST concluída)");
+          }
+        };
+
+        // BUG ENCONTRADO EM PRODUÇÃO (22/07): no iOS, o token do evento
+        // "registration" é o token BRUTO do APNs (formato hex,
+        // "D00D2758EF37..."), não um token FCM. O Firebase Admin SDK do
+        // servidor (sendPushToUser → sendEachForMulticast) exige token FCM
+        // — mandava esse token bruto, o Firebase aceitava sem erro (log
+        // dizia "sucesso"), mas a entrega nunca acontecia, silenciosamente,
+        // em nenhum estado do app. No Android não tem esse problema: o
+        // token do evento "registration" já É o token FCM. Por isso só no
+        // iOS ignoramos esse evento e usamos o plugin local FcmTokenPlugin
+        // (ver AppDelegate.swift), que expõe o token FCM de verdade,
+        // convertido pelo FirebaseMessaging internamente.
+        const plataforma = Capacitor.getPlatform();
+
+        PushNotifications.addListener("registration", async (token) => {
+          LOG("evento 'registration' recebido, token:", token.value.slice(0, 12) + "...");
+          if (plataforma === "android") {
+            await postToken(token.value, "android");
+            settle("token Android registrado");
+          } else {
+            LOG("iOS: token bruto do APNs ignorado, aguardando evento 'fcmToken'...");
           }
         });
 
@@ -154,8 +188,16 @@ export default function PushRegistration() {
           settle("registrationError");
         });
 
+        if (plataforma === "ios") {
+          FcmToken.addListener("fcmToken", async (data) => {
+            LOG("evento 'fcmToken' (iOS) recebido:", data.value.slice(0, 12) + "...");
+            await postToken(data.value, "ios");
+            settle("token FCM (iOS) registrado");
+          });
+        }
+
         await PushNotifications.register();
-        LOG("register() chamado com sucesso, aguardando evento 'registration'...");
+        LOG("register() chamado com sucesso, aguardando token...");
       } catch (err) {
         LOG("ERRO inesperado na cadeia:", err instanceof Error ? err.message : String(err));
         settle("exceção capturada");
