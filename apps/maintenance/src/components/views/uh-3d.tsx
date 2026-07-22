@@ -171,9 +171,10 @@ export function Uh3D({
   }, [imagemAtual?.imageUrl])
 
   // Zoom/pan manuais (sem lib) — scroll/pinch pra ampliar, arrastar pra
-  // rolar quando ampliado. Reseta sempre que a foto exibida muda.
+  // rolar. Reseta sempre que a foto exibida muda.
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const pointersRef = useRef(new Map<number, { x: number; y: number }>())
   const pinchStartRef = useRef<{ dist: number; zoom: number } | null>(null)
@@ -184,13 +185,28 @@ export function Uh3D({
   useEffect(() => {
     setZoom(1)
     setPan({ x: 0, y: 0 })
+    setNaturalSize(null)
   }, [imagemAtual?.id])
 
-  function clampPan(z: number, p: { x: number; y: number }) {
+  // A foto preenche o palco por "cover" (mesma lógica do object-cover), mas
+  // calculamos a escala nós mesmos — assim sabemos exatamente quanto ficou
+  // cortado em cada eixo e liberamos pan pra revelar isso, mesmo com zoom
+  // "normal" (1x). É o que faz uma panorâmica (bem mais larga que a tela)
+  // ser navegável de cara, sem precisar ampliar primeiro.
+  function getMaxPan(z: number) {
     const rect = stageRef.current?.getBoundingClientRect()
-    if (!rect) return p
-    const maxX = Math.max(0, (rect.width * (z - 1)) / 2)
-    const maxY = Math.max(0, (rect.height * (z - 1)) / 2)
+    if (!rect || !naturalSize) return { maxX: 0, maxY: 0 }
+    const coverScale = Math.max(rect.width / naturalSize.w, rect.height / naturalSize.h)
+    const displayedW = naturalSize.w * coverScale * z
+    const displayedH = naturalSize.h * coverScale * z
+    return {
+      maxX: Math.max(0, (displayedW - rect.width) / 2),
+      maxY: Math.max(0, (displayedH - rect.height) / 2),
+    }
+  }
+
+  function clampPan(z: number, p: { x: number; y: number }) {
+    const { maxX, maxY } = getMaxPan(z)
     return { x: Math.min(maxX, Math.max(-maxX, p.x)), y: Math.min(maxY, Math.max(-maxY, p.y)) }
   }
 
@@ -213,7 +229,8 @@ export function Uh3D({
     // (se algum) recebeu o toque, pra decidir manualmente no pointerup.
     const spotEl = (e.target as HTMLElement).closest?.('[data-spot-id]') as HTMLElement | null
     pressedSpotIdRef.current = spotEl?.dataset.spotId ?? null
-    if (pointersRef.current.size === 1 && zoom > 1) {
+    const { maxX, maxY } = getMaxPan(zoom)
+    if (pointersRef.current.size === 1 && (maxX > 0 || maxY > 0)) {
       panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
     } else if (pointersRef.current.size === 2) {
       const pts = Array.from(pointersRef.current.values())
@@ -236,7 +253,7 @@ export function Uh3D({
       draggedRef.current = true
       setZoom(nextZoom)
       setPan((p) => clampPan(nextZoom, p))
-    } else if (pointersRef.current.size === 1 && panStartRef.current && zoom > 1) {
+    } else if (pointersRef.current.size === 1 && panStartRef.current) {
       const dx = e.clientX - panStartRef.current.x
       const dy = e.clientY - panStartRef.current.y
       if (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX) draggedRef.current = true
@@ -274,6 +291,9 @@ export function Uh3D({
     return it.status
   }
 
+  const { maxX: maxPanX, maxY: maxPanY } = getMaxPan(zoom)
+  const podeArrastar = maxPanX > 0 || maxPanY > 0
+
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
       {/* Palco com zoom/pan — imagem + spots viajam juntos. */}
@@ -285,7 +305,7 @@ export function Uh3D({
         onPointerUp={onStagePointerUp}
         onPointerCancel={onStagePointerUp}
         onDoubleClick={onStageDoubleClick}
-        className={cn('absolute inset-0 touch-none select-none', zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in')}
+        className={cn('absolute inset-0 touch-none select-none', podeArrastar ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in')}
       >
         <div
           style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
@@ -303,6 +323,7 @@ export function Uh3D({
                 src={displaySrc}
                 alt={unidadeAtual ? `Unidade ${unidadeAtual.name} — ${ROOM_TYPE_LABELS[currentRoom]}` : ''}
                 draggable={false}
+                onLoad={(e) => setNaturalSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
                 className={cn(
                   'absolute inset-0 h-full w-full object-cover transition-[opacity,transform] duration-[1100ms] ease-out',
                   revealed ? 'scale-100 opacity-100' : 'scale-[1.06] opacity-0',
