@@ -171,6 +171,27 @@ export async function PATCH(req: NextRequest) {
     for (const a of assignments) {
       porCamareira.set(a.camareiraId, (porCamareira.get(a.camareiraId) ?? 0) + 1);
     }
+
+    for (const [camareiraId, total] of porCamareira) {
+      await sendPushToUser(camareiraId, {
+        title: "Atribuições do dia",
+        body: `Você tem ${total} UH${total === 1 ? "" : "s"} atribuída${total === 1 ? "" : "s"} hoje.`,
+        data: { tipo: "atribuicoes_dia", data: dataAtual },
+      });
+    }
+
+    const governantas = await prisma.user.findMany({
+      where: { tenantId, ativo: true, role: "GOVERNANTA" },
+      select: { id: true },
+    });
+    for (const g of governantas) {
+      await sendPushToUser(g.id, {
+        title: "Atribuições notificadas",
+        body: `As atribuições de hoje foram enviadas para ${porCamareira.size} camareira${porCamareira.size === 1 ? "" : "s"}.`,
+        data: { tipo: "atribuicoes_dia", data: dataAtual },
+      });
+    }
+
     // TODO: notificar cada camareira e as governantas via Telegram
     return NextResponse.json({ ok: true, notificados: porCamareira.size });
   }

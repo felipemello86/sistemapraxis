@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, getSession, hasModuleAccess } from "@praxis/core";
+import { prisma, getSession, hasModuleAccess, sendPushToUser } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/sessoes/route.ts (v1). Diferenças:
@@ -167,6 +167,18 @@ export async function PATCH(req: NextRequest) {
       where: { id: sessaoAtualizada.uhId },
       data: { status: "AGUARDANDO_INSPECAO" },
     });
+
+    const governantas = await prisma.user.findMany({
+      where: { tenantId: session.tenantId, ativo: true, role: "GOVERNANTA" },
+      select: { id: true },
+    });
+    for (const g of governantas) {
+      await sendPushToUser(g.id, {
+        title: "UH pronta para inspeção",
+        body: `UH ${sessaoAtualizada.assignment.uh.numero} foi finalizada por ${sessaoAtualizada.camareira.nome}.`,
+        data: { tipo: "sessao_finalizada", uhId: sessaoAtualizada.uhId },
+      });
+    }
 
     // TODO: notificar governanta(s) via Telegram quando o bot for portado
     // pra esta v2 (ver lib/telegram.ts e lib/destinatarios.ts do v1 como

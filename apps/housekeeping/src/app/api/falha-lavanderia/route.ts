@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, getSession } from "@praxis/core";
+import { prisma, getSession, sendPushToUser } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/falha-lavanderia/route.ts (v1).
@@ -31,6 +31,18 @@ export async function POST(req: NextRequest) {
       fotoUrl: fotoUrl ?? null,
     },
   });
+
+  const destinatarios = await prisma.user.findMany({
+    where: { tenantId: session.tenantId, ativo: true, role: { in: ["MASTER", "GERENTE", "LAVANDERIA"] } },
+    select: { id: true },
+  });
+  for (const u of destinatarios) {
+    await sendPushToUser(u.id, {
+      title: "Falha de lavanderia",
+      body: `UH ${uhNumero}: ${descricao.trim()}`,
+      data: { tipo: "falha_lavanderia", uhNumero },
+    });
+  }
 
   // TODO: notificar via Telegram todos os usuários do tenant com
   // telegramChatId cadastrado, quando o bot for portado.

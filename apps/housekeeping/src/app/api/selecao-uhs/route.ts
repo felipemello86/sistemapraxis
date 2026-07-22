@@ -255,6 +255,22 @@ export async function PATCH(req: NextRequest) {
         data: { liberada: false, liberadaEm: null },
       });
 
+      await sendPushToUser(assignment.camareiraId, {
+        title: "Liberação desfeita",
+        body: `A liberação da UH ${assignment.uh.numero} foi desfeita.`,
+        data: { tipo: "liberacao_desfeita", uhId: assignment.uhId, data },
+      });
+      const destinatariosDesfazer = await prisma.user.findMany({
+        where: { tenantId, ativo: true, role: { in: ["GOVERNANTA", "GERENTE", "MASTER"] } },
+        select: { id: true },
+      });
+      for (const d of destinatariosDesfazer) {
+        await sendPushToUser(d.id, {
+          title: "Liberação desfeita",
+          body: `UH ${assignment.uh.numero} teve a liberação desfeita.`,
+          data: { tipo: "liberacao_desfeita", uhId: assignment.uhId, data },
+        });
+      }
       // TODO: notificar camareira, governantas e gerente via Telegram
 
       return NextResponse.json({ ok: true });
@@ -296,6 +312,25 @@ export async function PATCH(req: NextRequest) {
         await prisma.dailyAssignment.update({
           where: { id: assignment.id },
           data: { programId: programaLimpezaEspecifica.id },
+        });
+      }
+
+      if (assignment) {
+        await sendPushToUser(assignment.camareiraId, {
+          title: "UH em manutenção",
+          body: `UH ${uh.numero} entrou em manutenção${descricao ? `: ${descricao}` : "."}`,
+          data: { tipo: "uh_manutencao", uhId, data },
+        });
+      }
+      const destinatariosManutencao = await prisma.user.findMany({
+        where: { tenantId, ativo: true, role: { in: ["GOVERNANTA", "GERENTE", "MASTER"] } },
+        select: { id: true },
+      });
+      for (const d of destinatariosManutencao) {
+        await sendPushToUser(d.id, {
+          title: "UH em manutenção",
+          body: `UH ${uh.numero} entrou em manutenção.`,
+          data: { tipo: "uh_manutencao", uhId, data },
         });
       }
       // TODO: notificar camareira/governantas/gerentes via Telegram sobre a manutenção

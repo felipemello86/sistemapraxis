@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/inspecoes/route.ts (v1).
@@ -163,7 +163,10 @@ export async function PATCH(req: NextRequest) {
     const inspecao = await prisma.inspectionSession.update({
       where: { id: inspecaoId },
       data: { finalizadaEm: new Date(), totalFalhas, totalFalhasGerenciais, comentarioGovernanta: comentarioGovernanta || null },
-      include: { session: { select: { assignmentId: true } } },
+      include: {
+        session: { select: { assignmentId: true, camareiraId: true } },
+        uh: { select: { numero: true } },
+      },
     });
 
     await prisma.dailyAssignment.update({
@@ -172,8 +175,31 @@ export async function PATCH(req: NextRequest) {
     });
     await prisma.uH.update({ where: { id: inspecao.uhId }, data: { status: "PRONTO" } });
 
-    // TODO: notificar gerentes (inspeção concluída), camareira (score da UH e
-    // do dia, quando todas as UHs dela forem inspecionadas) via Telegram.
+    // Push pra camareira com o resultado da própria UH.
+    await sendPushToUser(inspecao.session.camareiraId, {
+      title: totalFalhas > 0
+        ? `UH ${inspecao.uh.numero}: ${totalFalhas} falha${totalFalhas === 1 ? "" : "s"}`
+        : `UH ${inspecao.uh.numero} aprovada`,
+      body: totalFalhas > 0
+        ? `Sua limpeza teve ${totalFalhas} falha${totalFalhas === 1 ? "" : "s"} na inspeção.`
+        : "Sua limpeza foi aprovada sem falhas.",
+      data: { tipo: "inspecao_finalizada", uhId: inspecao.uhId },
+    });
+
+    // Push pra gerentes/master avisando que a inspeção foi concluída.
+    const gerentes = await prisma.user.findMany({
+      where: { tenantId: session.tenantId, ativo: true, role: { in: ["MASTER", "GERENTE"] } },
+      select: { id: true },
+    });
+    for (const g of gerentes) {
+      await sendPushToUser(g.id, {
+        title: "Inspeção concluída",
+        body: `UH ${inspecao.uh.numero} foi inspecionada (${totalFalhas} falha${totalFalhas === 1 ? "" : "s"}).`,
+        data: { tipo: "inspecao_finalizada", uhId: inspecao.uhId },
+      });
+    }
+
+    // TODO: notificar gerentes/camareira via Telegram quando o bot for portado.
     // TODO: quando todas as UHs do tenant forem inspecionadas, disparar o
     // fluxo de finalização do dia (ranking + PDF) — depende de
     // /api/finalizacao-dia, fatia futura.
