@@ -214,37 +214,69 @@ export default function CamareiraView() {
     await carregar();
   }
 
+  // Antes disso, uma exceção dentro de img.onload (ex.: canvas.getContext("2d")
+  // retornando null — acontece em fotos muito grandes, comuns em câmeras de
+  // celular atuais) ou o canvas.toBlob simplesmente nunca chamar o callback
+  // (bug conhecido do WebKit/Safari mobile pra canvas grandes) deixava essa
+  // Promise pendurada pra sempre: handleFotoUpload ficava travado no
+  // `await comprimirImagem(file)`, nunca chegava no catch/finally, e o botão
+  // ficava preso em "Enviando..." pra sempre, sem erro nenhum aparecer.
+  // Agora: qualquer falha (exceção ou callback que nunca dispara) cai num
+  // fallback que resolve com o arquivo original sem compressão, e um timeout
+  // de segurança garante que a Promise sempre se resolve em poucos segundos.
   async function comprimirImagem(file: File, maxWidth = 1200, quality = 0.82): Promise<File> {
-    return new Promise((resolve) => {
-      const img = new Image();
-      const objectUrl = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl);
-        const canvas = document.createElement("canvas");
-        let { width, height } = img;
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
-            } else {
-              resolve(file);
+    const tentativa = new Promise<File>((resolve) => {
+      try {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        const falhar = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+        };
+        img.onload = () => {
+          try {
+            URL.revokeObjectURL(objectUrl);
+            const canvas = document.createElement("canvas");
+            let { width, height } = img;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
             }
-          },
-          "image/jpeg",
-          quality,
-        );
-      };
-      img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
-      img.src = objectUrl;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              resolve(file);
+              return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+                } else {
+                  resolve(file);
+                }
+              },
+              "image/jpeg",
+              quality,
+            );
+          } catch {
+            resolve(file);
+          }
+        };
+        img.onerror = falhar;
+        img.src = objectUrl;
+      } catch {
+        resolve(file);
+      }
     });
+
+    const timeout = new Promise<File>((resolve) => {
+      setTimeout(() => resolve(file), 8000);
+    });
+
+    return Promise.race([tentativa, timeout]);
   }
 
   async function handleFotoUpload(tipo: string, e: React.ChangeEvent<HTMLInputElement>) {
