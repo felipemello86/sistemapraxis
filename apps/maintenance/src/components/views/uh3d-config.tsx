@@ -235,7 +235,15 @@ export function Uh3dConfigTab({
             }}
           >
             <SelectTrigger className="h-10 rounded-xl">
-              <SelectValue placeholder="Selecione a UH" />
+              {/* Select do Base UI não resolve o texto do item sozinho — sem
+                  essa função, ele cai pro value cru (o id). Mesmo padrão de
+                  informacoes.tsx. */}
+              <SelectValue placeholder="Selecione a UH">
+                {(value: string | null) => {
+                  const u = unidades.find((x) => x.id === value)
+                  return u ? `Unidade ${u.name}` : 'Selecione a UH'
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {unidades.map((u) => (
