@@ -111,9 +111,11 @@ export async function POST(req: NextRequest) {
       create: { tenantId, data, uhId, camareiraId, programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
       include: { uh: true, camareira: { select: { id: true, nome: true, role: true, foto: true, telegramChatId: true } } },
     });
-    // Push (best-effort, não bloqueia a resposta) — Telegram continua TODO,
-    // depende de infra de bot que ainda não existe em v2.
-    void sendPushToUser(camareiraId, {
+    // Push (best-effort — sendPushToUser nunca lança erro, mas o await é
+    // necessário: em serverless a function pode congelar logo após a
+    // resposta ser enviada, cortando um envio "fire and forget" no meio).
+    // Telegram continua TODO, depende de infra de bot que ainda não existe em v2.
+    await sendPushToUser(camareiraId, {
       title: "Nova atribuição",
       body: `Você foi atribuída à UH ${assignment.uh.numero}${data ? ` (${data})` : ""}.`,
       data: { tipo: "atribuicao", uhId: assignment.uhId, data },
@@ -202,7 +204,7 @@ export async function PATCH(req: NextRequest) {
       : "Solicitação de alteração";
     const corpo = `UH ${assignment.uh.numero} — ${assignment.camareira.nome}: "${mensagem}"`;
     for (const g of governantas) {
-      void sendPushToUser(g.id, {
+      await sendPushToUser(g.id, {
         title: titulo,
         body: corpo,
         data: { tipo: "solicitacao_alteracao", assignmentId, solicitacaoTipo: tipoSolicitacao },
@@ -251,7 +253,7 @@ export async function PATCH(req: NextRequest) {
           ? `UH ${assignment.uh.numero} agora vale 120 pts, sem controle de tempo (falhas na inspeção ainda descontam).`
           : `UH ${assignment.uh.numero} — sua solicitação foi aprovada.`)
       : `UH ${assignment.uh.numero} — pedido indeferido. O programa de arrumação continua o mesmo.`;
-    void sendPushToUser(assignment.camareiraId, {
+    await sendPushToUser(assignment.camareiraId, {
       title: tituloDecisao,
       body: corpoDecisao,
       data: { tipo: "decisao_alteracao", assignmentId, aprovado: String(aprovado) },

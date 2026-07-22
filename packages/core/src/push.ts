@@ -34,42 +34,54 @@ interface PushPayload {
 
 /**
  * Manda push pra todos os aparelhos registrados de um usuário. Melhor
- * esforço: não lança erro se push não estiver configurado
- * (FIREBASE_SERVICE_ACCOUNT_JSON ausente) ou se o usuário não tiver nenhum
- * token — só não faz nada. Seguro chamar sem `await` nos pontos de
- * notificação (nova atribuição, liberação de UH, etc.).
+ * esforço: nunca lança erro (try/catch cobre tudo, inclusive se push não
+ * estiver configurado — FIREBASE_SERVICE_ACCOUNT_JSON ausente — ou se o
+ * usuário não tiver nenhum token). Por isso é seguro (e OBRIGATÓRIO) chamar
+ * com `await` nos pontos de notificação (nova atribuição, liberação de UH,
+ * etc.) mesmo sem querer bloquear o fluxo em caso de falha: em serverless
+ * (Vercel), uma chamada "fire and forget" (`void sendPushToUser(...)`) sem
+ * await pode ser interrompida no meio quando a function congela logo após a
+ * resposta ser enviada — a notificação nunca chega, sem nenhum log de erro.
+ * Isso foi um bug real em produção (ver git log): `await` aqui garante que a
+ * function só encerra depois que o envio (ou a falha) realmente aconteceu.
  */
 export async function sendPushToUser(userId: string, payload: PushPayload) {
-  const app = getFirebaseApp();
-  if (!app) {
-    console.warn("[push] FIREBASE_SERVICE_ACCOUNT_JSON não configurado — envio ignorado");
-    return;
+  try {
+    const app = getFirebaseApp();
+    if (!app) {
+      console.warn("[push] FIREBASE_SERVICE_ACCOUNT_JSON não configurado — envio ignorado");
+      return;
+    }
+
+    const tokens = await prisma.pushToken.findMany({
+      where: { userId },
+      select: { token: true },
+    });
+    if (tokens.length === 0) return;
+
+    const response = await getMessaging(app).sendEachForMulticast({
+      tokens: tokens.map((t) => t.token),
+      notification: { title: payload.title, body: payload.body },
+      data: payload.data,
+    });
+
+    // Token deixa de ser válido quando o usuário desinstala o app ou o SO
+    // revoga (comum em iOS). Limpa esses aqui em vez de deixar acumular lixo
+    // e tentar reenviar pra token morto pra sempre.
+    const deadTokens = response.responses
+      .map((r, i) => (!r.success && isDeadTokenError(r.error?.code) ? tokens[i].token : null))
+      .filter((t): t is string => t !== null);
+
+    if (deadTokens.length > 0) {
+      await prisma.pushToken.deleteMany({ where: { token: { in: deadTokens } } });
+    }
+
+    console.log(`[push] enviado pra userId=${userId}: ${response.successCount}/${tokens.length} sucesso`);
+    return response;
+  } catch (err) {
+    console.error("[push] erro ao enviar:", err);
+    return undefined;
   }
-
-  const tokens = await prisma.pushToken.findMany({
-    where: { userId },
-    select: { token: true },
-  });
-  if (tokens.length === 0) return;
-
-  const response = await getMessaging(app).sendEachForMulticast({
-    tokens: tokens.map((t) => t.token),
-    notification: { title: payload.title, body: payload.body },
-    data: payload.data,
-  });
-
-  // Token deixa de ser válido quando o usuário desinstala o app ou o SO
-  // revoga (comum em iOS). Limpa esses aqui em vez de deixar acumular lixo
-  // e tentar reenviar pra token morto pra sempre.
-  const deadTokens = response.responses
-    .map((r, i) => (!r.success && isDeadTokenError(r.error?.code) ? tokens[i].token : null))
-    .filter((t): t is string => t !== null);
-
-  if (deadTokens.length > 0) {
-    await prisma.pushToken.deleteMany({ where: { token: { in: deadTokens } } });
-  }
-
-  return response;
 }
 
 function isDeadTokenError(code?: string): boolean {

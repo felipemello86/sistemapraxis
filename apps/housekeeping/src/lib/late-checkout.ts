@@ -52,7 +52,7 @@ export async function liberarLateCheckoutsVencidos(tenantId: string): Promise<vo
         where: { id: assignment.id },
         data: { status: "LIBERADO", liberadaEm: new Date() },
       });
-      void sendPushToUser(assignment.camareiraId, {
+      await sendPushToUser(assignment.camareiraId, {
         title: "UH liberada",
         body: `A UH ${uh.numero} foi liberada pra limpeza (late check-out).`,
         data: { tipo: "liberacao", uhId, data },

@@ -219,8 +219,10 @@ export async function PATCH(req: NextRequest) {
         data: { status: "LIBERADO", liberadaEm: new Date() },
         include: { uh: { select: { numero: true } } },
       });
-      // Push (best-effort) — Telegram continua TODO.
-      void sendPushToUser(assignment.camareiraId, {
+      // Push (best-effort, mas com await — ver comentário em sendPushToUser
+      // sobre por que "fire and forget" perde a notificação em serverless).
+      // Telegram continua TODO.
+      await sendPushToUser(assignment.camareiraId, {
         title: "UH liberada",
         body: `A UH ${assignment.uh.numero} foi liberada pra limpeza.`,
         data: { tipo: "liberacao", uhId, data },
