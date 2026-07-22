@@ -223,7 +223,12 @@ export function Dashboard({
       )}
 
       {/* Conteúdo */}
-      <div className={cn('flex flex-1 flex-col transition-[padding] duration-300', collapsed ? 'md:pl-16' : 'md:pl-64')}>
+      {/* min-w-0 é essencial aqui: sem isso, um filho com overflow-x-auto e
+          min-width fixo (ex.: o gráfico de barras da Visão Gerencial) faz
+          esse item flex crescer pelo min-content dos descendentes em vez de
+          respeitar o espaço disponível — a rolagem "vaza" pra tela inteira
+          em vez de ficar contida só no bloco do gráfico. */}
+      <div className={cn('flex min-w-0 flex-1 flex-col transition-[padding] duration-300', collapsed ? 'md:pl-16' : 'md:pl-64')}>
         <header
           className="sticky top-0 z-20 flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 backdrop-blur-xl md:px-8"
           style={{ height: 'calc(4rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
@@ -250,7 +255,7 @@ export function Dashboard({
           </a>
         </header>
 
-        <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
+        <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
           {view === 'gerencial' && (
             <VisaoGerencial
               unidades={unidades}
