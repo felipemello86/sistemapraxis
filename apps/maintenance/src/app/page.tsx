@@ -6,6 +6,8 @@ import type {
   ChecklistItem,
   CorrectionSummary,
   InspecaoComUnidade,
+  ItemInfo,
+  ItemInfoLogEntry,
   MaintenanceConfigView,
   UhImage,
   UhSpot,
@@ -35,7 +37,7 @@ export default async function Home() {
   // — a UI desabilitada aqui é só a primeira camada, não a de verdade.
   const podeOperar = await hasModuleAccess(session, "MAINTENANCE");
 
-  const [uhs, checklistItems, inspections, unitChecklistItems, corrections, config, uhImages, uhSpots] = await Promise.all([
+  const [uhs, checklistItems, inspections, unitChecklistItems, corrections, config, uhImages, uhSpots, itemInfos, itemInfoLogs] = await Promise.all([
     prisma.uH.findMany({
       where: { tenantId: session.tenantId, ativo: true },
       orderBy: { ordem: "asc" },
@@ -92,6 +94,20 @@ export default async function Home() {
     prisma.maintenanceUhSpot.findMany({
       where: { tenantId: session.tenantId },
       select: { id: true, imageId: true, checklistItemId: true, x: true, y: true },
+    }),
+    // "Informações do item" (IV-UH) — ver comentário em MaintenanceItemInfo
+    // no schema Prisma.
+    prisma.maintenanceItemInfo.findMany({
+      where: { tenantId: session.tenantId },
+      include: { updatedBy: { select: { nome: true } } },
+    }),
+    // Log de alterações — as últimas 200 bastam pra exibir histórico por
+    // item na UI (mesmo critério de "take" já usado pras correções acima).
+    prisma.maintenanceItemInfoLog.findMany({
+      where: { tenantId: session.tenantId },
+      include: { author: { select: { nome: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 200,
     }),
   ]);
 
@@ -151,6 +167,25 @@ export default async function Home() {
     goal: config?.goal ?? 90,
   };
 
+  const itemInfosView: ItemInfo[] = itemInfos.map((i) => ({
+    id: i.id,
+    uhId: i.uhId,
+    checklistItemId: i.checklistItemId,
+    info: i.info,
+    updatedAt: i.updatedAt.toISOString(),
+    updatedByName: i.updatedBy?.nome ?? null,
+  }));
+
+  const itemInfoLogsView: ItemInfoLogEntry[] = itemInfoLogs.map((l) => ({
+    id: l.id,
+    uhId: l.uhId,
+    checklistItemId: l.checklistItemId,
+    previousInfo: l.previousInfo,
+    newInfo: l.newInfo,
+    authorName: l.author?.nome ?? null,
+    createdAt: l.createdAt.toISOString(),
+  }));
+
   return (
     <Dashboard
       user={{
@@ -168,6 +203,8 @@ export default async function Home() {
       config={configView}
       uhImages={uhImagesView}
       uhSpots={uhSpots as UhSpot[]}
+      itemInfos={itemInfosView}
+      itemInfoLogs={itemInfoLogsView}
     />
   );
 }

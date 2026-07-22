@@ -85,6 +85,28 @@ export type UhSpot = {
   y: number;
 };
 
+// "Informações do item" (IV-UH) — dado cadastral livre por UH x item de
+// checklist (ex.: ar-condicionado → potência, fabricante, serial). Ver
+// comentário em MaintenanceItemInfo no schema Prisma.
+export type ItemInfo = {
+  id: string;
+  uhId: string;
+  checklistItemId: string;
+  info: string | null;
+  updatedAt: string; // ISO
+  updatedByName: string | null;
+};
+
+export type ItemInfoLogEntry = {
+  id: string;
+  uhId: string;
+  checklistItemId: string;
+  previousInfo: string | null;
+  newInfo: string | null;
+  authorName: string | null;
+  createdAt: string; // ISO
+};
+
 // UH.id -> lista de ChecklistItem.id atribuídos a essa unidade. Ausência de
 // chave (ou array vazio) significa "todos os itens do catálogo se aplicam"
 // — ver comentário em MaintenanceUnitChecklistItem no schema Prisma.

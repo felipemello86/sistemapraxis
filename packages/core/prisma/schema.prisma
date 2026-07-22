@@ -76,6 +76,8 @@ model Tenant {
   maintenanceConfig              MaintenanceConfig?
   maintenanceUhImages            MaintenanceUhImage[]
   maintenanceUhSpots             MaintenanceUhSpot[]
+  maintenanceItemInfos           MaintenanceItemInfo[]
+  maintenanceItemInfoLogs        MaintenanceItemInfoLog[]
 
   // Estoque (módulo novo, migrado de um sistema Flask/Postgres avulso —
   // "estoque-bnb-flex" — que rodava fora da suíte, no Render).
@@ -178,6 +180,11 @@ model User {
 
   // Manutenção (Upkeep) — autor da correção (opcional, mesmo motivo acima).
   maintenanceCorrections MaintenanceCorrection[] @relation("MaintenanceCorrectionAuthor")
+
+  // Manutenção (Upkeep) — quem editou por último as "Informações do item"
+  // (IV-UH) e quem é o autor de cada alteração no log correspondente.
+  maintenanceItemInfoUpdates MaintenanceItemInfo[]    @relation("MaintenanceItemInfoUpdatedBy")
+  maintenanceItemInfoLogs    MaintenanceItemInfoLog[] @relation("MaintenanceItemInfoLogAuthor")
 
   // Estoque — usuário que registrou a movimentação (opcional: dado migrado
   // do sistema antigo não tem FK real, ver comentário em StockMovement).
@@ -360,6 +367,8 @@ model UH {
   maintenanceCorrections        MaintenanceCorrection[]
   maintenanceUnitChecklistItems MaintenanceUnitChecklistItem[]
   maintenanceUhImages           MaintenanceUhImage[]
+  maintenanceItemInfos          MaintenanceItemInfo[]
+  maintenanceItemInfoLogs       MaintenanceItemInfoLog[]
 
   @@unique([tenantId, numero])
 }
@@ -1059,6 +1068,8 @@ model MaintenanceChecklistItem {
   corrections      MaintenanceCorrection[]
   unitAssignments  MaintenanceUnitChecklistItem[]
   uhSpots          MaintenanceUhSpot[]
+  itemInfos        MaintenanceItemInfo[]
+  itemInfoLogs     MaintenanceItemInfoLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1161,6 +1172,68 @@ model MaintenanceUnitChecklistItem {
 
   @@unique([uhId, checklistItemId])
   @@index([tenantId])
+}
+
+// "Informações do item" (IV-UH, no vocabulário do Felipe: Item de
+// Verificação x UH) — dado cadastral livre por UH x item de checklist, ex.:
+// ar-condicionado → potência, fabricante, número de série. Separado de
+// MaintenanceUnitChecklistItem de propósito: aquele model é a atribuição
+// (quais itens se aplicam à UH — ausência de linha = todos se aplicam, ver
+// comentário logo acima e itensParaUnidade em lib/domain.ts); reaproveitar a
+// mesma tabela pra guardar texto livre criaria linhas "fantasma" que
+// mudariam sem querer a atribuição de UHs que nunca tiveram restrição
+// nenhuma. Editável em UH 3D e nas telas de item não conforme (Inspeções,
+// Rota de Correção) — toda alteração gera uma linha em
+// MaintenanceItemInfoLog (nunca apagada).
+model MaintenanceItemInfo {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  checklistItemId String
+  checklistItem   MaintenanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  info String? @db.Text
+
+  updatedById String?
+  updatedBy   User?   @relation("MaintenanceItemInfoUpdatedBy", fields: [updatedById], references: [id])
+
+  updatedAt DateTime @updatedAt
+
+  logs MaintenanceItemInfoLog[]
+
+  @@unique([uhId, checklistItemId])
+  @@index([tenantId])
+}
+
+model MaintenanceItemInfoLog {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  itemInfoId String
+  itemInfo   MaintenanceItemInfo @relation(fields: [itemInfoId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  checklistItemId String
+  checklistItem   MaintenanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  previousInfo String? @db.Text
+  newInfo      String? @db.Text
+
+  authorId String?
+  author   User?   @relation("MaintenanceItemInfoLogAuthor", fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([itemInfoId])
+  @@index([uhId])
 }
 
 // Config por tenant — prazo máximo entre inspeções (usado em Controle de

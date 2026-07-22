@@ -21,11 +21,14 @@ import { corCategoria, formatarData, ultimaInspecaoPorUnidade } from '@/lib/doma
 import { createCorrecaoAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
+import { ItemInfoField } from '@/components/item-info-field'
 import type {
   ChecklistItem,
   CorrectionSummary,
   InspecaoComUnidade,
   InspectionItem,
+  ItemInfo,
+  ItemInfoLogEntry,
   UnitOption,
 } from '@/lib/types'
 
@@ -44,12 +47,16 @@ export function RotaCorrecao({
   itens,
   inspecoes,
   correcoesRecentes,
+  itemInfos,
+  itemInfoLogs,
 }: {
   podeOperar: boolean
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
   correcoesRecentes: CorrectionSummary[]
+  itemInfos: ItemInfo[]
+  itemInfoLogs: ItemInfoLogEntry[]
 }) {
   const [pending, startTransition] = useTransition()
   const [etapa, setEtapa] = useState<'unidade' | 'item' | 'descricao'>('unidade')
@@ -343,6 +350,22 @@ export function RotaCorrecao({
                 <p className="text-xs font-medium text-muted-foreground">Problema relatado na inspeção</p>
                 <p className="mt-1 text-sm">{itemAtual.comment}</p>
               </div>
+            )}
+
+            {itemAtual.checklistItemId && (
+              <ItemInfoField
+                uhId={unidadeAtual.id}
+                checklistItemId={itemAtual.checklistItemId}
+                initialInfo={
+                  itemInfos.find(
+                    (i) => i.uhId === unidadeAtual.id && i.checklistItemId === itemAtual.checklistItemId,
+                  )?.info ?? null
+                }
+                podeOperar={podeOperar}
+                logs={itemInfoLogs.filter(
+                  (l) => l.uhId === unidadeAtual.id && l.checklistItemId === itemAtual.checklistItemId,
+                )}
+              />
             )}
 
             <div>

@@ -32,12 +32,15 @@ import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '
 import { editarSpotInspecaoAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
+import { ItemInfoField } from '@/components/item-info-field'
 import { ROOM_TYPES, ROOM_TYPE_LABELS } from '@/lib/types'
 import type {
   AtribuicoesPorUnidade,
   ChecklistItem,
   InspecaoComUnidade,
   InspectionItem,
+  ItemInfo,
+  ItemInfoLogEntry,
   RoomType,
   UhImage,
   UhSpot,
@@ -73,6 +76,8 @@ export function Uh3D({
   atribuicoes,
   uhImages,
   uhSpots,
+  itemInfos,
+  itemInfoLogs,
   onAbrirMenu,
 }: {
   podeOperar: boolean
@@ -82,6 +87,8 @@ export function Uh3D({
   atribuicoes: AtribuicoesPorUnidade
   uhImages: UhImage[]
   uhSpots: UhSpot[]
+  itemInfos: ItemInfo[]
+  itemInfoLogs: ItemInfoLogEntry[]
   onAbrirMenu?: () => void
 }) {
   const [uhId, setUhId] = useState<string>(unidades[0]?.id ?? '')
@@ -566,12 +573,15 @@ export function Uh3D({
         </div>
       )}
 
-      {detailSpot && (
+      {detailSpot && uhId && (
         <SpotDetailDialog
           podeOperar={podeOperar}
           spot={detailSpot}
+          uhId={uhId}
           item={itemPorId.get(detailSpot.checklistItemId) ?? null}
           inspectionItem={statusPorItem.get(detailSpot.checklistItemId) ?? null}
+          infoAtual={itemInfos.find((i) => i.uhId === uhId && i.checklistItemId === detailSpot.checklistItemId)?.info ?? null}
+          infoLogs={itemInfoLogs.filter((l) => l.uhId === uhId && l.checklistItemId === detailSpot.checklistItemId)}
           unidadeNome={unidadeAtual?.name ?? ''}
           onClose={() => setDetailSpot(null)}
         />
@@ -583,15 +593,21 @@ export function Uh3D({
 function SpotDetailDialog({
   podeOperar,
   spot,
+  uhId,
   item,
   inspectionItem,
+  infoAtual,
+  infoLogs,
   unidadeNome,
   onClose,
 }: {
   podeOperar: boolean
   spot: UhSpot
+  uhId: string
   item: ChecklistItem | null
   inspectionItem: InspectionItem | null
+  infoAtual: string | null
+  infoLogs: ItemInfoLogEntry[]
   unidadeNome: string
   onClose: () => void
 }) {
@@ -686,6 +702,17 @@ function SpotDetailDialog({
             {item?.category ? `${item.category} — ` : ''}Unidade {unidadeNome}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Independe do status de conformidade — existe mesmo pra itens
+            nunca inspecionados, por isso fica fora do bloco de status
+            abaixo, com seu próprio salvar. */}
+        <ItemInfoField
+          uhId={uhId}
+          checklistItemId={spot.checklistItemId}
+          initialInfo={infoAtual}
+          podeOperar={podeOperar}
+          logs={infoLogs}
+        />
 
         {!inspectionItem ? (
           <p className="text-sm text-muted-foreground">

@@ -47,10 +47,13 @@ import {
 import { deleteInspecaoAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { InspecaoWizard } from '@/components/inspecao-wizard'
+import { ItemInfoField } from '@/components/item-info-field'
 import type {
   AtribuicoesPorUnidade,
   ChecklistItem,
   InspecaoComUnidade,
+  ItemInfo,
+  ItemInfoLogEntry,
   UnitOption,
 } from '@/lib/types'
 
@@ -73,6 +76,8 @@ export function Informacoes({
   inspecoes,
   atribuicoes,
   maxDias,
+  itemInfos,
+  itemInfoLogs,
 }: {
   podeOperar: boolean
   unidades: UnitOption[]
@@ -80,6 +85,8 @@ export function Informacoes({
   inspecoes: InspecaoComUnidade[]
   atribuicoes: AtribuicoesPorUnidade
   maxDias: number
+  itemInfos: ItemInfo[]
+  itemInfoLogs: ItemInfoLogEntry[]
 }) {
   const [pending, startTransition] = useTransition()
   const [busca, setBusca] = useState('')
@@ -611,6 +618,21 @@ export function Informacoes({
               <DialogDescription>{historico.item.subDescription}</DialogDescription>
             )}
           </DialogHeader>
+          {historico && (
+            <ItemInfoField
+              uhId={historico.unidade.id}
+              checklistItemId={historico.item.id}
+              initialInfo={
+                itemInfos.find(
+                  (i) => i.uhId === historico.unidade.id && i.checklistItemId === historico.item.id,
+                )?.info ?? null
+              }
+              podeOperar={podeOperar}
+              logs={itemInfoLogs.filter(
+                (l) => l.uhId === historico.unidade.id && l.checklistItemId === historico.item.id,
+              )}
+            />
+          )}
           <div className="max-h-[60svh] space-y-2 overflow-y-auto">
             {historicoDoItem.length === 0 && (
               <p className="py-6 text-center text-sm text-muted-foreground">

@@ -445,3 +445,62 @@ async function editarSpotInspecaoImpl(input: {
   revalidatePath("/");
 }
 export const editarSpotInspecaoAction = safeAction(editarSpotInspecaoImpl);
+
+/* ------------------------ Informações do item (IV-UH) -------------------- */
+// Dado cadastral livre por UH x item de checklist (ex.: ar-condicionado →
+// potência, fabricante, serial). Editável em UH 3D e nas telas de item não
+// conforme (Inspeções, Rota de Correção) — ver comentário no schema Prisma
+// (model MaintenanceItemInfo). Toda alteração real (valor mudou de fato)
+// gera uma linha em MaintenanceItemInfoLog, nunca apagada.
+async function salvarInfoItemImpl(input: { uhId: string; checklistItemId: string; info: string }) {
+  const session = await requireModuleSession();
+
+  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
+  if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
+
+  const item = await prisma.maintenanceChecklistItem.findUnique({
+    where: { id: input.checklistItemId },
+    select: { tenantId: true },
+  });
+  if (!item || item.tenantId !== session.tenantId) throw new Error("Item de checklist não encontrado.");
+
+  const novoInfo = input.info.trim() || null;
+
+  const atual = await prisma.maintenanceItemInfo.findUnique({
+    where: { uhId_checklistItemId: { uhId: input.uhId, checklistItemId: input.checklistItemId } },
+  });
+
+  // Sem mudança real — não grava, não gera log à toa.
+  if ((atual?.info ?? null) === novoInfo) return atual?.id ?? null;
+
+  const registro = await prisma.maintenanceItemInfo.upsert({
+    where: { uhId_checklistItemId: { uhId: input.uhId, checklistItemId: input.checklistItemId } },
+    create: {
+      tenantId: session.tenantId,
+      uhId: input.uhId,
+      checklistItemId: input.checklistItemId,
+      info: novoInfo,
+      updatedById: session.userId,
+    },
+    update: {
+      info: novoInfo,
+      updatedById: session.userId,
+    },
+  });
+
+  await prisma.maintenanceItemInfoLog.create({
+    data: {
+      tenantId: session.tenantId,
+      itemInfoId: registro.id,
+      uhId: input.uhId,
+      checklistItemId: input.checklistItemId,
+      previousInfo: atual?.info ?? null,
+      newInfo: novoInfo,
+      authorId: session.userId,
+    },
+  });
+
+  revalidatePath("/");
+  return registro.id;
+}
+export const salvarInfoItemAction = safeAction(salvarInfoItemImpl);

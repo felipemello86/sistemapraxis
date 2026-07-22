@@ -25,6 +25,8 @@ import type {
   DashboardUser,
   InspecaoComUnidade,
   ChecklistItem,
+  ItemInfo,
+  ItemInfoLogEntry,
   MaintenanceConfigView,
   UhImage,
   UhSpot,
@@ -88,6 +90,8 @@ export function Dashboard({
   config,
   uhImages,
   uhSpots,
+  itemInfos,
+  itemInfoLogs,
 }: {
   user: DashboardUser
   // false = usuário pode ver todas as telas normalmente, mas os botões de
@@ -102,6 +106,8 @@ export function Dashboard({
   config: MaintenanceConfigView
   uhImages: UhImage[]
   uhSpots: UhSpot[]
+  itemInfos: ItemInfo[]
+  itemInfoLogs: ItemInfoLogEntry[]
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -304,6 +310,8 @@ export function Dashboard({
               inspecoes={inspecoes}
               atribuicoes={atribuicoes}
               maxDias={config.maxDaysBetweenInspections}
+              itemInfos={itemInfos}
+              itemInfoLogs={itemInfoLogs}
             />
           )}
           {view === 'correcao' && (
@@ -313,6 +321,8 @@ export function Dashboard({
               itens={itens}
               inspecoes={inspecoes}
               correcoesRecentes={correcoes}
+              itemInfos={itemInfos}
+              itemInfoLogs={itemInfoLogs}
             />
           )}
           {view === 'uh3d' && (
@@ -324,6 +334,8 @@ export function Dashboard({
               atribuicoes={atribuicoes}
               uhImages={uhImages}
               uhSpots={uhSpots}
+              itemInfos={itemInfos}
+              itemInfoLogs={itemInfoLogs}
               onAbrirMenu={() => setMobileOpen(true)}
             />
           )}
