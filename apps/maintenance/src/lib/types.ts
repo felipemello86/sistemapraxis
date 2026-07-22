@@ -64,11 +64,15 @@ export const ROOM_TYPE_LABELS: Record<RoomType, string> = {
   banheiro: "Banheiro",
 };
 
+// Um cômodo pode ter mais de uma foto — a ordem de exibição na tela
+// imersiva e no cadastro é sempre createdAt asc (sem campo de ordem
+// dedicado, ver comentário em MaintenanceUhImage no schema Prisma).
 export type UhImage = {
   id: string;
   uhId: string;
   tipo: string;
   imageUrl: string;
+  createdAt: string; // ISO
 };
 
 // Um item de checklist posicionado sobre uma UhImage — x/y em % (0-100),

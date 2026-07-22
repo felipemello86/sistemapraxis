@@ -296,21 +296,21 @@ export const updateConfigAction = safeAction(updateConfigImpl);
 // (model MaintenanceUhImage/MaintenanceUhSpot). Cadastro é por UH
 // individual, feito na aba "UH 3D" de Configurações.
 
+// Cria uma nova foto pro cômodo — não é mais upsert único por (uhId, tipo):
+// um cômodo pode ter várias fotos (ver migration que removeu o @@unique).
+// Ordem de exibição é sempre createdAt asc, então cada nova foto entra no
+// final da lista daquele cômodo.
 async function salvarUhImagemImpl(input: { uhId: string; tipo: string; imageUrl: string }) {
   const session = await requireModuleSession();
 
   const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
   if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
 
-  const img = await prisma.maintenanceUhImage.upsert({
-    where: { uhId_tipo: { uhId: input.uhId, tipo: input.tipo } },
-    create: {
+  const img = await prisma.maintenanceUhImage.create({
+    data: {
       tenantId: session.tenantId,
       uhId: input.uhId,
       tipo: input.tipo,
-      imageUrl: input.imageUrl,
-    },
-    update: {
       imageUrl: input.imageUrl,
     },
   });

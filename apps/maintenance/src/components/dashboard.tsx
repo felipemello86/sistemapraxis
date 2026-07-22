@@ -243,39 +243,46 @@ export function Dashboard({
           respeitar o espaço disponível — a rolagem "vaza" pra tela inteira
           em vez de ficar contida só no bloco do gráfico. */}
       <div className={cn('flex min-w-0 flex-1 flex-col transition-[padding] duration-300', collapsed ? 'md:pl-16' : 'md:pl-64')}>
-        <header
-          className="sticky top-0 z-20 flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 backdrop-blur-xl md:px-8"
-          style={{ height: 'calc(4rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
-        >
-          <button
-            className="rounded-lg p-2 text-muted-foreground hover:bg-accent md:hidden"
-            onClick={() => setMobileOpen((v) => !v)}
-            aria-label="Abrir menu"
+        {/* UH 3D é tela cheia de propósito — a barra de topo só rouba
+            espaço vertical da imersão. O menu mobile e o link Home somem
+            junto; o Uh3D renderiza seu próprio botão de menu flutuante
+            (canto inf. esq., só em telas pequenas) pra não ficar sem
+            acesso à sidebar no celular. */}
+        {view !== 'uh3d' && (
+          <header
+            className="sticky top-0 z-20 flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 backdrop-blur-xl md:px-8"
+            style={{ height: 'calc(4rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
           >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-          <div className="flex flex-1 items-center gap-2">
-            <h1 className="text-lg font-semibold tracking-tight">
-              {NAV.find((n) => n.id === view)?.label}
-            </h1>
-            {!podeOperar && (
-              <span
-                className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                title="Você não tem acesso a este módulo — pode ver as telas, mas as ações ficam bloqueadas."
-              >
-                Somente visualização
-              </span>
-            )}
-          </div>
-          <a
-            href={hubUrl(user.tenantSlug)}
-            aria-label="Home"
-            title="Home"
-            className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <Home className="h-5 w-5" />
-          </a>
-        </header>
+            <button
+              className="rounded-lg p-2 text-muted-foreground hover:bg-accent md:hidden"
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-label="Abrir menu"
+            >
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+            <div className="flex flex-1 items-center gap-2">
+              <h1 className="text-lg font-semibold tracking-tight">
+                {NAV.find((n) => n.id === view)?.label}
+              </h1>
+              {!podeOperar && (
+                <span
+                  className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                  title="Você não tem acesso a este módulo — pode ver as telas, mas as ações ficam bloqueadas."
+                >
+                  Somente visualização
+                </span>
+              )}
+            </div>
+            <a
+              href={hubUrl(user.tenantSlug)}
+              aria-label="Home"
+              title="Home"
+              className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Home className="h-5 w-5" />
+            </a>
+          </header>
+        )}
 
         {/* UH 3D pede tela cheia, sem o padding padrão do conteúdo — a
             imersão perde o sentido com margem em volta da foto. */}
@@ -317,6 +324,7 @@ export function Dashboard({
               atribuicoes={atribuicoes}
               uhImages={uhImages}
               uhSpots={uhSpots}
+              onAbrirMenu={() => setMobileOpen(true)}
             />
           )}
           {view === 'config' && (

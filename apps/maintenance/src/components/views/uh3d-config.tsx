@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { Upload, Trash2, X, MapPin, CheckCircle2 } from 'lucide-react'
+import { Upload, Trash2, X, MapPin, CheckCircle2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -56,6 +56,7 @@ export function Uh3dConfigTab({
   const [, startTransition] = useTransition()
   const [uhId, setUhId] = useState<string>('')
   const [editorTipo, setEditorTipo] = useState<RoomType | null>(null)
+  const [editorImageId, setEditorImageId] = useState<string | null>(null)
   const [uploadingTipo, setUploadingTipo] = useState<RoomType | null>(null)
   const [placingAt, setPlacingAt] = useState<{ x: number; y: number } | null>(null)
   const [draggingSpotId, setDraggingSpotId] = useState<string | null>(null)
@@ -63,10 +64,12 @@ export function Uh3dConfigTab({
 
   const itemPorId = useMemo(() => new Map(itens.map((it) => [it.id, it])), [itens])
 
+  // Um cômodo pode ter mais de uma foto — agrupadas por tipo, na ordem em
+  // que foram cadastradas (uhImages já vem createdAt asc do page.tsx).
   const imagensDaUh = useMemo(() => uhImages.filter((i) => i.uhId === uhId), [uhImages, uhId])
-  const imagemPorTipo = useMemo(() => {
-    const m = new Map<string, UhImage>()
-    for (const img of imagensDaUh) m.set(img.tipo, img)
+  const imagensPorTipo = useMemo(() => {
+    const m = new Map<RoomType, UhImage[]>()
+    for (const t of ROOM_TYPES) m.set(t, imagensDaUh.filter((i) => i.tipo === t))
     return m
   }, [imagensDaUh])
 
@@ -75,7 +78,7 @@ export function Uh3dConfigTab({
     [uhId, itens, atribuicoes],
   )
 
-  const imagemAtual = editorTipo ? imagemPorTipo.get(editorTipo) : undefined
+  const imagemAtual = editorImageId ? imagensDaUh.find((i) => i.id === editorImageId) : undefined
   const spotsDaImagem = useMemo(
     () => (imagemAtual ? uhSpots.filter((s) => s.imageId === imagemAtual.id) : []),
     [uhSpots, imagemAtual],
@@ -107,7 +110,11 @@ export function Uh3dConfigTab({
       const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
       if (!res.ok) throw new Error('Falha no upload.')
       const data = await res.json()
-      unwrapSafeAction(await salvarUhImagemAction({ uhId, tipo, imageUrl: data.url }))
+      const novoId = unwrapSafeAction(await salvarUhImagemAction({ uhId, tipo, imageUrl: data.url }))
+      // Já abre o editor de spots na foto recém-enviada — próximo passo
+      // natural depois de subir uma imagem.
+      setEditorTipo(tipo)
+      setEditorImageId(novoId)
       toast.success('Foto salva.')
     } catch {
       toast.error('Erro ao enviar a foto.')
@@ -120,7 +127,7 @@ export function Uh3dConfigTab({
     if (!podeOperar) return
     if (
       !confirm(
-        `Remover a foto de ${ROOM_TYPE_LABELS[img.tipo as RoomType] ?? img.tipo}? Os spots dessa imagem também serão removidos.`,
+        `Remover esta foto de ${ROOM_TYPE_LABELS[img.tipo as RoomType] ?? img.tipo}? Os spots dela também serão removidos.`,
       )
     )
       return
@@ -128,7 +135,10 @@ export function Uh3dConfigTab({
       try {
         unwrapSafeAction(await deleteUhImagemAction(img.id))
         toast.success('Foto removida.')
-        if (editorTipo === img.tipo) setEditorTipo(null)
+        if (editorImageId === img.id) {
+          setEditorImageId(null)
+          setEditorTipo(null)
+        }
       } catch {
         toast.error('Erro ao remover foto.')
       }
@@ -208,6 +218,7 @@ export function Uh3dConfigTab({
             onValueChange={(v) => {
               setUhId(v ?? '')
               setEditorTipo(null)
+              setEditorImageId(null)
               setPlacingAt(null)
             }}
           >
@@ -227,12 +238,11 @@ export function Uh3dConfigTab({
 
       {uhId && (
         <>
-          <Panel title="Fotos por cômodo">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Panel title="Fotos por cômodo" description="Cada cômodo pode ter mais de uma foto.">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               {ROOM_TYPES.map((tipo) => {
-                const img = imagemPorTipo.get(tipo)
+                const imagens = imagensPorTipo.get(tipo) ?? []
                 const isUploading = uploadingTipo === tipo
-                const totalSpots = img ? uhSpots.filter((s) => s.imageId === img.id).length : 0
                 return (
                   <div key={tipo} className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -243,69 +253,75 @@ export function Uh3dConfigTab({
                         </Badge>
                       )}
                     </div>
-                    <div className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-border/70 bg-muted">
-                      {img ? (
-                        <>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={img.imageUrl}
-                            alt={ROOM_TYPE_LABELS[tipo]}
-                            className="h-full w-full object-cover"
-                          />
-                          <div className="absolute inset-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/60 via-transparent to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="rounded-lg"
-                              onClick={() => setEditorTipo(tipo)}
-                            >
-                              <MapPin className="h-3.5 w-3.5" />
-                              Spots ({totalSpots})
-                            </Button>
-                            <button
-                              onClick={() => removerImagem(img)}
-                              disabled={!podeOperar}
-                              className="rounded-lg bg-black/40 p-1.5 text-white transition-colors hover:bg-destructive disabled:opacity-40"
-                              aria-label="Remover foto"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                          {editorTipo === tipo && (
-                            <div className="absolute inset-x-0 top-0 bg-primary/90 py-1 text-center text-[10px] font-semibold uppercase tracking-wide text-primary-foreground">
-                              Editando
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {imagens.map((img) => {
+                        const totalSpots = uhSpots.filter((s) => s.imageId === img.id).length
+                        const emEdicao = editorImageId === img.id
+                        return (
+                          <div
+                            key={img.id}
+                            className={cn(
+                              'group relative aspect-[4/3] w-32 shrink-0 overflow-hidden rounded-xl border bg-muted',
+                              emEdicao ? 'border-primary ring-2 ring-primary/40' : 'border-border/70',
+                            )}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={img.imageUrl} alt={ROOM_TYPE_LABELS[tipo]} className="h-full w-full object-cover" />
+                            <div className="absolute inset-0 flex items-end justify-between gap-1.5 bg-gradient-to-t from-black/65 via-transparent to-transparent p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                              <button
+                                onClick={() => {
+                                  setEditorTipo(tipo)
+                                  setEditorImageId(img.id)
+                                }}
+                                className="flex items-center gap-1 rounded-lg bg-white/90 px-2 py-1 text-[11px] font-medium text-foreground hover:bg-white"
+                              >
+                                <MapPin className="h-3 w-3" />
+                                {totalSpots}
+                              </button>
+                              <button
+                                onClick={() => removerImagem(img)}
+                                disabled={!podeOperar}
+                                className="rounded-lg bg-black/40 p-1 text-white transition-colors hover:bg-destructive disabled:opacity-40"
+                                aria-label="Remover foto"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
                             </div>
-                          )}
-                        </>
-                      ) : (
-                        <label
-                          className={cn(
-                            'flex h-full w-full flex-col items-center justify-center gap-1.5 text-muted-foreground',
-                            podeOperar ? 'cursor-pointer hover:text-foreground' : 'cursor-not-allowed opacity-50',
-                          )}
-                          title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
-                        >
-                          {isUploading ? (
-                            <span className="text-xs">Enviando...</span>
-                          ) : (
-                            <>
-                              <Upload className="h-5 w-5" />
-                              <span className="text-xs">Enviar foto</span>
-                            </>
-                          )}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={!podeOperar || isUploading}
-                            onChange={(e) => {
-                              const f = e.target.files?.[0]
-                              e.target.value = ''
-                              if (f) handleUpload(tipo, f)
-                            }}
-                          />
-                        </label>
-                      )}
+                            {emEdicao && (
+                              <div className="absolute inset-x-0 top-0 bg-primary/90 py-0.5 text-center text-[9px] font-semibold uppercase tracking-wide text-primary-foreground">
+                                Editando
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                      <label
+                        className={cn(
+                          'flex aspect-[4/3] w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border text-muted-foreground',
+                          podeOperar ? 'cursor-pointer hover:border-foreground/40 hover:text-foreground' : 'cursor-not-allowed opacity-50',
+                        )}
+                        title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                      >
+                        {isUploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4" />
+                            <span className="text-[10px]">{imagens.length === 0 ? 'Enviar foto' : 'Adicionar'}</span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={!podeOperar || isUploading}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0]
+                            e.target.value = ''
+                            if (f) handleUpload(tipo, f)
+                          }}
+                        />
+                      </label>
                     </div>
                   </div>
                 )

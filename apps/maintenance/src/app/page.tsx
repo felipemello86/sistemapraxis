@@ -86,7 +86,8 @@ export default async function Home() {
     // MaintenanceUhSpot no schema Prisma).
     prisma.maintenanceUhImage.findMany({
       where: { tenantId: session.tenantId },
-      select: { id: true, uhId: true, tipo: true, imageUrl: true },
+      select: { id: true, uhId: true, tipo: true, imageUrl: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
     }),
     prisma.maintenanceUhSpot.findMany({
       where: { tenantId: session.tenantId },
@@ -95,6 +96,14 @@ export default async function Home() {
   ]);
 
   const unidades: UnitOption[] = uhs.map((u) => ({ id: u.id, name: u.numero }));
+
+  const uhImagesView: UhImage[] = uhImages.map((img) => ({
+    id: img.id,
+    uhId: img.uhId,
+    tipo: img.tipo,
+    imageUrl: img.imageUrl,
+    createdAt: img.createdAt.toISOString(),
+  }));
 
   const itens: ChecklistItem[] = checklistItems.map((it) => ({
     id: it.id,
@@ -157,7 +166,7 @@ export default async function Home() {
       atribuicoes={atribuicoes}
       correcoes={correcoes}
       config={configView}
-      uhImages={uhImages as UhImage[]}
+      uhImages={uhImagesView}
       uhSpots={uhSpots as UhSpot[]}
     />
   );

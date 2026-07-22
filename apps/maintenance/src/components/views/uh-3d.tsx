@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Check,
   X,
   Minus,
   Camera,
   Loader2,
+  Menu,
   DoorOpen,
   BedDouble,
   ChefHat,
@@ -44,9 +47,14 @@ import type {
 // Tela imersiva "UH 3D" (ver components/views/uh3d-config.tsx pro cadastro
 // das fotos/spots que alimentam esta tela). Puramente client-side sobre os
 // dados já carregados em page.tsx — nenhuma chamada de leitura própria, só a
-// Server Action de edição do status do item (editarSpotInspecaoAction).
+// Server Action de edição do status do item (editarSpotInspecaoAction). Sem
+// header/sidebar do dashboard aqui (ver dashboard.tsx) — o único jeito de
+// sair no mobile é o botão de menu flutuante (onAbrirMenu).
 
 const MAX_FOTOS_EDICAO = 4
+const MIN_ZOOM = 1
+const MAX_ZOOM = 4
+const DRAG_THRESHOLD_PX = 6
 
 const ROOM_ICONS: Record<RoomType, typeof DoorOpen> = {
   porta: DoorOpen,
@@ -65,6 +73,7 @@ export function Uh3D({
   atribuicoes,
   uhImages,
   uhSpots,
+  onAbrirMenu,
 }: {
   podeOperar: boolean
   unidades: UnitOption[]
@@ -73,10 +82,12 @@ export function Uh3D({
   atribuicoes: AtribuicoesPorUnidade
   uhImages: UhImage[]
   uhSpots: UhSpot[]
+  onAbrirMenu?: () => void
 }) {
   const [uhId, setUhId] = useState<string>(unidades[0]?.id ?? '')
   const [uhDropdownOpen, setUhDropdownOpen] = useState(false)
   const [currentRoom, setCurrentRoom] = useState<RoomType>('porta')
+  const [imageIndex, setImageIndex] = useState(0)
   const [detailSpot, setDetailSpot] = useState<UhSpot | null>(null)
 
   const itemPorId = useMemo(() => new Map(itens.map((it) => [it.id, it])), [itens])
@@ -95,15 +106,20 @@ export function Uh3D({
   }, [ultimaInsp])
 
   const imagensDaUh = useMemo(() => uhImages.filter((i) => i.uhId === uhId), [uhImages, uhId])
-  const imagemPorTipo = useMemo(() => {
-    const m = new Map<RoomType, UhImage>()
-    for (const img of imagensDaUh) m.set(img.tipo as RoomType, img)
+  // Um cômodo pode ter mais de uma foto — agrupadas por tipo, na ordem em
+  // que foram cadastradas (uhImages já vem createdAt asc do page.tsx).
+  const imagensPorTipo = useMemo(() => {
+    const m = new Map<RoomType, UhImage[]>()
+    for (const t of ROOM_TYPES) m.set(t, imagensDaUh.filter((i) => i.tipo === t))
     return m
   }, [imagensDaUh])
   const roomsDisponiveis = useMemo(
-    () => ROOM_TYPES.filter((t) => imagemPorTipo.has(t)),
-    [imagemPorTipo],
+    () => ROOM_TYPES.filter((t) => (imagensPorTipo.get(t)?.length ?? 0) > 0),
+    [imagensPorTipo],
   )
+  const imagensDoRoom = imagensPorTipo.get(currentRoom) ?? []
+  const imagemAtual = imagensDoRoom[imageIndex] ?? imagensDoRoom[0]
+
   // Itens ainda atribuídos a esta UH — um spot cujo item foi desatribuído
   // depois de criado (ver atribuicoes) some da tela, mesmo que o registro
   // continue no cadastro (Configurações → UH 3D é quem cuida de removê-lo).
@@ -112,7 +128,6 @@ export function Uh3D({
     return new Set(ids.map((it) => it.id))
   }, [uhId, itens, atribuicoes])
 
-  const imagemAtual = imagemPorTipo.get(currentRoom)
   const spotsDaImagem = useMemo(
     () =>
       imagemAtual
@@ -132,6 +147,11 @@ export function Uh3D({
     setCurrentRoom(disponiveis.includes('porta') ? 'porta' : (disponiveis[0] ?? 'porta'))
   }, [uhId, uhImages])
 
+  // Trocou de UH ou de cômodo — sempre começa pela primeira foto da lista.
+  useEffect(() => {
+    setImageIndex(0)
+  }, [uhId, currentRoom])
+
   // Crossfade elegante entre imagens — sem lib externa. A imagem anterior
   // fica por baixo (evita flash preto) enquanto a nova entra com fade + leve
   // zoom-out até o repouso.
@@ -150,46 +170,201 @@ export function Uh3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imagemAtual?.imageUrl])
 
+  // Zoom/pan manuais (sem lib) — scroll/pinch pra ampliar, arrastar pra
+  // rolar quando ampliado. Reseta sempre que a foto exibida muda.
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const stageRef = useRef<HTMLDivElement>(null)
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>())
+  const pinchStartRef = useRef<{ dist: number; zoom: number } | null>(null)
+  const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
+  const draggedRef = useRef(false)
+
+  useEffect(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [imagemAtual?.id])
+
+  function clampPan(z: number, p: { x: number; y: number }) {
+    const rect = stageRef.current?.getBoundingClientRect()
+    if (!rect) return p
+    const maxX = Math.max(0, (rect.width * (z - 1)) / 2)
+    const maxY = Math.max(0, (rect.height * (z - 1)) / 2)
+    return { x: Math.min(maxX, Math.max(-maxX, p.x)), y: Math.min(maxY, Math.max(-maxY, p.y)) }
+  }
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    const delta = -e.deltaY * 0.0018
+    setZoom((z) => {
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z + delta * z))
+      setPan((p) => clampPan(next, p))
+      return next
+    })
+  }
+
+  function onStagePointerDown(e: React.PointerEvent) {
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    draggedRef.current = false
+    if (pointersRef.current.size === 1 && zoom > 1) {
+      panStartRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
+    } else if (pointersRef.current.size === 2) {
+      const pts = Array.from(pointersRef.current.values())
+      pinchStartRef.current = { dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), zoom }
+      panStartRef.current = null
+    }
+  }
+
+  function onStagePointerMove(e: React.PointerEvent) {
+    if (!pointersRef.current.has(e.pointerId)) return
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+    if (pointersRef.current.size === 2 && pinchStartRef.current) {
+      const pts = Array.from(pointersRef.current.values())
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
+      const nextZoom = Math.min(
+        MAX_ZOOM,
+        Math.max(MIN_ZOOM, pinchStartRef.current.zoom * (dist / pinchStartRef.current.dist)),
+      )
+      draggedRef.current = true
+      setZoom(nextZoom)
+      setPan((p) => clampPan(nextZoom, p))
+    } else if (pointersRef.current.size === 1 && panStartRef.current && zoom > 1) {
+      const dx = e.clientX - panStartRef.current.x
+      const dy = e.clientY - panStartRef.current.y
+      if (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX) draggedRef.current = true
+      setPan(clampPan(zoom, { x: panStartRef.current.panX + dx, y: panStartRef.current.panY + dy }))
+    }
+  }
+
+  function onStagePointerUp(e: React.PointerEvent) {
+    pointersRef.current.delete(e.pointerId)
+    if (pointersRef.current.size < 2) pinchStartRef.current = null
+    if (pointersRef.current.size === 0) panStartRef.current = null
+  }
+
+  function onStageDoubleClick() {
+    if (zoom > 1) {
+      setZoom(1)
+      setPan({ x: 0, y: 0 })
+    } else {
+      setZoom(2.2)
+    }
+  }
+
   function statusDoSpot(spot: UhSpot): StatusSpot {
     const it = statusPorItem.get(spot.checklistItemId)
     if (!it) return 'NAO_AVALIADO'
     return it.status
   }
 
+  function abrirSpot(spot: UhSpot) {
+    if (draggedRef.current) return
+    setDetailSpot(spot)
+  }
+
   return (
-    <div className="absolute inset-0 bg-black">
-      {/* Camadas de imagem (crossfade) */}
-      {prevSrc && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={prevSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
-      )}
-      {displaySrc && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={displaySrc}
-          src={displaySrc}
-          alt={unidadeAtual ? `Unidade ${unidadeAtual.name} — ${ROOM_TYPE_LABELS[currentRoom]}` : ''}
-          className={cn(
-            'absolute inset-0 h-full w-full object-cover transition-[opacity,transform] duration-[1100ms] ease-out',
-            revealed ? 'scale-100 opacity-100' : 'scale-[1.06] opacity-0',
-          )}
-        />
-      )}
+    <div className="absolute inset-0 overflow-hidden bg-black">
+      {/* Palco com zoom/pan — imagem + spots viajam juntos. */}
+      <div
+        ref={stageRef}
+        onWheel={onWheel}
+        onPointerDown={onStagePointerDown}
+        onPointerMove={onStagePointerMove}
+        onPointerUp={onStagePointerUp}
+        onPointerCancel={onStagePointerUp}
+        onDoubleClick={onStageDoubleClick}
+        className={cn('absolute inset-0 touch-none select-none', zoom > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in')}
+      >
+        <div
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
+          className="absolute inset-0 transition-transform duration-150 ease-out"
+        >
+          <div style={{ transform: `scale(${zoom})` }} className="absolute inset-0 transition-transform duration-150 ease-out">
+            {prevSrc && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={prevSrc} alt="" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+            )}
+            {displaySrc && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={displaySrc}
+                src={displaySrc}
+                alt={unidadeAtual ? `Unidade ${unidadeAtual.name} — ${ROOM_TYPE_LABELS[currentRoom]}` : ''}
+                draggable={false}
+                className={cn(
+                  'absolute inset-0 h-full w-full object-cover transition-[opacity,transform] duration-[1100ms] ease-out',
+                  revealed ? 'scale-100 opacity-100' : 'scale-[1.06] opacity-0',
+                )}
+              />
+            )}
+
+            {/* Spots de verificação */}
+            {spotsDaImagem.map((spot) => {
+              const status = statusDoSpot(spot)
+              const item = itemPorId.get(spot.checklistItemId)
+              return (
+                <button
+                  key={spot.id}
+                  onClick={() => abrirSpot(spot)}
+                  style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
+                  className={cn(
+                    'group absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-[opacity,transform] duration-700 ease-out',
+                    revealed ? 'scale-100 opacity-100 delay-300' : 'scale-75 opacity-0',
+                  )}
+                  title={item?.name ?? 'Item'}
+                >
+                  {status === 'NAO_CONFORME' && (
+                    <span className="absolute inset-0 animate-ping rounded-full bg-rose-400/30" />
+                  )}
+                  <span
+                    className={cn(
+                      'relative flex h-6 w-6 items-center justify-center rounded-full shadow-sm ring-1 backdrop-blur-[2px] transition-transform group-hover:scale-125',
+                      status === 'CONFORME' && 'bg-emerald-500/25 ring-emerald-300/80',
+                      status === 'NAO_CONFORME' && 'bg-rose-500/30 ring-rose-300/85',
+                      status === 'NAO_AVALIADO' && 'bg-white/10 ring-white/45',
+                    )}
+                  >
+                    {status === 'CONFORME' && <Check className="h-3 w-3 text-emerald-200" strokeWidth={2.75} />}
+                    {status === 'NAO_CONFORME' && <X className="h-3 w-3 text-rose-200" strokeWidth={2.75} />}
+                    {status === 'NAO_AVALIADO' && <Minus className="h-2.5 w-2.5 text-white/80" strokeWidth={2.75} />}
+                  </span>
+                  <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-popover px-2 py-1 text-xs text-popover-foreground shadow-lg ring-1 ring-foreground/10 group-hover:block">
+                    {item?.name ?? 'Item removido do catálogo'}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
 
       {/* Estados vazios */}
       {!uhId && (
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <p className="rounded-2xl bg-black/40 px-6 py-4 text-sm text-white/80 backdrop-blur-md">
             Nenhuma UH cadastrada.
           </p>
         </div>
       )}
       {uhId && imagensDaUh.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center px-6">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6">
           <p className="max-w-sm rounded-2xl bg-black/40 px-6 py-4 text-center text-sm text-white/80 backdrop-blur-md">
             Esta UH ainda não tem fotos cadastradas. Configure em Configurações → UH 3D.
           </p>
         </div>
+      )}
+
+      {/* Botão de menu — só mobile, já que a barra de topo some nesta tela */}
+      {onAbrirMenu && (
+        <button
+          onClick={onAbrirMenu}
+          aria-label="Abrir menu"
+          className="absolute bottom-6 left-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white shadow-lg backdrop-blur-md transition-colors hover:bg-black/55 md:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
       )}
 
       {/* Seletor de UH — canto superior esquerdo */}
@@ -229,7 +404,7 @@ export function Uh3D({
 
       {/* Card de conformidade — canto superior direito */}
       {uhId && (
-        <div className="absolute right-4 top-4 z-20 rounded-2xl bg-black/40 px-4 py-3 text-right text-white shadow-lg backdrop-blur-md sm:right-6 sm:top-6">
+        <div className="pointer-events-none absolute right-4 top-4 z-20 rounded-2xl bg-black/40 px-4 py-3 text-right text-white shadow-lg backdrop-blur-md sm:right-6 sm:top-6">
           {percentual !== null ? (
             <>
               <p className="text-2xl font-semibold leading-none tabular-nums">{percentual}%</p>
@@ -243,42 +418,35 @@ export function Uh3D({
         </div>
       )}
 
-      {/* Spots de verificação */}
-      {spotsDaImagem.map((spot) => {
-        const status = statusDoSpot(spot)
-        const item = itemPorId.get(spot.checklistItemId)
-        return (
+      {/* Navegação entre fotos do mesmo cômodo — setas laterais + pontos */}
+      {imagensDoRoom.length > 1 && (
+        <>
           <button
-            key={spot.id}
-            onClick={() => setDetailSpot(spot)}
-            style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
-            className={cn(
-              'group absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-[opacity,transform] duration-700 ease-out',
-              revealed ? 'scale-100 opacity-100 delay-300' : 'scale-75 opacity-0',
-            )}
-            title={item?.name ?? 'Item'}
+            onClick={() => setImageIndex((i) => (i - 1 + imagensDoRoom.length) % imagensDoRoom.length)}
+            aria-label="Foto anterior"
+            className="absolute left-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-colors hover:bg-black/55 sm:left-6"
           >
-            {status === 'NAO_CONFORME' && (
-              <span className="absolute inset-0 -m-1 animate-ping rounded-full bg-rose-500/40" />
-            )}
-            <span
-              className={cn(
-                'relative flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow-lg ring-2 backdrop-blur-md transition-transform group-hover:scale-110',
-                status === 'CONFORME' && 'ring-emerald-500',
-                status === 'NAO_CONFORME' && 'ring-rose-500',
-                status === 'NAO_AVALIADO' && 'ring-slate-300',
-              )}
-            >
-              {status === 'CONFORME' && <Check className="h-4 w-4 text-emerald-600" strokeWidth={2.5} />}
-              {status === 'NAO_CONFORME' && <X className="h-4 w-4 text-rose-600" strokeWidth={2.5} />}
-              {status === 'NAO_AVALIADO' && <Minus className="h-3.5 w-3.5 text-slate-400" strokeWidth={2.5} />}
-            </span>
-            <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-popover px-2 py-1 text-xs text-popover-foreground shadow-lg ring-1 ring-foreground/10 group-hover:block">
-              {item?.name ?? 'Item removido do catálogo'}
-            </span>
+            <ChevronLeft className="h-4 w-4" />
           </button>
-        )
-      })}
+          <button
+            onClick={() => setImageIndex((i) => (i + 1) % imagensDoRoom.length)}
+            aria-label="Próxima foto"
+            className="absolute right-4 top-1/2 z-20 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur-md transition-colors hover:bg-black/55 sm:right-6"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-md">
+            {imagensDoRoom.map((img, i) => (
+              <button
+                key={img.id}
+                onClick={() => setImageIndex(i)}
+                aria-label={`Foto ${i + 1}`}
+                className={cn('h-1.5 rounded-full transition-all', i === imageIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/40 hover:bg-white/60')}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Balões de navegação entre cômodos — canto inferior direito */}
       {roomsDisponiveis.length > 1 && (

@@ -1194,7 +1194,9 @@ model MaintenanceUhImage {
   uhId String
   uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
 
-  tipo     String // "porta" | "quarto" | "cozinha" | "banheiro"
+  tipo     String // "porta" | "quarto" | "cozinha" | "banheiro" — cômodo padrão;
+  // pode repetir (mais de uma foto por cômodo, ver comentário na migration
+  // que removeu o @@unique original). Ordem de exibição = createdAt asc.
   imageUrl String // Cloudinary
 
   spots MaintenanceUhSpot[]
@@ -1202,8 +1204,8 @@ model MaintenanceUhImage {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([uhId, tipo])
   @@index([tenantId])
+  @@index([uhId, tipo])
 }
 
 // Um spot = um item de checklist posicionado sobre uma MaintenanceUhImage
