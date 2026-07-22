@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import {
   Check,
   AlertTriangle,
+  Ban,
   Camera,
   ChevronLeft,
   ChevronRight,
@@ -14,10 +15,18 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Panel, StatCard } from '@/components/ui-kit'
 import { toast } from 'sonner'
 import { corCategoria } from '@/lib/domain'
-import { createInspecaoAction } from '@/app/actions/data'
+import { createInspecaoAction, removerItemIncompativelAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
 import type { ChecklistItem, UnitOption } from '@/lib/types'
@@ -38,7 +47,7 @@ type Resposta = {
 
 export function InspecaoWizard({
   unidade,
-  itens,
+  itens: itensIniciais,
   onCancel,
   onSaved,
 }: {
@@ -50,12 +59,18 @@ export function InspecaoWizard({
   const [pending, startTransition] = useTransition()
   const [etapa, setEtapa] = useState<'execucao' | 'resumo'>('execucao')
   const [indice, setIndice] = useState(0)
+  // Cópia local, mutável — quando um item é marcado "incompatível" ele sai
+  // dessa lista na hora (ver confirmarItemIncompativel), sem precisar
+  // recarregar a página nem esperar o revalidatePath do server action.
+  const [itens, setItens] = useState<ChecklistItem[]>(itensIniciais)
   const [respostas, setRespostas] = useState<Record<string, Resposta>>(() =>
     Object.fromEntries(
-      itens.map((it) => [it.id, { status: 'CONFORME', comment: '', photos: [] }]),
+      itensIniciais.map((it) => [it.id, { status: 'CONFORME', comment: '', photos: [] }]),
     ),
   )
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null)
+  const [confirmandoIncompativel, setConfirmandoIncompativel] = useState(false)
+  const [removendoIncompativel, setRemovendoIncompativel] = useState(false)
 
   function marcar(itemId: string, status: 'CONFORME' | 'NAO_CONFORME') {
     setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], status } }))
@@ -99,6 +114,39 @@ export function InspecaoWizard({
       toast.error('Não foi possível enviar a(s) foto(s).')
     } finally {
       setUploadingItemId(null)
+    }
+  }
+
+  // "Item incompatível" — falha de cadastro: esse item do checklist não se
+  // aplica a esta UH. Remove do cadastro da UH (server) e da lista local
+  // desta inspeção (client), sem precisar recarregar a tela.
+  async function confirmarItemIncompativel() {
+    const item = itens[indice]
+    if (!item) return
+    setRemovendoIncompativel(true)
+    try {
+      unwrapSafeAction(
+        await removerItemIncompativelAction({ uhId: unidade.id, checklistItemId: item.id }),
+      )
+      setRespostas((r) => {
+        const resto = { ...r }
+        delete resto[item.id]
+        return resto
+      })
+      const eraOUltimo = indice >= itens.length - 1
+      setItens((prev) => prev.filter((it) => it.id !== item.id))
+      toast.success(`"${item.name}" removido do cadastro desta UH.`)
+      setConfirmandoIncompativel(false)
+      // O item saiu da lista, então o índice atual já aponta pro próximo
+      // item automaticamente (o array encolheu por baixo dele). Só precisa
+      // ir pro resumo explicitamente se o removido era o último.
+      if (eraOUltimo) {
+        setEtapa('resumo')
+      }
+    } catch {
+      toast.error('Não foi possível remover o item.')
+    } finally {
+      setRemovendoIncompativel(false)
     }
   }
 
@@ -208,17 +256,26 @@ export function InspecaoWizard({
         </div>
 
         <Panel className="space-y-5">
-          <div>
-            <Badge
-              variant="outline"
-              style={{ borderColor: corCategoria(item.category), color: corCategoria(item.category) }}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Badge
+                variant="outline"
+                style={{ borderColor: corCategoria(item.category), color: corCategoria(item.category) }}
+              >
+                {item.category}
+              </Badge>
+              <h3 className="mt-3 text-lg font-semibold tracking-tight">{item.name}</h3>
+              {item.subDescription && (
+                <p className="mt-1 text-sm text-muted-foreground">{item.subDescription}</p>
+              )}
+            </div>
+            <button
+              onClick={() => setConfirmandoIncompativel(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
             >
-              {item.category}
-            </Badge>
-            <h3 className="mt-3 text-lg font-semibold tracking-tight">{item.name}</h3>
-            {item.subDescription && (
-              <p className="mt-1 text-sm text-muted-foreground">{item.subDescription}</p>
-            )}
+              <Ban className="h-3.5 w-3.5" />
+              Item incompatível
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -307,6 +364,38 @@ export function InspecaoWizard({
             </div>
           )}
         </Panel>
+
+        <Dialog open={confirmandoIncompativel} onOpenChange={setConfirmandoIncompativel}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Item incompatível com esta UH?</DialogTitle>
+              <DialogDescription>
+                Se você confirmar, &quot;{item.name}&quot; será removido do cadastro de
+                checklist da UH {unidade.name} — ele não aparece mais em inspeções futuras
+                dessa unidade (pode ser adicionado de volta depois em Configurações). A
+                inspeção segue direto pro próximo item.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmandoIncompativel(false)}
+                disabled={removendoIncompativel}
+                className="rounded-xl"
+              >
+                Desistir
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmarItemIncompativel}
+                disabled={removendoIncompativel}
+                className="rounded-xl"
+              >
+                {removendoIncompativel ? 'Removendo...' : 'Confirmar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="flex gap-3">
           <Button

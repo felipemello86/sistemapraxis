@@ -200,6 +200,65 @@ async function setAtribuicaoUnidadeImpl(input: { uhId: string; checklistItemIds:
 }
 export const setAtribuicaoUnidadeAction = safeAction(setAtribuicaoUnidadeImpl);
 
+// "Item incompatível" — usado direto na Rota de Inspeção quando o inspetor
+// se depara com um item do checklist que não se aplica àquela UH (falha de
+// cadastro). Reaproveita a mesma tabela/transação de setAtribuicaoUnidadeImpl
+// acima, só que calculando a lista nova a partir do estado atual (catálogo
+// inteiro, se a UH ainda não tem customização — ou a lista customizada já
+// existente) menos o item removido, em vez de receber a lista pronta do
+// client (evita depender do client ter o snapshot de atribuições
+// atualizado numa sessão de inspeção longa).
+async function removerItemIncompativelImpl(input: { uhId: string; checklistItemId: string }) {
+  const session = await requireModuleSession();
+
+  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
+  if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
+
+  const [catalogo, atuais] = await Promise.all([
+    prisma.maintenanceChecklistItem.findMany({
+      where: { tenantId: session.tenantId },
+      select: { id: true },
+    }),
+    prisma.maintenanceUnitChecklistItem.findMany({
+      where: { uhId: input.uhId, tenantId: session.tenantId },
+      select: { checklistItemId: true },
+    }),
+  ]);
+
+  // Sem linha nenhuma pra essa UH ainda = todos os itens do catálogo se
+  // aplicam por padrão (ver comentário no schema) — a base pra remover é o
+  // catálogo inteiro nesse caso. Se já existe uma lista customizada,
+  // parte dela.
+  const baseIds = atuais.length > 0 ? atuais.map((a) => a.checklistItemId) : catalogo.map((c) => c.id);
+  const novaLista = baseIds.filter((id) => id !== input.checklistItemId);
+
+  // Lista vazia viraria "todos os itens se aplicam" de novo (ver mesmo
+  // comentário) — o oposto do que o inspetor quis dizer ao remover o
+  // último item. Bloqueia esse caso raro em vez de produzir esse estado
+  // errado silenciosamente.
+  if (novaLista.length === 0) {
+    throw new Error(
+      "Não é possível remover: seria o último item da UH, e isso reativaria todos os itens do catálogo por padrão. Ajuste em Configurações se essa UH realmente não usa nenhum item.",
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.maintenanceUnitChecklistItem.deleteMany({
+      where: { uhId: input.uhId, tenantId: session.tenantId },
+    }),
+    prisma.maintenanceUnitChecklistItem.createMany({
+      data: novaLista.map((checklistItemId) => ({
+        tenantId: session.tenantId,
+        uhId: input.uhId,
+        checklistItemId,
+      })),
+    }),
+  ]);
+
+  revalidatePath("/");
+}
+export const removerItemIncompativelAction = safeAction(removerItemIncompativelImpl);
+
 /* ------------------------------- Config ------------------------------------ */
 // Prazo máximo entre inspeções e meta de conformidade — específicos da
 // natureza "manutenção" (mesmo padrão de HkConfig em Governança).
