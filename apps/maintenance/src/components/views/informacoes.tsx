@@ -627,6 +627,11 @@ export function Informacoes({
                   (i) => i.uhId === historico.unidade.id && i.checklistItemId === historico.item.id,
                 )?.info ?? null
               }
+              initialPhotos={
+                itemInfos.find(
+                  (i) => i.uhId === historico.unidade.id && i.checklistItemId === historico.item.id,
+                )?.photos ?? []
+              }
               podeOperar={podeOperar}
               logs={itemInfoLogs.filter(
                 (l) => l.uhId === historico.unidade.id && l.checklistItemId === historico.item.id,

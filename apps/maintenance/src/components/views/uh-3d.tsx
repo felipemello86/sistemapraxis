@@ -580,7 +580,7 @@ export function Uh3D({
           uhId={uhId}
           item={itemPorId.get(detailSpot.checklistItemId) ?? null}
           inspectionItem={statusPorItem.get(detailSpot.checklistItemId) ?? null}
-          infoAtual={itemInfos.find((i) => i.uhId === uhId && i.checklistItemId === detailSpot.checklistItemId)?.info ?? null}
+          infoAtual={itemInfos.find((i) => i.uhId === uhId && i.checklistItemId === detailSpot.checklistItemId) ?? null}
           infoLogs={itemInfoLogs.filter((l) => l.uhId === uhId && l.checklistItemId === detailSpot.checklistItemId)}
           unidadeNome={unidadeAtual?.name ?? ''}
           onClose={() => setDetailSpot(null)}
@@ -606,7 +606,7 @@ function SpotDetailDialog({
   uhId: string
   item: ChecklistItem | null
   inspectionItem: InspectionItem | null
-  infoAtual: string | null
+  infoAtual: ItemInfo | null
   infoLogs: ItemInfoLogEntry[]
   unidadeNome: string
   onClose: () => void
@@ -709,7 +709,8 @@ function SpotDetailDialog({
         <ItemInfoField
           uhId={uhId}
           checklistItemId={spot.checklistItemId}
-          initialInfo={infoAtual}
+          initialInfo={infoAtual?.info ?? null}
+          initialPhotos={infoAtual?.photos ?? []}
           podeOperar={podeOperar}
           logs={infoLogs}
         />

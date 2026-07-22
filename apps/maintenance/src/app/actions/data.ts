@@ -452,7 +452,12 @@ export const editarSpotInspecaoAction = safeAction(editarSpotInspecaoImpl);
 // conforme (Inspeções, Rota de Correção) — ver comentário no schema Prisma
 // (model MaintenanceItemInfo). Toda alteração real (valor mudou de fato)
 // gera uma linha em MaintenanceItemInfoLog, nunca apagada.
-async function salvarInfoItemImpl(input: { uhId: string; checklistItemId: string; info: string }) {
+async function salvarInfoItemImpl(input: {
+  uhId: string;
+  checklistItemId: string;
+  info: string;
+  photos: string[];
+}) {
   const session = await requireModuleSession();
 
   const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
@@ -465,13 +470,16 @@ async function salvarInfoItemImpl(input: { uhId: string; checklistItemId: string
   if (!item || item.tenantId !== session.tenantId) throw new Error("Item de checklist não encontrado.");
 
   const novoInfo = input.info.trim() || null;
+  const novasFotos = JSON.stringify(input.photos ?? []);
 
   const atual = await prisma.maintenanceItemInfo.findUnique({
     where: { uhId_checklistItemId: { uhId: input.uhId, checklistItemId: input.checklistItemId } },
   });
 
+  const fotosAtuais = atual?.photos ?? "[]";
+
   // Sem mudança real — não grava, não gera log à toa.
-  if ((atual?.info ?? null) === novoInfo) return atual?.id ?? null;
+  if ((atual?.info ?? null) === novoInfo && fotosAtuais === novasFotos) return atual?.id ?? null;
 
   const registro = await prisma.maintenanceItemInfo.upsert({
     where: { uhId_checklistItemId: { uhId: input.uhId, checklistItemId: input.checklistItemId } },
@@ -480,10 +488,12 @@ async function salvarInfoItemImpl(input: { uhId: string; checklistItemId: string
       uhId: input.uhId,
       checklistItemId: input.checklistItemId,
       info: novoInfo,
+      photos: novasFotos,
       updatedById: session.userId,
     },
     update: {
       info: novoInfo,
+      photos: novasFotos,
       updatedById: session.userId,
     },
   });
@@ -496,6 +506,8 @@ async function salvarInfoItemImpl(input: { uhId: string; checklistItemId: string
       checklistItemId: input.checklistItemId,
       previousInfo: atual?.info ?? null,
       newInfo: novoInfo,
+      previousPhotos: fotosAtuais,
+      newPhotos: novasFotos,
       authorId: session.userId,
     },
   });

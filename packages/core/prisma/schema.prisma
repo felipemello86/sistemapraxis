@@ -1196,7 +1196,8 @@ model MaintenanceItemInfo {
   checklistItemId String
   checklistItem   MaintenanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
 
-  info String? @db.Text
+  info   String? @db.Text
+  photos String  @default("[]") // JSON array de URLs (Cloudinary)
 
   updatedById String?
   updatedBy   User?   @relation("MaintenanceItemInfoUpdatedBy", fields: [updatedById], references: [id])
@@ -1225,6 +1226,9 @@ model MaintenanceItemInfoLog {
 
   previousInfo String? @db.Text
   newInfo      String? @db.Text
+
+  previousPhotos String @default("[]") // JSON array de URLs (Cloudinary)
+  newPhotos      String @default("[]") // JSON array de URLs (Cloudinary)
 
   authorId String?
   author   User?   @relation("MaintenanceItemInfoLogAuthor", fields: [authorId], references: [id])

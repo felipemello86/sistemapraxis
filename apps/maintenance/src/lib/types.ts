@@ -93,6 +93,7 @@ export type ItemInfo = {
   uhId: string;
   checklistItemId: string;
   info: string | null;
+  photos: string[];
   updatedAt: string; // ISO
   updatedByName: string | null;
 };
@@ -103,6 +104,8 @@ export type ItemInfoLogEntry = {
   checklistItemId: string;
   previousInfo: string | null;
   newInfo: string | null;
+  previousPhotos: string[];
+  newPhotos: string[];
   authorName: string | null;
   createdAt: string; // ISO
 };

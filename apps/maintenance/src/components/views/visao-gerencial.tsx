@@ -365,6 +365,11 @@ export function VisaoGerencial({
                     (i) => i.uhId === ncSelecionado.unitId && i.checklistItemId === ncSelecionado.checklistItemId,
                   )?.info ?? null
                 }
+                initialPhotos={
+                  itemInfos.find(
+                    (i) => i.uhId === ncSelecionado.unitId && i.checklistItemId === ncSelecionado.checklistItemId,
+                  )?.photos ?? []
+                }
                 podeOperar={podeOperar}
                 logs={itemInfoLogs.filter(
                   (l) => l.uhId === ncSelecionado.unitId && l.checklistItemId === ncSelecionado.checklistItemId,

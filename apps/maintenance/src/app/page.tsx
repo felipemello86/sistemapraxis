@@ -172,6 +172,7 @@ export default async function Home() {
     uhId: i.uhId,
     checklistItemId: i.checklistItemId,
     info: i.info,
+    photos: safeParsePhotos(i.photos),
     updatedAt: i.updatedAt.toISOString(),
     updatedByName: i.updatedBy?.nome ?? null,
   }));
@@ -182,6 +183,8 @@ export default async function Home() {
     checklistItemId: l.checklistItemId,
     previousInfo: l.previousInfo,
     newInfo: l.newInfo,
+    previousPhotos: safeParsePhotos(l.previousPhotos),
+    newPhotos: safeParsePhotos(l.newPhotos),
     authorName: l.author?.nome ?? null,
     createdAt: l.createdAt.toISOString(),
   }));

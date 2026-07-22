@@ -361,6 +361,11 @@ export function RotaCorrecao({
                     (i) => i.uhId === unidadeAtual.id && i.checklistItemId === itemAtual.checklistItemId,
                   )?.info ?? null
                 }
+                initialPhotos={
+                  itemInfos.find(
+                    (i) => i.uhId === unidadeAtual.id && i.checklistItemId === itemAtual.checklistItemId,
+                  )?.photos ?? []
+                }
                 podeOperar={podeOperar}
                 logs={itemInfoLogs.filter(
                   (l) => l.uhId === unidadeAtual.id && l.checklistItemId === itemAtual.checklistItemId,
