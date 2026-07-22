@@ -4,6 +4,9 @@ import { useMemo, useState, useTransition } from 'react'
 import {
   Plus,
   Trash2,
+  Pencil,
+  Check,
+  X,
   ListChecks,
   LayoutGrid,
   Timer,
@@ -31,6 +34,7 @@ import { CATEGORIAS } from '@/lib/default-data'
 import {
   createItemAction,
   deleteItemAction,
+  updateItemAction,
   setAtribuicaoUnidadeAction,
   updateConfigAction,
 } from '@/app/actions/data'
@@ -187,6 +191,47 @@ export function Configuracoes({
     })
   }
 
+  // ── Edição de item do catálogo ──────────────────────────────────────────
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [editNome, setEditNome] = useState('')
+  const [editCategoria, setEditCategoria] = useState<string>(CATEGORIAS[0])
+  const [editDescricao, setEditDescricao] = useState('')
+
+  function iniciarEdicao(it: ChecklistItem) {
+    if (!podeOperar) return
+    setEditandoId(it.id)
+    setEditNome(it.name)
+    setEditCategoria(it.category)
+    setEditDescricao(it.subDescription ?? '')
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null)
+  }
+
+  function salvarEdicaoItem(id: string) {
+    if (!podeOperar) return
+    if (!editNome.trim()) {
+      toast.error('Informe o nome do item.')
+      return
+    }
+    startTransition(async () => {
+      try {
+        unwrapSafeAction(
+          await updateItemAction(id, {
+            name: editNome.trim(),
+            category: editCategoria,
+            subDescription: editDescricao.trim(),
+          }),
+        )
+        toast.success('Item atualizado.')
+        setEditandoId(null)
+      } catch {
+        toast.error('Erro ao atualizar item.')
+      }
+    })
+  }
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="itens" className="w-full">
@@ -270,30 +315,111 @@ export function Configuracoes({
             description={`${itens.length} itens cadastrados`}
           >
             <ul className="divide-y divide-border/70">
-              {itens.map((it) => (
-                <li key={it.id} className="flex items-center gap-3 py-2.5">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: corCategoria(it.category) }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{it.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {it.category}
-                      {it.subDescription ? ` · ${it.subDescription}` : ''}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => removeItem(it.id)}
-                    disabled={pending || !podeOperar}
-                    title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
-                    className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
-                    aria-label="Remover item"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </li>
-              ))}
+              {itens.map((it) => {
+                const emEdicao = editandoId === it.id
+                if (emEdicao) {
+                  return (
+                    <li key={it.id} className="py-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                          <Label htmlFor={`edit-nome-${it.id}`} className="text-xs">
+                            Nome do item
+                          </Label>
+                          <Input
+                            id={`edit-nome-${it.id}`}
+                            value={editNome}
+                            onChange={(e) => setEditNome(e.target.value)}
+                            className="h-9 rounded-xl"
+                            autoFocus
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label className="text-xs">Categoria</Label>
+                          <Select
+                            value={editCategoria}
+                            onValueChange={(v) => setEditCategoria(v ?? CATEGORIAS[0])}
+                          >
+                            <SelectTrigger className="h-9 rounded-xl">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CATEGORIAS.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor={`edit-desc-${it.id}`} className="text-xs">
+                            Descrição (opcional)
+                          </Label>
+                          <Input
+                            id={`edit-desc-${it.id}`}
+                            value={editDescricao}
+                            onChange={(e) => setEditDescricao(e.target.value)}
+                            className="h-9 rounded-xl"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex justify-end gap-2">
+                        <button
+                          onClick={cancelarEdicao}
+                          disabled={pending}
+                          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/50 disabled:opacity-40"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Cancelar
+                        </button>
+                        <Button
+                          size="sm"
+                          onClick={() => salvarEdicaoItem(it.id)}
+                          disabled={pending || !podeOperar}
+                          title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                          className="rounded-lg"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Salvar
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                }
+                return (
+                  <li key={it.id} className="flex items-center gap-3 py-2.5">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: corCategoria(it.category) }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{it.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {it.category}
+                        {it.subDescription ? ` · ${it.subDescription}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => iniciarEdicao(it)}
+                      disabled={pending || !podeOperar}
+                      title={!podeOperar ? 'Você não tem acesso para operar este módulo' : 'Editar item'}
+                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+                      aria-label="Editar item"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => removeItem(it.id)}
+                      disabled={pending || !podeOperar}
+                      title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                      className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+                      aria-label="Remover item"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           </Panel>
         </TabsContent>
