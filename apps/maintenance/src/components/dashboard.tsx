@@ -295,10 +295,13 @@ export function Dashboard({
         <main className={cn('min-w-0 flex-1', view === 'uh3d' ? 'relative overflow-hidden' : 'px-4 py-6 md:px-8 md:py-8')}>
           {view === 'gerencial' && (
             <VisaoGerencial
+              podeOperar={podeOperar}
               unidades={unidades}
               itens={itens}
               inspecoes={inspecoes}
               meta={config.goal}
+              itemInfos={itemInfos}
+              itemInfoLogs={itemInfoLogs}
             />
           )}
           {view === 'evolucao' && <Evolucao inspecoes={inspecoes} />}

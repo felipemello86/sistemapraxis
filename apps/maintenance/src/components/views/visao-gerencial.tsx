@@ -31,9 +31,12 @@ import {
   temPendencia,
   ultimaInspecaoPorUnidade,
 } from '@/lib/domain'
+import { ItemInfoField } from '@/components/item-info-field'
 import type {
   InspecaoComUnidade,
   ChecklistItem,
+  ItemInfo,
+  ItemInfoLogEntry,
   UnitOption,
 } from '@/lib/types'
 
@@ -56,15 +59,21 @@ type NcRow = {
 }
 
 export function VisaoGerencial({
+  podeOperar,
   unidades,
   itens,
   inspecoes,
   meta,
+  itemInfos,
+  itemInfoLogs,
 }: {
+  podeOperar: boolean
   unidades: UnitOption[]
   itens: ChecklistItem[]
   inspecoes: InspecaoComUnidade[]
   meta: number
+  itemInfos: ItemInfo[]
+  itemInfoLogs: ItemInfoLogEntry[]
 }) {
   const [uhSelecionada, setUhSelecionada] = useState<string | null>(null)
   const [ncSelecionado, setNcSelecionado] = useState<NcRow | null>(null)
@@ -347,6 +356,21 @@ export function VisaoGerencial({
                   <X className="h-4 w-4" />
                 </button>
               </div>
+
+              <ItemInfoField
+                uhId={ncSelecionado.unitId}
+                checklistItemId={ncSelecionado.checklistItemId}
+                initialInfo={
+                  itemInfos.find(
+                    (i) => i.uhId === ncSelecionado.unitId && i.checklistItemId === ncSelecionado.checklistItemId,
+                  )?.info ?? null
+                }
+                podeOperar={podeOperar}
+                logs={itemInfoLogs.filter(
+                  (l) => l.uhId === ncSelecionado.unitId && l.checklistItemId === ncSelecionado.checklistItemId,
+                )}
+                className="mb-6"
+              />
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
