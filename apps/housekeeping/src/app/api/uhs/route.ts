@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, prisma } from "@praxis/core";
 
 // Só leitura — o cadastro (criar/editar/desativar UH) mudou pro gateway
 // (apps/gateway/src/app/api/uhs/route.ts), mesmo padrão já usado pra
@@ -12,9 +12,8 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
-    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
-  }
+  // Leitura sempre liberada, mesmo sem acesso ao módulo (ver comentário em
+  // apps/maintenance/src/app/page.tsx) — esta rota é só de leitura.
 
   const uhs = await prisma.uH.findMany({
     where: { tenantId: session.tenantId, ativo: true },

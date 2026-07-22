@@ -8,9 +8,9 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
-    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
-  }
+  // Leitura sempre liberada pra qualquer usuário do tenant, mesmo sem acesso
+  // ao módulo — só escrita (PUT abaixo) continua gateada por hasModuleAccess.
+  // Ver comentário em apps/maintenance/src/app/page.tsx.
   const tenantId = session.tenantId;
 
   const config = await prisma.hkConfig.findUnique({ where: { tenantId } });

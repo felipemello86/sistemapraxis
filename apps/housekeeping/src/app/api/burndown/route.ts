@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, prisma } from "@praxis/core";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
 import { dataAtualSP } from "@/lib/timezone";
 
@@ -54,9 +54,10 @@ export type BurndownData = {
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
-    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
-  }
+  // Leitura sempre liberada, mesmo sem acesso ao módulo (ver comentário em
+  // apps/maintenance/src/app/page.tsx) — esta rota é só de leitura. Era
+  // aqui que a tela "Tempo Real" ficava vazia/com erro pra quem não tinha
+  // acesso, mesmo depois de liberar a página em si (ver dashboard/page.tsx).
   const tenantId = session.tenantId;
 
   // Tela mais acessada/atualizada do módulo (poll a cada 60s no cliente) —

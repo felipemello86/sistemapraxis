@@ -30,9 +30,22 @@ function onlyManagerOrMaster(role: string) {
 // Permissão: GOVERNANTA, GERENTE ou MASTER (mesmo padrão de
 // api/selecao-uhs/route.ts pra ações de governança).
 
-async function checarPermissao() {
+// Só sessão — usada pelo GET. Leitura sempre liberada, mesmo sem acesso ao
+// módulo ou cargo diferente de Governança/Gerência (ver comentário em
+// apps/maintenance/src/app/page.tsx); quem não pode operar só não teria os
+// botões de ação habilitados na tela (GovernantaView já cuida disso).
+async function checarSessao() {
   const session = await getSession();
   if (!session) return { erro: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) } as const;
+  return { session } as const;
+}
+
+// Módulo + cargo — usada pelo PATCH (ações de escrita: excluir/reincluir UH
+// do ranking, confirmar o dia).
+async function checarPermissao() {
+  const check = await checarSessao();
+  if ("erro" in check) return check;
+  const { session } = check;
   if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
     return { erro: NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 }) } as const;
   }
@@ -128,7 +141,7 @@ async function montarRanking(tenantId: string, data: string) {
 // Verifica se o dia está pronto pra fechar (todas as UHs atribuídas — que
 // não estejam em manutenção — já foram inspecionadas) e devolve o ranking.
 export async function GET(req: NextRequest) {
-  const check = await checarPermissao();
+  const check = await checarSessao();
   if ("erro" in check) return check.erro;
   const tenantId = check.session.tenantId;
 

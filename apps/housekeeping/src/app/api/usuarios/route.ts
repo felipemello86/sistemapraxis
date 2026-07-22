@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, prisma } from "@praxis/core";
 
 // Diferente da v1 (que tinha /api/usuarios-locais separado de /api/usuarios
 // por causa da duplicação User local vs suite_core — bug real que causava
@@ -9,9 +9,8 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
-    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
-  }
+  // Leitura sempre liberada, mesmo sem acesso ao módulo (ver comentário em
+  // apps/maintenance/src/app/page.tsx) — esta rota é só de leitura.
 
   const users = await prisma.user.findMany({
     where: { tenantId: session.tenantId, ativo: true },

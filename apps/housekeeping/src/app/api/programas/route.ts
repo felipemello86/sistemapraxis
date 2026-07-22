@@ -5,9 +5,8 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
-    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
-  }
+  // Leitura sempre liberada, mesmo sem acesso ao módulo (ver comentário em
+  // apps/maintenance/src/app/page.tsx) — POST/PUT abaixo continuam gateados.
 
   const programs = await prisma.cleaningProgram.findMany({
     where: { tenantId: session.tenantId, ativo: true },

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, prisma } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/uh-detail/route.ts (v1). hotelId → tenantId.
 // GET /api/uh-detail?assignmentId=xxx
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
-    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
-  }
+  // Leitura sempre liberada, mesmo sem acesso ao módulo (ver comentário em
+  // apps/maintenance/src/app/page.tsx) — esta rota é só de leitura.
 
   const assignmentId = req.nextUrl.searchParams.get("assignmentId");
   if (!assignmentId) return NextResponse.json({ error: "assignmentId obrigatório" }, { status: 400 });

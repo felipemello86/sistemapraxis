@@ -46,9 +46,8 @@ function onlyManagerOrMaster(role: string) {
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasModuleAccess(session, "HOUSEKEEPING"))) {
-    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
-  }
+  // Leitura sempre liberada, mesmo sem acesso ao módulo (ver comentário em
+  // apps/maintenance/src/app/page.tsx) — POST/PATCH abaixo continuam gateados.
   const tenantId = session.tenantId;
 
   const data = req.nextUrl.searchParams.get("data") || dataAtualSP();
