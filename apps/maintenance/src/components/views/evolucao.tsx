@@ -16,44 +16,61 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
-import { TrendingUp, TrendingDown, Activity } from 'lucide-react'
+import { Activity } from 'lucide-react'
 import { contarConformidade } from '@/lib/domain'
 import type { InspecaoComUnidade } from '@/lib/types'
+
+// Janela da série diária de conformidade — pedido explícito (era mensal, virou
+// diária, hoje sempre na ponta direita). 30 dias é um piso razoável pra não
+// virar uma tela infinita de rolagem, mas ainda mostrar uma tendência útil.
+const DIAS_JANELA = 30
 
 export function Evolucao({
   inspecoes,
 }: {
   inspecoes: InspecaoComUnidade[]
 }) {
-  const serie = useMemo(() => {
-    const meses: {
-      mes: string
-      inspecoes: number
-      conformidade: number
-    }[] = []
+  // Volume de inspeções continua mensal (não fazia parte do pedido de virar
+  // diário) — usado só pelo último gráfico da tela.
+  const serieMensal = useMemo(() => {
+    const meses: { mes: string; inspecoes: number }[] = []
     const agora = new Date()
     for (let i = 11; i >= 0; i--) {
       const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1)
-      const label = new Intl.DateTimeFormat('pt-BR', {
-        month: 'short',
-      }).format(d)
+      const label = new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(d)
       const doMes = inspecoes.filter((insp) => {
         const di = new Date(insp.date)
+        return di.getMonth() === d.getMonth() && di.getFullYear() === d.getFullYear()
+      })
+      meses.push({ mes: label, inspecoes: doMes.length })
+    }
+    return meses
+  }, [inspecoes])
+
+  // Conformidade ao longo do tempo — agora diária, ordenada do dia mais
+  // antigo (esquerda) pro mais atual/hoje (direita), últimos DIAS_JANELA dias.
+  const serieDiaria = useMemo(() => {
+    const dias: { dia: string; conformidade: number }[] = []
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+    for (let i = DIAS_JANELA - 1; i >= 0; i--) {
+      const d = new Date(hoje)
+      d.setDate(d.getDate() - i)
+      const label = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
+      const doDia = inspecoes.filter((insp) => {
+        const di = new Date(insp.date)
         return (
+          di.getDate() === d.getDate() &&
           di.getMonth() === d.getMonth() &&
           di.getFullYear() === d.getFullYear()
         )
       })
-      const contagens = doMes.map(contarConformidade)
+      const contagens = doDia.map(contarConformidade)
       const totalItens = contagens.reduce((s, x) => s + x.total, 0)
       const ok = contagens.reduce((s, x) => s + x.ok, 0)
-      meses.push({
-        mes: label,
-        inspecoes: doMes.length,
-        conformidade: totalItens > 0 ? Math.round((ok / totalItens) * 100) : 0,
-      })
+      dias.push({ dia: label, conformidade: totalItens > 0 ? Math.round((ok / totalItens) * 100) : 0 })
     }
-    return meses
+    return dias
   }, [inspecoes])
 
   const contagensGerais = useMemo(() => inspecoes.map(contarConformidade), [inspecoes])
@@ -62,32 +79,20 @@ export function Evolucao({
   const conformidadeGeral =
     totalItens > 0 ? Math.round((totalOk / totalItens) * 100) : 0
 
-  const ultimo = serie[serie.length - 1]?.conformidade ?? 0
-  const penultimo = serie[serie.length - 2]?.conformidade ?? 0
-  const tendencia = ultimo - penultimo
+  // Largura mínima do gráfico diário — cada dia precisa de espaço pra
+  // legenda não amontoar, mesma lógica aplicada no gráfico de UHs da Visão
+  // Gerencial (rolagem só dentro do bloco do gráfico, não na tela inteira).
+  const larguraGraficoDiario = Math.max(serieDiaria.length * 44, 600)
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard
           label="Conformidade geral"
           value={`${conformidadeGeral}%`}
           hint="média histórica"
           tone="success"
           icon={<Activity className="h-[18px] w-[18px]" />}
-        />
-        <StatCard
-          label="Tendência mensal"
-          value={`${tendencia >= 0 ? '+' : ''}${tendencia}%`}
-          hint="vs. mês anterior"
-          tone={tendencia >= 0 ? 'success' : 'danger'}
-          icon={
-            tendencia >= 0 ? (
-              <TrendingUp className="h-[18px] w-[18px]" />
-            ) : (
-              <TrendingDown className="h-[18px] w-[18px]" />
-            )
-          }
         />
         <StatCard
           label="Total de itens avaliados"
@@ -99,48 +104,62 @@ export function Evolucao({
 
       <Panel
         title="Conformidade ao longo do tempo"
-        description="Percentual de itens conformes por mês (12 meses)"
+        description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias). Arraste pros lados pra ver os outros dias.`}
       >
-        <ChartContainer
-          config={{
-            conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
-          }}
-          className="h-72 w-full"
-        >
-          <AreaChart data={serie}>
-            <defs>
-              <linearGradient id="fillConf" x1="0" y1="0" x2="0" y2="1">
-                <stop
-                  offset="5%"
-                  stopColor="var(--color-conformidade)"
-                  stopOpacity={0.3}
+        <div className="overflow-x-auto">
+          <div style={{ minWidth: larguraGraficoDiario }}>
+            <ChartContainer
+              config={{
+                conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
+              }}
+              className="h-72 w-full"
+            >
+              <AreaChart data={serieDiaria} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
+                <defs>
+                  <linearGradient id="fillConf" x1="0" y1="0" x2="0" y2="1">
+                    <stop
+                      offset="5%"
+                      stopColor="var(--color-conformidade)"
+                      stopOpacity={0.3}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="var(--color-conformidade)"
+                      stopOpacity={0.02}
+                    />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="dia"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  interval={0}
+                  angle={-45}
+                  textAnchor="end"
+                  height={50}
+                  tick={{ fontSize: 11 }}
                 />
-                <stop
-                  offset="95%"
-                  stopColor="var(--color-conformidade)"
-                  stopOpacity={0.02}
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={40}
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
                 />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} strokeDasharray="3 3" />
-            <XAxis dataKey="mes" tickLine={false} axisLine={false} tickMargin={8} />
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              width={32}
-              domain={[0, 100]}
-              tickFormatter={(v) => `${v}%`}
-            />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Area
-              dataKey="conformidade"
-              type="monotone"
-              stroke="var(--color-conformidade)"
-              fill="url(#fillConf)"
-              strokeWidth={2.5}
-            />
-          </AreaChart>
-        </ChartContainer>
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  dataKey="conformidade"
+                  type="monotone"
+                  stroke="var(--color-conformidade)"
+                  fill="url(#fillConf)"
+                  strokeWidth={2.5}
+                />
+              </AreaChart>
+            </ChartContainer>
+          </div>
+        </div>
       </Panel>
 
       <Panel
@@ -153,7 +172,7 @@ export function Evolucao({
           }}
           className="h-64 w-full"
         >
-          <LineChart data={serie}>
+          <LineChart data={serieMensal}>
             <CartesianGrid vertical={false} strokeDasharray="3 3" />
             <XAxis dataKey="mes" tickLine={false} axisLine={false} tickMargin={8} />
             <YAxis tickLine={false} axisLine={false} width={28} />
