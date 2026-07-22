@@ -224,6 +224,117 @@ export function Informacoes({
     return sortDir === 'asc' ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />
   }
 
+  // Histórico de inspeções de uma unidade — extraído porque é renderizado
+  // tanto na versão mobile (cards) quanto na versão desktop (tabela) da
+  // linha expandida, pra não duplicar esse bloco grande duas vezes.
+  function DetalheHistorico({
+    unidade,
+    historicoDaUnidade,
+  }: {
+    unidade: UnitOption
+    historicoDaUnidade: InspecaoComUnidade[]
+  }) {
+    if (historicoDaUnidade.length === 0) {
+      return (
+        <p className="py-4 text-center text-sm text-muted-foreground">
+          Nenhuma inspeção registrada nessa unidade ainda.
+        </p>
+      )
+    }
+    return (
+      <div className="space-y-2">
+        {historicoDaUnidade.map((insp) => {
+          const { ok, total } = contarConformidade(insp)
+          const inspAberta = inspecaoExpandida === insp.id
+          return (
+            <div key={insp.id} className="rounded-xl border border-border/70 bg-background">
+              <div
+                className="flex cursor-pointer items-center gap-3 px-3 py-2.5"
+                onClick={() =>
+                  setInspecaoExpandida((atual) => (atual === insp.id ? null : insp.id))
+                }
+              >
+                {inspAberta ? (
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{formatarData(insp.date)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {insp.inspector?.name ?? '—'} · {ok}/{total} conformes
+                  </p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={
+                    temPendencia(insp)
+                      ? 'border-[var(--warning)]/30 bg-[var(--warning)]/12 text-[var(--warning)]'
+                      : 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
+                  }
+                >
+                  {labelResultado(insp)}
+                </Badge>
+                <button
+                  onClick={(e) => handleDelete(insp.id, e)}
+                  disabled={pending}
+                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                  aria-label="Remover inspeção"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              {inspAberta && (
+                <ul className="divide-y divide-border/70 border-t border-border/70 px-3">
+                  {insp.items.map((it) => {
+                    const catalogo = it.checklistItemId
+                      ? itensPorId.get(it.checklistItemId)
+                      : null
+                    return (
+                      <li key={it.id} className="flex items-center gap-3 py-2">
+                        <span
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                            it.status === 'CONFORME'
+                              ? 'bg-[var(--success)]/15 text-[var(--success)]'
+                              : 'bg-[var(--warning)]/15 text-[var(--warning)]'
+                          }`}
+                        >
+                          {it.status === 'CONFORME' ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                          )}
+                        </span>
+                        {catalogo && (
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: corCategoria(catalogo.category) }}
+                          />
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {catalogo?.name ?? 'Item removido do catálogo'}
+                        </span>
+                        {catalogo && (
+                          <button
+                            onClick={() => setHistorico({ unidade, item: catalogo })}
+                            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <History className="h-3.5 w-3.5" />
+                            Histórico
+                          </button>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:max-w-md">
@@ -274,7 +385,80 @@ export function Informacoes({
           </div>
         }
       >
-        <div className="overflow-x-auto">
+        {/* Mobile (<sm): cards empilhados — a tabela abaixo não cabe numa
+            tela estreita sem rolagem lateral, então aqui viram linhas full-width. */}
+        <div className="divide-y divide-border/70 sm:hidden">
+          {linhas.map(({ unidade, ultima, dias, historico: historicoDaUnidade }) => {
+            const aberta = expandida === unidade.id
+            return (
+              <div key={unidade.id} className="py-3">
+                <div
+                  className="flex cursor-pointer items-start gap-2"
+                  onClick={() => toggleUnidade(unidade.id)}
+                >
+                  <span className="mt-0.5 shrink-0 text-muted-foreground">
+                    {aberta ? <ChevronDown className="h-4 w-4" /> : <ChevronRightIcon className="h-4 w-4" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{unidade.name}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {ultima ? (
+                        <>
+                          {formatarData(ultima.date)} <span>({dias} dias)</span>
+                        </>
+                      ) : (
+                        'Nunca inspecionada'
+                      )}
+                    </p>
+                  </div>
+                  {!ultima ? (
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-border bg-muted text-muted-foreground"
+                    >
+                      Pendente
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className={`shrink-0 ${
+                        temPendencia(ultima)
+                          ? 'border-[var(--warning)]/30 bg-[var(--warning)]/12 text-[var(--warning)]'
+                          : 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
+                      }`}
+                    >
+                      {labelResultado(ultima)}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={(e) => iniciarInspecao(unidade, e)}
+                  className="mt-2 h-8 w-full rounded-lg"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Iniciar inspeção
+                </Button>
+                {aberta && (
+                  <div className="mt-3 rounded-xl bg-muted/30 p-3">
+                    <DetalheHistorico unidade={unidade} historicoDaUnidade={historicoDaUnidade} />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {linhas.length === 0 && (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-muted-foreground">
+                <ClipboardList className="h-6 w-6" />
+              </div>
+              <p className="text-sm text-muted-foreground">Nenhuma unidade encontrada.</p>
+            </div>
+          )}
+        </div>
+
+        {/* sm e acima: tabela original */}
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -359,107 +543,7 @@ export function Informacoes({
                     {aberta && (
                       <tr key={`${unidade.id}-detalhe`}>
                         <td colSpan={5} className="bg-muted/30 px-4 py-3">
-                          {historicoDaUnidade.length === 0 ? (
-                            <p className="py-4 text-center text-sm text-muted-foreground">
-                              Nenhuma inspeção registrada nessa unidade ainda.
-                            </p>
-                          ) : (
-                            <div className="space-y-2">
-                              {historicoDaUnidade.map((insp) => {
-                                const { ok, total } = contarConformidade(insp)
-                                const inspAberta = inspecaoExpandida === insp.id
-                                return (
-                                  <div
-                                    key={insp.id}
-                                    className="rounded-xl border border-border/70 bg-background"
-                                  >
-                                    <div
-                                      className="flex cursor-pointer items-center gap-3 px-3 py-2.5"
-                                      onClick={() =>
-                                        setInspecaoExpandida((atual) => (atual === insp.id ? null : insp.id))
-                                      }
-                                    >
-                                      {inspAberta ? (
-                                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                      ) : (
-                                        <ChevronRightIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                      )}
-                                      <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-medium">
-                                          {formatarData(insp.date)}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                          {insp.inspector?.name ?? '—'} · {ok}/{total} conformes
-                                        </p>
-                                      </div>
-                                      <Badge
-                                        variant="outline"
-                                        className={
-                                          temPendencia(insp)
-                                            ? 'border-[var(--warning)]/30 bg-[var(--warning)]/12 text-[var(--warning)]'
-                                            : 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
-                                        }
-                                      >
-                                        {labelResultado(insp)}
-                                      </Badge>
-                                      <button
-                                        onClick={(e) => handleDelete(insp.id, e)}
-                                        disabled={pending}
-                                        className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                        aria-label="Remover inspeção"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
-                                    {inspAberta && (
-                                      <ul className="divide-y divide-border/70 border-t border-border/70 px-3">
-                                        {insp.items.map((it) => {
-                                          const catalogo = it.checklistItemId
-                                            ? itensPorId.get(it.checklistItemId)
-                                            : null
-                                          return (
-                                            <li key={it.id} className="flex items-center gap-3 py-2">
-                                              <span
-                                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                                                  it.status === 'CONFORME'
-                                                    ? 'bg-[var(--success)]/15 text-[var(--success)]'
-                                                    : 'bg-[var(--warning)]/15 text-[var(--warning)]'
-                                                }`}
-                                              >
-                                                {it.status === 'CONFORME' ? (
-                                                  <Check className="h-3.5 w-3.5" />
-                                                ) : (
-                                                  <AlertTriangle className="h-3.5 w-3.5" />
-                                                )}
-                                              </span>
-                                              {catalogo && (
-                                                <span
-                                                  className="h-2 w-2 shrink-0 rounded-full"
-                                                  style={{ backgroundColor: corCategoria(catalogo.category) }}
-                                                />
-                                              )}
-                                              <span className="min-w-0 flex-1 truncate text-sm">
-                                                {catalogo?.name ?? 'Item removido do catálogo'}
-                                              </span>
-                                              {catalogo && (
-                                                <button
-                                                  onClick={() => setHistorico({ unidade, item: catalogo })}
-                                                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                                                >
-                                                  <History className="h-3.5 w-3.5" />
-                                                  Histórico
-                                                </button>
-                                              )}
-                                            </li>
-                                          )
-                                        })}
-                                      </ul>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
+                          <DetalheHistorico unidade={unidade} historicoDaUnidade={historicoDaUnidade} />
                         </td>
                       </tr>
                     )}
