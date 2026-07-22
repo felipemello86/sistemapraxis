@@ -289,3 +289,159 @@ async function updateConfigImpl(input: { maxDaysBetweenInspections: number; goal
   revalidatePath("/");
 }
 export const updateConfigAction = safeAction(updateConfigImpl);
+
+/* -------------------------------- UH 3D ------------------------------------ */
+// Tela imersiva por cômodo (porta/quarto/cozinha/banheiro) com spots de
+// verificação sobrepostos às fotos — ver comentário no schema Prisma
+// (model MaintenanceUhImage/MaintenanceUhSpot). Cadastro é por UH
+// individual, feito na aba "UH 3D" de Configurações.
+
+async function salvarUhImagemImpl(input: { uhId: string; tipo: string; imageUrl: string }) {
+  const session = await requireModuleSession();
+
+  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
+  if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
+
+  const img = await prisma.maintenanceUhImage.upsert({
+    where: { uhId_tipo: { uhId: input.uhId, tipo: input.tipo } },
+    create: {
+      tenantId: session.tenantId,
+      uhId: input.uhId,
+      tipo: input.tipo,
+      imageUrl: input.imageUrl,
+    },
+    update: {
+      imageUrl: input.imageUrl,
+    },
+  });
+
+  revalidatePath("/");
+  return img.id;
+}
+export const salvarUhImagemAction = safeAction(salvarUhImagemImpl);
+
+async function deleteUhImagemImpl(id: string) {
+  const session = await requireModuleSession();
+  // Cascade no schema já apaga os spots dessa imagem junto.
+  await prisma.maintenanceUhImage.deleteMany({
+    where: { id, tenantId: session.tenantId },
+  });
+  revalidatePath("/");
+}
+export const deleteUhImagemAction = safeAction(deleteUhImagemImpl);
+
+async function createUhSpotImpl(input: { imageId: string; checklistItemId: string; x: number; y: number }) {
+  const session = await requireModuleSession();
+
+  const img = await prisma.maintenanceUhImage.findUnique({
+    where: { id: input.imageId },
+    select: { tenantId: true },
+  });
+  if (!img || img.tenantId !== session.tenantId) throw new Error("Imagem não encontrada.");
+
+  const x = Math.min(100, Math.max(0, input.x));
+  const y = Math.min(100, Math.max(0, input.y));
+
+  const spot = await prisma.maintenanceUhSpot.create({
+    data: {
+      tenantId: session.tenantId,
+      imageId: input.imageId,
+      checklistItemId: input.checklistItemId,
+      x,
+      y,
+    },
+  });
+
+  revalidatePath("/");
+  return spot.id;
+}
+export const createUhSpotAction = safeAction(createUhSpotImpl);
+
+async function updateUhSpotImpl(id: string, input: { x: number; y: number }) {
+  const session = await requireModuleSession();
+  await prisma.maintenanceUhSpot.updateMany({
+    where: { id, tenantId: session.tenantId },
+    data: {
+      x: Math.min(100, Math.max(0, input.x)),
+      y: Math.min(100, Math.max(0, input.y)),
+    },
+  });
+  revalidatePath("/");
+}
+export const updateUhSpotAction = safeAction(updateUhSpotImpl);
+
+async function deleteUhSpotImpl(id: string) {
+  const session = await requireModuleSession();
+  await prisma.maintenanceUhSpot.deleteMany({
+    where: { id, tenantId: session.tenantId },
+  });
+  revalidatePath("/");
+}
+export const deleteUhSpotAction = safeAction(deleteUhSpotImpl);
+
+// Edição de conformidade a partir de um clique no spot, na tela imersiva.
+// Direção NAO_CONFORME → CONFORME reaproveita o mesmo registro de
+// MaintenanceCorrection da Rota de Correção (mantém o histórico consistente
+// entre as duas telas). Direção CONFORME → NAO_CONFORME não tem
+// equivalente hoje (é "marcar como quebrado" na hora, fora do fluxo normal
+// de inspeção) — atualiza o item direto, exigindo descrição da falha.
+async function editarSpotInspecaoImpl(input: {
+  inspectionItemId: string;
+  status: "CONFORME" | "NAO_CONFORME";
+  comment?: string;
+  photos?: string[];
+}) {
+  const session = await requireModuleSession();
+
+  const item = await prisma.maintenanceInspectionItem.findUnique({
+    where: { id: input.inspectionItemId },
+    include: { inspection: { select: { tenantId: true, uhId: true } } },
+  });
+  if (!item || item.inspection.tenantId !== session.tenantId) {
+    throw new Error("Item de inspeção não encontrado.");
+  }
+
+  const comment = input.comment?.trim() || "";
+  if (input.status === "NAO_CONFORME" && comment.length < 5) {
+    throw new Error("Descreva a não conformidade (mínimo 5 caracteres).");
+  }
+
+  const now = new Date();
+
+  if (input.status === "CONFORME" && item.status === "NAO_CONFORME") {
+    // Mesma transação da Rota de Correção — gera histórico.
+    await prisma.$transaction([
+      prisma.maintenanceCorrection.create({
+        data: {
+          tenantId: session.tenantId,
+          inspectionItemId: item.id,
+          uhId: item.inspection.uhId,
+          checklistItemId: item.checklistItemId,
+          authorId: session.userId,
+          description: comment || "Corrigido via UH 3D.",
+          photos: JSON.stringify(input.photos ?? []),
+          createdAt: now,
+        },
+      }),
+      prisma.maintenanceInspectionItem.update({
+        where: { id: item.id },
+        data: { status: "CONFORME", corrigidoEm: now, comment: null, photos: "[]" },
+      }),
+    ]);
+  } else {
+    // NAO_CONFORME → NAO_CONFORME (editar descrição/fotos) ou
+    // CONFORME → NAO_CONFORME (marcar como quebrado agora).
+    await prisma.maintenanceInspectionItem.update({
+      where: { id: item.id },
+      data: {
+        status: input.status,
+        comment: input.status === "NAO_CONFORME" ? comment : null,
+        photos: input.status === "NAO_CONFORME" ? JSON.stringify(input.photos ?? []) : "[]",
+        corrigidoEm: input.status === "CONFORME" ? now : null,
+      },
+    });
+  }
+
+  revalidatePath("/");
+}
+export const editarSpotInspecaoAction = safeAction(editarSpotInspecaoImpl);

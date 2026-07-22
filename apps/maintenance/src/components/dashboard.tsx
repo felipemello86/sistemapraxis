@@ -12,6 +12,7 @@ import {
   Home,
   ChevronLeft,
   ChevronRight,
+  Box,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -25,6 +26,8 @@ import type {
   InspecaoComUnidade,
   ChecklistItem,
   MaintenanceConfigView,
+  UhImage,
+  UhSpot,
   UnitOption,
   ViewId,
 } from '@/lib/types'
@@ -32,6 +35,7 @@ import { VisaoGerencial } from '@/components/views/visao-gerencial'
 import { Evolucao } from '@/components/views/evolucao'
 import { Informacoes } from '@/components/views/informacoes'
 import { RotaCorrecao } from '@/components/views/correcao'
+import { Uh3D } from '@/components/views/uh-3d'
 import { Configuracoes } from '@/components/views/configuracoes'
 
 // Portado de apps/maintenance/src/components/dashboard.tsx (v1). Diferenças:
@@ -69,6 +73,7 @@ const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
   { id: 'informacoes', label: 'Inspeções', icon: Route },
   { id: 'correcao', label: 'Rota de Correção', icon: Wrench },
+  { id: 'uh3d', label: 'UH 3D', icon: Box },
   { id: 'config', label: 'Configurações', icon: Settings },
 ]
 
@@ -81,6 +86,8 @@ export function Dashboard({
   atribuicoes,
   correcoes,
   config,
+  uhImages,
+  uhSpots,
 }: {
   user: DashboardUser
   // false = usuário pode ver todas as telas normalmente, mas os botões de
@@ -93,6 +100,8 @@ export function Dashboard({
   atribuicoes: AtribuicoesPorUnidade
   correcoes: CorrectionSummary[]
   config: MaintenanceConfigView
+  uhImages: UhImage[]
+  uhSpots: UhSpot[]
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -268,7 +277,9 @@ export function Dashboard({
           </a>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-8">
+        {/* UH 3D pede tela cheia, sem o padding padrão do conteúdo — a
+            imersão perde o sentido com margem em volta da foto. */}
+        <main className={cn('min-w-0 flex-1', view === 'uh3d' ? 'relative overflow-hidden' : 'px-4 py-6 md:px-8 md:py-8')}>
           {view === 'gerencial' && (
             <VisaoGerencial
               unidades={unidades}
@@ -297,6 +308,17 @@ export function Dashboard({
               correcoesRecentes={correcoes}
             />
           )}
+          {view === 'uh3d' && (
+            <Uh3D
+              podeOperar={podeOperar}
+              unidades={unidades}
+              itens={itens}
+              inspecoes={inspecoes}
+              atribuicoes={atribuicoes}
+              uhImages={uhImages}
+              uhSpots={uhSpots}
+            />
+          )}
           {view === 'config' && (
             <Configuracoes
               podeOperar={podeOperar}
@@ -305,6 +327,8 @@ export function Dashboard({
               atribuicoes={atribuicoes}
               config={config}
               user={user}
+              uhImages={uhImages}
+              uhSpots={uhSpots}
             />
           )}
         </main>

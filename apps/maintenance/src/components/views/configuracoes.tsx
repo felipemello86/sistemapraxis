@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   RotateCcw,
+  Box,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,11 +40,14 @@ import {
   updateConfigAction,
 } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
+import { Uh3dConfigTab } from '@/components/views/uh3d-config'
 import type {
   AtribuicoesPorUnidade,
   DashboardUser,
   ChecklistItem,
   MaintenanceConfigView,
+  UhImage,
+  UhSpot,
   UnitOption,
 } from '@/lib/types'
 
@@ -60,6 +64,8 @@ export function Configuracoes({
   atribuicoes,
   config,
   user,
+  uhImages,
+  uhSpots,
 }: {
   podeOperar: boolean
   itens: ChecklistItem[]
@@ -67,6 +73,8 @@ export function Configuracoes({
   atribuicoes: AtribuicoesPorUnidade
   config: MaintenanceConfigView
   user: DashboardUser
+  uhImages: UhImage[]
+  uhSpots: UhSpot[]
 }) {
   const [pending, startTransition] = useTransition()
 
@@ -247,6 +255,10 @@ export function Configuracoes({
           <TabsTrigger value="prazo" className="rounded-lg">
             <Timer className="h-4 w-4" />
             Prazo &amp; Meta
+          </TabsTrigger>
+          <TabsTrigger value="uh3d" className="rounded-lg">
+            <Box className="h-4 w-4" />
+            UH 3D
           </TabsTrigger>
           <TabsTrigger value="conta" className="rounded-lg">
             <UserCircle className="h-4 w-4" />
@@ -578,6 +590,18 @@ export function Configuracoes({
               </Button>
             </div>
           </Panel>
+        </TabsContent>
+
+        {/* UH 3D */}
+        <TabsContent value="uh3d" className="mt-6">
+          <Uh3dConfigTab
+            podeOperar={podeOperar}
+            unidades={unidades}
+            itens={itens}
+            atribuicoes={atribuicoes}
+            uhImages={uhImages}
+            uhSpots={uhSpots}
+          />
         </TabsContent>
 
         {/* Conta */}

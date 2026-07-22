@@ -74,6 +74,8 @@ model Tenant {
   maintenanceCorrections         MaintenanceCorrection[]
   maintenanceUnitChecklistItems  MaintenanceUnitChecklistItem[]
   maintenanceConfig              MaintenanceConfig?
+  maintenanceUhImages            MaintenanceUhImage[]
+  maintenanceUhSpots             MaintenanceUhSpot[]
 
   // Estoque (módulo novo, migrado de um sistema Flask/Postgres avulso —
   // "estoque-bnb-flex" — que rodava fora da suíte, no Render).
@@ -357,6 +359,7 @@ model UH {
   maintenanceInspections        MaintenanceInspection[]
   maintenanceCorrections        MaintenanceCorrection[]
   maintenanceUnitChecklistItems MaintenanceUnitChecklistItem[]
+  maintenanceUhImages           MaintenanceUhImage[]
 
   @@unique([tenantId, numero])
 }
@@ -1055,6 +1058,7 @@ model MaintenanceChecklistItem {
   inspectionItems  MaintenanceInspectionItem[]
   corrections      MaintenanceCorrection[]
   unitAssignments  MaintenanceUnitChecklistItem[]
+  uhSpots          MaintenanceUhSpot[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1171,6 +1175,61 @@ model MaintenanceConfig {
   goal                      Int @default(90) // meta de conformidade, em %
 
   updatedAt DateTime @updatedAt
+}
+
+// Tela "UH 3D" — visão imersiva por cômodo (porta/quarto/cozinha/banheiro)
+// com spots de verificação sobrepostos às fotos. Cadastro é por UH
+// individual (não por "tipo de UH" — decisão explícita do Felipe: cada UH
+// tem seu próprio conjunto de fotos, mesmo que o layout se repita entre
+// unidades). `tipo` aqui é texto livre com valores esperados
+// "porta" | "quarto" | "cozinha" | "banheiro" (constante ROOM_TYPES no
+// front, não um enum no banco — mesmo padrão de category em
+// MaintenanceChecklistItem, pra deixar margem de expandir os cômodos padrão
+// no futuro sem migration).
+model MaintenanceUhImage {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  tipo     String // "porta" | "quarto" | "cozinha" | "banheiro"
+  imageUrl String // Cloudinary
+
+  spots MaintenanceUhSpot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([uhId, tipo])
+  @@index([tenantId])
+}
+
+// Um spot = um item de checklist posicionado sobre uma MaintenanceUhImage
+// (x/y em % relativo à imagem, 0-100, pra ficar responsivo em qualquer
+// tamanho de tela). O mesmo item pode ter spot em mais de uma imagem da
+// mesma UH (ex.: um item "Tomadas" pode aparecer tanto na foto do quarto
+// quanto na da cozinha) — por isso não há @@unique em checklistItemId
+// sozinho, só a combinação imagem+item não pode duplicar.
+model MaintenanceUhSpot {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  imageId String
+  image   MaintenanceUhImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  checklistItemId String
+  checklistItem   MaintenanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  x Float // 0-100, % da largura da imagem
+  y Float // 0-100, % da altura da imagem
+
+  createdAt DateTime @default(now())
+
+  @@unique([imageId, checklistItemId])
+  @@index([tenantId])
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

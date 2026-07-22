@@ -7,6 +7,8 @@ import type {
   CorrectionSummary,
   InspecaoComUnidade,
   MaintenanceConfigView,
+  UhImage,
+  UhSpot,
   UnitOption,
 } from "@/lib/types";
 
@@ -33,7 +35,7 @@ export default async function Home() {
   // — a UI desabilitada aqui é só a primeira camada, não a de verdade.
   const podeOperar = await hasModuleAccess(session, "MAINTENANCE");
 
-  const [uhs, checklistItems, inspections, unitChecklistItems, corrections, config] = await Promise.all([
+  const [uhs, checklistItems, inspections, unitChecklistItems, corrections, config, uhImages, uhSpots] = await Promise.all([
     prisma.uH.findMany({
       where: { tenantId: session.tenantId, ativo: true },
       orderBy: { ordem: "asc" },
@@ -78,6 +80,17 @@ export default async function Home() {
     prisma.maintenanceConfig.findUnique({
       where: { tenantId: session.tenantId },
       select: { maxDaysBetweenInspections: true, goal: true },
+    }),
+    // Tela "UH 3D" — fotos imersivas por cômodo e spots de verificação
+    // posicionados sobre elas (ver comentário em MaintenanceUhImage/
+    // MaintenanceUhSpot no schema Prisma).
+    prisma.maintenanceUhImage.findMany({
+      where: { tenantId: session.tenantId },
+      select: { id: true, uhId: true, tipo: true, imageUrl: true },
+    }),
+    prisma.maintenanceUhSpot.findMany({
+      where: { tenantId: session.tenantId },
+      select: { id: true, imageId: true, checklistItemId: true, x: true, y: true },
     }),
   ]);
 
@@ -144,6 +157,8 @@ export default async function Home() {
       atribuicoes={atribuicoes}
       correcoes={correcoes}
       config={configView}
+      uhImages={uhImages as UhImage[]}
+      uhSpots={uhSpots as UhSpot[]}
     />
   );
 }

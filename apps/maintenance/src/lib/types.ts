@@ -49,7 +49,37 @@ export type ViewId =
   | "evolucao"
   | "informacoes"
   | "correcao"
+  | "uh3d"
   | "config";
+
+// Cômodos padrão da tela imersiva "UH 3D" — "porta" é sempre a imagem de
+// entrada (primeira exibida ao selecionar a UH). Texto livre no banco (ver
+// comentário em MaintenanceUhImage no schema), esta lista é só a UI.
+export const ROOM_TYPES = ["porta", "quarto", "cozinha", "banheiro"] as const;
+export type RoomType = (typeof ROOM_TYPES)[number];
+export const ROOM_TYPE_LABELS: Record<RoomType, string> = {
+  porta: "Porta",
+  quarto: "Quarto",
+  cozinha: "Cozinha",
+  banheiro: "Banheiro",
+};
+
+export type UhImage = {
+  id: string;
+  uhId: string;
+  tipo: string;
+  imageUrl: string;
+};
+
+// Um item de checklist posicionado sobre uma UhImage — x/y em % (0-100),
+// relativo à imagem, pra ficar responsivo em qualquer tamanho de tela.
+export type UhSpot = {
+  id: string;
+  imageId: string;
+  checklistItemId: string;
+  x: number;
+  y: number;
+};
 
 // UH.id -> lista de ChecklistItem.id atribuídos a essa unidade. Ausência de
 // chave (ou array vazio) significa "todos os itens do catálogo se aplicam"
