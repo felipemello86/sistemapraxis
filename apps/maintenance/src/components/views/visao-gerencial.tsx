@@ -173,37 +173,18 @@ export function VisaoGerencial({
 
   const nomeUhSelecionada = uhSelecionada ? unidades.find((u) => u.id === uhSelecionada)?.name : null
 
+  // Largura mínima do gráfico — cada barra precisa de espaço pra legenda não
+  // amontoar (pedido explícito: preferir rolagem horizontal só no gráfico a
+  // ter as legendas ilegíveis). 44px por barra é suficiente pro texto
+  // inclinado a -45° não se sobrepor, com um piso de 600px pra poucas UHs.
+  const larguraGrafico = Math.max(barData.length * 44, 600)
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          label="Unidades"
-          value={totalUnidades}
-          hint={`${inspecionadas} já inspecionadas`}
-          tone="primary"
-          icon={<Building2 className="h-[18px] w-[18px]" />}
-        />
-        <StatCard
-          label="Cobertura"
-          value={`${cobertura}%`}
-          hint="das unidades cobertas"
-          tone="success"
-          icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
-        />
-        <StatCard
-          label="Inspeções"
-          value={totalInspecoes}
-          hint="realizadas no total"
-          tone="default"
-          icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
-        />
-        <StatCard
-          label="Com pendências"
-          value={comPendencias}
-          hint="exigem ação"
-          tone="warning"
-          icon={<AlertTriangle className="h-[18px] w-[18px]" />}
-        />
+      {/* Conformidade é a métrica-resumo desta tela — vem primeiro, seguida
+          do gráfico que a detalha por UH. Os demais cards (contagens brutas)
+          vêm depois, como apoio. */}
+      <div className="sm:max-w-xs">
         <StatCard
           label="Conformidade"
           value={conformidade === null ? '—' : `${conformidade}%`}
@@ -213,22 +194,25 @@ export function VisaoGerencial({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Coluna esquerda: gráfico + painel de detalhe */}
-        <div className="space-y-6 lg:col-span-2">
-          <Panel
-            title={
-              nomeUhSelecionada
-                ? `Conformidade por UH — selecionada: ${nomeUhSelecionada} (clique de novo pra limpar)`
-                : 'Conformidade por UH'
-            }
-            description={barData.length === 0 ? undefined : 'Clique numa barra pra filtrar a tabela ao lado'}
-          >
-            {barData.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                Nenhuma unidade cadastrada.
-              </p>
-            ) : (
+      <Panel
+        title={
+          nomeUhSelecionada
+            ? `Conformidade por UH — selecionada: ${nomeUhSelecionada} (clique de novo pra limpar)`
+            : 'Conformidade por UH'
+        }
+        description={
+          barData.length === 0
+            ? undefined
+            : 'Clique numa barra pra filtrar a tabela de detalhamento. Arraste pros lados pra ver todas as unidades.'
+        }
+      >
+        {barData.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Nenhuma unidade cadastrada.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <div style={{ minWidth: larguraGrafico }}>
               <ChartContainer config={{ value: { label: 'Conformidade' } }} className="h-72 w-full">
                 <BarChart data={barData} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -269,10 +253,44 @@ export function VisaoGerencial({
                   </Bar>
                 </BarChart>
               </ChartContainer>
-            )}
-          </Panel>
+            </div>
+          </div>
+        )}
+      </Panel>
 
-          {ncSelecionado && (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Unidades"
+          value={totalUnidades}
+          hint={`${inspecionadas} já inspecionadas`}
+          tone="primary"
+          icon={<Building2 className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Cobertura"
+          value={`${cobertura}%`}
+          hint="das unidades cobertas"
+          tone="success"
+          icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Inspeções"
+          value={totalInspecoes}
+          hint="realizadas no total"
+          tone="default"
+          icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+        />
+        <StatCard
+          label="Com pendências"
+          value={comPendencias}
+          hint="exigem ação"
+          tone="warning"
+          icon={<AlertTriangle className="h-[18px] w-[18px]" />}
+        />
+      </div>
+
+      <div className="space-y-6">
+        {ncSelecionado && (
             <Panel>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -368,10 +386,8 @@ export function VisaoGerencial({
                 </div>
               </div>
             </Panel>
-          )}
-        </div>
+        )}
 
-        {/* Coluna direita: tabela de não conformes */}
         <Panel
           title={nomeUhSelecionada ? `Não conformes — ${nomeUhSelecionada}` : 'Detalhamento (Não Conformes)'}
         >
