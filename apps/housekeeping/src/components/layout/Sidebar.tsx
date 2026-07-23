@@ -15,6 +15,7 @@ import {
   Settings,
   ScrollText,
   FileText,
+  Building2,
 } from "lucide-react";
 
 // Portado de apps/housekeeping/src/components/layout/Sidebar.tsx (v1).
@@ -33,12 +34,16 @@ import {
 // apiFetch.ts hardcodar BASE_PATH.
 const MARK_SRC = "/governance/praxis-mark.png";
 
-const navItems = [
+// `roles` ausente = visível pra todo mundo (comportamento de sempre). Só
+// "Falhas Gerenciais" é restrito por papel até agora — pedido explícito do
+// Felipe (Gerente/Master + Governanta, que é quem registra a falha).
+const navItems: { href: string; icon: typeof LayoutDashboard; label: string; roles?: string[] }[] = [
   { href: "/dashboard",  icon: LayoutDashboard, label: "Tempo Real" },
   { href: "/camareira",  icon: ListChecks,    label: "Minhas UHs" },
   { href: "/selecao",    icon: BedDouble,     label: "Seleção e Liberação" },
   { href: "/atribuicao", icon: ClipboardList, label: "Atribuição Diária" },
   { href: "/governanta", icon: ShieldCheck,   label: "Inspeções" },
+  { href: "/falhas-gerenciais", icon: Building2, label: "Falhas Gerenciais", roles: ["GOVERNANTA", "GERENTE", "MASTER"] },
   { href: "/movimentos", icon: BarChart3,     label: "Performance" },
   { href: "/logs",       icon: ScrollText,    label: "Log do Sistema" },
   { href: "/relatorios", icon: FileText,      label: "Relatórios" },
@@ -82,7 +87,7 @@ function NavContent({
       </div>
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {navItems.map(({ href, icon: Icon, label }) => {
+        {navItems.filter((item) => !item.roles || item.roles.includes(role)).map(({ href, icon: Icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
@@ -156,7 +161,7 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
               </button>
             </div>
             <nav className="flex-1 p-2 space-y-1 flex flex-col items-center">
-              {navItems.map(({ href, icon: Icon, label }) => {
+              {navItems.filter((item) => !item.roles || item.roles.includes(role)).map(({ href, icon: Icon, label }) => {
                 const active = pathname === href || pathname.startsWith(href + "/");
                 return (
                   <Link key={href} href={href} title={label}

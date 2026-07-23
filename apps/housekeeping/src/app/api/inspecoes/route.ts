@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { getSession, hasModuleAccess, notificarPorRoles, prisma, sendPushToUser } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/inspecoes/route.ts (v1).
@@ -151,8 +151,13 @@ export async function POST(req: NextRequest) {
     where: { tenantId, ativo: true },
     orderBy: { ordem: "asc" },
   });
+  // tipoFalha (CAMAREIRA/GERENCIAL) vem fixo do template de configuração
+  // (Configurações > Checklist de inspeção) — copiado aqui pro
+  // InspectionItem e daí em diante imutável durante a inspeção em si (ver
+  // PATCH abaixo, ação avaliar_item). Fallback hardcoded não tem o campo —
+  // cai no default CAMAREIRA do schema.
   const template = templateDB.length > 0
-    ? templateDB.map((t) => ({ categoria: t.categoria, item: t.item, ordem: t.ordem }))
+    ? templateDB.map((t) => ({ categoria: t.categoria, item: t.item, ordem: t.ordem, tipoFalha: t.tipoFalha }))
     : INSPECTION_TEMPLATE;
 
   const inspecao = await prisma.inspectionSession.create({
@@ -181,14 +186,74 @@ export async function PATCH(req: NextRequest) {
   const { action, inspecaoId, itemId, resultado, tipoFalha, comentarioGovernanta } = body;
 
   if (action === "avaliar_item") {
+    const itemAtual = await prisma.inspectionItem.findUnique({
+      where: { id: itemId },
+      include: { inspection: { select: { uhId: true, uh: { select: { numero: true, tenantId: true } } } } },
+    });
+    if (!itemAtual) return NextResponse.json({ error: "Item não encontrado" }, { status: 404 });
+
+    // tipoFalha agora é fixo por item — definido em Configurações >
+    // Checklist de inspeção (InspectionTemplate.tipoFalha), copiado pro
+    // InspectionItem na criação da InspectionSession (ver POST acima). Não
+    // é mais escolhido durante a inspeção: ignora qualquer `tipoFalha`
+    // vindo do body (mantido no destructure só por compat de payloads
+    // antigos em cache no client).
+    void tipoFalha;
+    const tipoFalhaFixo = itemAtual.tipoFalha;
+
+    // Descrição obrigatória pra falha gerencial (pedido explícito — vira o
+    // texto do card em "Falhas Gerenciais"). Aceita tanto a observação
+    // mandada nesta chamada quanto uma já salva antes (ex.: modo "corrigir",
+    // que reenvia resultado sem observação — ver salvarCorrecao no client).
+    const observacaoFinal = body.observacao !== undefined ? body.observacao : itemAtual.observacao;
+    if (resultado === "FALHA" && tipoFalhaFixo === "GERENCIAL" && !String(observacaoFinal || "").trim()) {
+      return NextResponse.json({ error: "Descreva o problema pra registrar uma falha gerencial." }, { status: 400 });
+    }
+
     const item = await prisma.inspectionItem.update({
       where: { id: itemId },
       data: {
         resultado,
         observacao: body.observacao,
-        tipoFalha: resultado === "FALHA" ? (tipoFalha || "CAMAREIRA") : "CAMAREIRA",
       },
     });
+
+    // Falha Gerencial → mantém em sincronia com o kanban "Falhas Gerenciais"
+    // (ver packages/core, novo model HkManagerialFailureCard): cria o card
+    // (+ notifica Gerente/Master) na primeira vez que o item vira FALHA;
+    // atualiza a descrição se ela mudar enquanto ainda PENDENTE; apaga o
+    // card se a governanta desfizer a falha antes dele ser resolvido. Nunca
+    // mexe num card já RESOLVIDO.
+    if (tipoFalhaFixo === "GERENCIAL") {
+      const cardExistente = await prisma.hkManagerialFailureCard.findUnique({ where: { inspectionItemId: itemId } });
+
+      if (resultado === "FALHA") {
+        if (!cardExistente) {
+          await prisma.hkManagerialFailureCard.create({
+            data: {
+              tenantId: itemAtual.inspection.uh.tenantId,
+              inspectionItemId: itemId,
+              uhId: itemAtual.inspection.uhId,
+              itemNome: itemAtual.item,
+              descricao: String(observacaoFinal || "").trim(),
+            },
+          });
+          await notificarPorRoles(itemAtual.inspection.uh.tenantId, ["GERENTE", "MASTER"], {
+            title: "🏢 Falha gerencial registrada",
+            body: `UH ${itemAtual.inspection.uh.numero} — ${itemAtual.item}`,
+            data: { view: "falhas-gerenciais" },
+          });
+        } else if (cardExistente.status === "PENDENTE" && body.observacao !== undefined) {
+          await prisma.hkManagerialFailureCard.update({
+            where: { id: cardExistente.id },
+            data: { descricao: String(body.observacao || "").trim() },
+          });
+        }
+      } else if (cardExistente && cardExistente.status === "PENDENTE") {
+        await prisma.hkManagerialFailureCard.delete({ where: { id: cardExistente.id } });
+      }
+    }
+
     return NextResponse.json(item);
   }
 

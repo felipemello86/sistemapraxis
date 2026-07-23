@@ -192,6 +192,36 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // "Cancelar" — a camareira iniciou a limpeza de uma UH errada por engano
+  // (ou por qualquer outro motivo de uso incorreto) e quer desfazer antes de
+  // finalizar. Vale em qualquer sub-fase em andamento (checklist,
+  // manutenção, fotos) — só não depois de já finalizada. Apaga a
+  // CleaningSession inteira (onDelete: Cascade limpa os SessionStep, ver
+  // schema) e devolve a atribuição/UH pro estado de antes de "Iniciar"
+  // (LIBERADO / DISPONIVEL), como se a limpeza nunca tivesse começado.
+  if (action === "cancelar") {
+    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
+    if (sessao.camareiraId !== session.userId) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
+    }
+    if (sessao.finalizadaEm) {
+      return NextResponse.json({ error: "Essa limpeza já foi concluída, não é possível cancelar." }, { status: 400 });
+    }
+
+    await prisma.cleaningSession.delete({ where: { id: sessaoId } });
+    await prisma.dailyAssignment.update({
+      where: { id: sessao.assignmentId },
+      data: { status: "LIBERADO" },
+    });
+    await prisma.uH.update({
+      where: { id: sessao.uhId },
+      data: { status: "DISPONIVEL" },
+    });
+
+    return NextResponse.json({ ok: true });
+  }
+
   // Etapa obrigatória "Necessidade de Manutenção?", entre o checklist e as
   // fotos de conclusão (ver CamareiraView, fase "manutencao"). O tempo
   // gasto respondendo/registrando não deve contar contra a camareira — ver

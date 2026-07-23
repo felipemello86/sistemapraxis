@@ -140,6 +140,14 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   const [justificativaTexto, setJustificativaTexto] = useState("");
   const [salvandoExclusao, setSalvandoExclusao] = useState(false);
 
+  // Descrição obrigatória ao marcar um item de natureza Gerencial como
+  // Falha (vira o texto do card em "Falhas Gerenciais" — ver
+  // packages/core/src/notify.ts e o novo model HkManagerialFailureCard).
+  // A natureza (Camareira/Gerencial) agora é fixa por item, definida em
+  // Configurações > Checklist de inspeção — não é mais escolhida aqui.
+  const [descricaoFalhaGerencial, setDescricaoFalhaGerencial] = useState("");
+  const [erroCorrecao, setErroCorrecao] = useState<string | null>(null);
+
   // Etapa obrigatória "Necessidade de Manutenção?" — entre "todos os itens
   // avaliados" e "Finalizar Inspeção" (mesmo padrão da camareira, ver
   // ItemChecklistManutencao/manutencaoItens acima e CamareiraView.tsx).
@@ -175,6 +183,13 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     setCategoriasManutencaoAbertas(new Set());
   }, [inspecaoId]);
 
+  // Ao trocar de item (avançar, ou voltar pra corrigir um já avaliado),
+  // reidrata a descrição de falha gerencial com o que já estava salvo pra
+  // esse item — em vez de sempre começar em branco.
+  useEffect(() => {
+    setDescricaoFalhaGerencial(itens[itemAtualIdx]?.observacao ?? "");
+  }, [itemAtualIdx, itens]);
+
   const carregar = useCallback(async () => {
     const [insp, sol, fin] = await Promise.all([
       apiFetch("/api/inspecoes").then((r) => r.json()),
@@ -203,6 +218,18 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
 
   async function salvarCorrecao() {
     if (!inspecaoId || !podeOperar) return;
+
+    // Mesma regra do avaliarItem (fluxo ao vivo): falha gerencial precisa
+    // de descrição — valida antes de disparar as chamadas em paralelo, já
+    // que essa rota não checa res.ok item a item.
+    const semDescricao = itens.find(
+      (i) => i.resultado === "FALHA" && i.tipoFalha === "GERENCIAL" && !(i.observacao ?? "").trim(),
+    );
+    if (semDescricao) {
+      setErroCorrecao(`Descreva o problema em "${semDescricao.item}" antes de salvar.`);
+      return;
+    }
+    setErroCorrecao(null);
     setSalvandoCorrecao(true);
 
     await Promise.all(
@@ -215,7 +242,7 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
             inspecaoId,
             itemId: item.id,
             resultado: item.resultado,
-            tipoFalha: item.tipoFalha,
+            observacao: item.observacao,
           }),
         })
       )
@@ -238,6 +265,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   async function iniciarInspecao(s: Sessao) {
     setSessaoAtiva(s);
     setModoEdicao(false);
+    setDescricaoFalhaGerencial("");
+    setErroCorrecao(null);
 
     if (s.inspection && !s.inspection.finalizadaEm) {
       setInspecaoId(s.inspection.id);
@@ -266,9 +295,16 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     await carregar();
   }
 
-  async function avaliarItem(resultado: "OK" | "FALHA", tipoFalha?: "CAMAREIRA" | "GERENCIAL") {
+  async function avaliarItem(resultado: "OK" | "FALHA") {
     const item = itens[itemAtualIdx];
     if (!item || !inspecaoId || !podeOperar) return;
+
+    // Natureza (Camareira/Gerencial) é fixa por item — vem do checklist de
+    // configuração, não é mais escolhida aqui. Falha gerencial exige
+    // descrição (vira o texto do card em "Falhas Gerenciais").
+    const gerencial = item.tipoFalha === "GERENCIAL";
+    if (resultado === "FALHA" && gerencial && !descricaoFalhaGerencial.trim()) return;
+    const observacao = resultado === "FALHA" && gerencial ? descricaoFalhaGerencial.trim() : undefined;
 
     setSalvando(true);
     await apiFetch("/api/inspecoes", {
@@ -279,14 +315,15 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
         inspecaoId,
         itemId: item.id,
         resultado,
-        tipoFalha: resultado === "FALHA" ? (tipoFalha || "CAMAREIRA") : "CAMAREIRA",
+        ...(observacao !== undefined ? { observacao } : {}),
       }),
     });
 
     setItens((prev) => prev.map((i) =>
-      i.id === item.id ? { ...i, resultado, tipoFalha: resultado === "FALHA" ? (tipoFalha || "CAMAREIRA") : "CAMAREIRA" } : i
+      i.id === item.id ? { ...i, resultado, observacao: observacao ?? i.observacao } : i
     ));
     setSalvando(false);
+    setDescricaoFalhaGerencial("");
     setItemAtualIdx((i) => Math.min(i + 1, itens.length));
   }
 
@@ -697,37 +734,53 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                       {CATEGORIA_ICONS[cat]} {cat}
                     </p>
                     <div className="space-y-2">
-                      {itens.filter((i) => i.categoria === cat).map((item) => (
-                        <div key={item.id} className="card py-3">
-                          <p className="text-sm font-medium text-gray-800 mb-2">{item.item}</p>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "OK", tipoFalha: "CAMAREIRA" } : i))}
-                              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "OK" ? "bg-green-500 text-white" : "bg-gray-100 text-gray-500"}`}
-                            >
-                              ✓ OK
-                            </button>
-                            <button
-                              onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "FALHA", tipoFalha: "CAMAREIRA" } : i))}
-                              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "FALHA" && item.tipoFalha === "CAMAREIRA" ? "bg-red-500 text-white" : "bg-gray-100 text-gray-500"}`}
-                            >
-                              ✗ Camareira
-                            </button>
-                            <button
-                              onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "FALHA", tipoFalha: "GERENCIAL" } : i))}
-                              className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "FALHA" && item.tipoFalha === "GERENCIAL" ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"}`}
-                            >
-                              ✗ Gerencial
-                            </button>
+                      {itens.filter((i) => i.categoria === cat).map((item) => {
+                        const gerencial = item.tipoFalha === "GERENCIAL";
+                        return (
+                          <div key={item.id} className="card py-3">
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <p className="text-sm font-medium text-gray-800 flex-1">{item.item}</p>
+                              {gerencial && (
+                                <span className="flex items-center gap-1 text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-1.5 py-0.5 flex-shrink-0">
+                                  <Building2 className="w-2.5 h-2.5" /> Gerencial
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "OK" } : i))}
+                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "OK" ? "bg-green-500 text-white" : "bg-gray-100 text-gray-500"}`}
+                              >
+                                ✓ OK
+                              </button>
+                              <button
+                                onClick={() => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, resultado: "FALHA" } : i))}
+                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${item.resultado === "FALHA" ? (gerencial ? "bg-orange-500 text-white" : "bg-red-500 text-white") : "bg-gray-100 text-gray-500"}`}
+                              >
+                                {gerencial ? "✗ Gerencial" : "✗ Camareira"}
+                              </button>
+                            </div>
+                            {item.resultado === "FALHA" && gerencial && (
+                              <textarea
+                                rows={2}
+                                className="w-full mt-2 border border-orange-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-orange-400"
+                                placeholder="Descreva o problema (obrigatório)..."
+                                value={item.observacao ?? ""}
+                                onChange={(e) => setItens((prev) => prev.map((i) => i.id === item.id ? { ...i, observacao: e.target.value } : i))}
+                              />
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
+                {erroCorrecao && (
+                  <div className="bg-red-50 text-red-700 text-sm px-4 py-2.5 rounded-xl mb-2">{erroCorrecao}</div>
+                )}
                 <div className="flex gap-3 mt-4">
                   <button
-                    onClick={() => { setModoEdicao(false); setItens(sessaoAtiva.inspection!.itens); }}
+                    onClick={() => { setModoEdicao(false); setErroCorrecao(null); setItens(sessaoAtiva.inspection!.itens); }}
                     className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-600 font-medium"
                   >
                     Cancelar
@@ -1107,46 +1160,67 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
             </div>
           ) : (
             <div>
-              {itemAtual && (
-                <div className="card mb-4">
-                  <div className="flex items-start gap-3 mb-4">
-                    <span className="text-2xl">{CATEGORIA_ICONS[itemAtual.categoria]}</span>
-                    <div>
-                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{itemAtual.categoria}</p>
-                      <h3 className="text-lg font-bold text-gray-900 mt-0.5">{itemAtual.item}</h3>
+              {itemAtual && (() => {
+                const gerencial = itemAtual.tipoFalha === "GERENCIAL";
+                return (
+                  <div className="card mb-4">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">{CATEGORIA_ICONS[itemAtual.categoria]}</span>
+                        <div>
+                          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{itemAtual.categoria}</p>
+                          <h3 className="text-lg font-bold text-gray-900 mt-0.5">{itemAtual.item}</h3>
+                        </div>
+                      </div>
+                      {gerencial && (
+                        <span className="flex items-center gap-1 text-[10px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-1 flex-shrink-0">
+                          <Building2 className="w-3 h-3" /> Gerencial
+                        </span>
+                      )}
                     </div>
-                  </div>
 
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => avaliarItem("OK")}
-                      disabled={salvando || !podeOperar}
-                      title={!podeOperar ? tituloSemAcesso : undefined}
-                      className="flex items-center justify-center gap-2 bg-green-100 text-green-700 font-bold py-4 rounded-xl hover:bg-green-200 transition-colors text-base w-full disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-5 h-5" /> OK — Aprovado
-                    </button>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-2">
                       <button
-                        onClick={() => avaliarItem("FALHA", "CAMAREIRA")}
+                        onClick={() => avaliarItem("OK")}
                         disabled={salvando || !podeOperar}
                         title={!podeOperar ? tituloSemAcesso : undefined}
-                        className="flex items-center justify-center gap-1.5 bg-red-100 text-red-700 font-bold py-4 rounded-xl hover:bg-red-200 transition-colors text-sm disabled:opacity-50"
+                        className="flex items-center justify-center gap-2 bg-green-100 text-green-700 font-bold py-4 rounded-xl hover:bg-green-200 transition-colors text-base w-full disabled:opacity-50"
                       >
-                        <UserX className="w-4 h-4" /> Falha Camareira
+                        <CheckCircle2 className="w-5 h-5" /> OK — Aprovado
                       </button>
-                      <button
-                        onClick={() => avaliarItem("FALHA", "GERENCIAL")}
-                        disabled={salvando || !podeOperar}
-                        title={!podeOperar ? tituloSemAcesso : undefined}
-                        className="flex items-center justify-center gap-1.5 bg-orange-100 text-orange-700 font-bold py-4 rounded-xl hover:bg-orange-200 transition-colors text-sm disabled:opacity-50"
-                      >
-                        <Building2 className="w-4 h-4" /> Falha Gerencial
-                      </button>
+
+                      {gerencial ? (
+                        <div className="space-y-2">
+                          <textarea
+                            rows={2}
+                            className="w-full border border-orange-200 rounded-lg px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-orange-400"
+                            placeholder="Descreva o problema (obrigatório pra registrar a falha)..."
+                            value={descricaoFalhaGerencial}
+                            onChange={(e) => setDescricaoFalhaGerencial(e.target.value)}
+                          />
+                          <button
+                            onClick={() => avaliarItem("FALHA")}
+                            disabled={salvando || !podeOperar || !descricaoFalhaGerencial.trim()}
+                            title={!podeOperar ? tituloSemAcesso : undefined}
+                            className="flex items-center justify-center gap-1.5 bg-orange-100 text-orange-700 font-bold py-4 rounded-xl hover:bg-orange-200 transition-colors text-sm w-full disabled:opacity-50"
+                          >
+                            <Building2 className="w-4 h-4" /> Registrar Falha Gerencial
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => avaliarItem("FALHA")}
+                          disabled={salvando || !podeOperar}
+                          title={!podeOperar ? tituloSemAcesso : undefined}
+                          className="flex items-center justify-center gap-1.5 bg-red-100 text-red-700 font-bold py-4 rounded-xl hover:bg-red-200 transition-colors text-sm w-full disabled:opacity-50"
+                        >
+                          <UserX className="w-4 h-4" /> Falha Camareira
+                        </button>
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {itemAtualIdx > 0 && (
                 <div>

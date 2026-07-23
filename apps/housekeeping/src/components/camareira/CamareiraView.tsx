@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info } from "lucide-react";
+import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import GeoCheckin from "./GeoCheckin";
@@ -83,6 +83,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   const [fotoLavanderia, setFotoLavanderia] = useState<string | null>(null);
   const [uploadandoFotoLav, setUploadandoFotoLav] = useState(false);
   const [enviandoLavanderia, setEnviandoLavanderia] = useState(false);
+
+  // Cancelar limpeza iniciada por engano (UH errada, uso incorreto etc.) —
+  // some da lista de "Minhas UHs" quem tá em fase "limpeza"/"manutencao"/
+  // "fotos", então o botão pra desfazer fica dentro dessas telas (não em
+  // "Minhas UHs"). Confirmação com modal em duas etapas pra evitar toque
+  // acidental, já que apaga o progresso feito (fotos, etapas concluídas).
+  const [cancelandoUH, setCancelandoUH] = useState(false);
+  const [enviandoCancelamento, setEnviandoCancelamento] = useState(false);
+  const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
 
   // Etapa obrigatória "Necessidade de Manutenção?" — entre o checklist e as
   // fotos de conclusão (ver bloco "TELA DE MANUTENÇÃO" abaixo). Sub-fluxo:
@@ -634,6 +643,69 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setMotivoBloqueio("");
   }
 
+  async function cancelarLimpeza() {
+    if (!sessaoId) return;
+    setEnviandoCancelamento(true);
+    setErroCancelamento(null);
+    try {
+      const res = await apiFetch("/api/sessoes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancelar", sessaoId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Erro ${res.status}`);
+      }
+      setCancelandoUH(false);
+      setAssignmentAtivo(null);
+      setSessaoId(null);
+      setFase("lista");
+      await carregar();
+    } catch (err: any) {
+      setErroCancelamento(err.message || "Não foi possível cancelar. Tente novamente.");
+    } finally {
+      setEnviandoCancelamento(false);
+    }
+  }
+
+  // Modal de confirmação do cancelamento — chamado dentro dos 4 pontos do
+  // fluxo em andamento (manutencao, limpeza sem etapas, limpeza com etapas,
+  // fotos). Definido aqui (fecha sobre o estado acima) em vez de duplicado
+  // em cada bloco, já que cada fase da camareira é um `return` separado.
+  function ModalCancelarUH() {
+    if (!cancelandoUH) return null;
+    return (
+      <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => !enviandoCancelamento && setCancelandoUH(false)}>
+        <div className="absolute inset-0 bg-black/60" />
+        <div className="relative bg-white w-full rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Undo2 className="w-5 h-5 text-red-600" />
+                <h3 className="font-bold text-gray-800">Cancelar esta limpeza?</h3>
+              </div>
+              <button onClick={() => setCancelandoUH(false)} disabled={enviandoCancelamento}><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+            <p className="text-sm text-gray-500 mb-3">
+              Use isso se iniciou a limpeza da UH errada por engano. O progresso desta sessão (etapas concluídas, fotos) será apagado e a UH {assignmentAtivo?.uh.numero} volta a ficar disponível pra limpeza.
+            </p>
+            {erroCancelamento && (
+              <p className="text-sm text-red-600 mb-3">{erroCancelamento}</p>
+            )}
+            <button
+              onClick={cancelarLimpeza}
+              disabled={enviandoCancelamento}
+              className="w-full py-3 rounded-xl bg-red-600 text-white font-bold disabled:opacity-50"
+            >
+              {enviandoCancelamento ? "Cancelando..." : "Sim, cancelar limpeza"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   async function finalizarLimpeza() {
     if (!sessaoId) return;
     setConcluindo(true);
@@ -697,14 +769,25 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     return (
       <><GeoCheckin /><div className="min-h-screen bg-gray-50 p-4 max-w-lg mx-auto">
         <div className="bg-blue-700 text-white rounded-xl p-4 mb-6">
-          <p className="text-sm opacity-80">{assignmentAtivo.uh.numero}</p>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Wrench className="w-5 h-5" /> Necessidade de manutenção
-          </h2>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm opacity-80">{assignmentAtivo.uh.numero}</p>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Wrench className="w-5 h-5" /> Necessidade de manutenção
+              </h2>
+            </div>
+            <button
+              onClick={() => { setCancelandoUH(true); setErroCancelamento(null); }}
+              className="flex-shrink-0 flex items-center gap-1 text-xs bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg transition-colors"
+            >
+              <Undo2 className="w-3 h-3" /> Cancelar
+            </button>
+          </div>
           <div className="flex items-center gap-1.5 mt-2 text-xs bg-white/15 rounded-lg px-2 py-1 w-fit">
             <Clock className="w-3.5 h-3.5" /> Tempo pausado nesta etapa
           </div>
         </div>
+        <ModalCancelarUH />
 
         {manutencaoSubFase === "pergunta" && (
           <div className="card text-center py-8">
@@ -963,13 +1046,24 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     return (
       <><GeoCheckin /><div className="min-h-screen bg-gray-50 p-4 max-w-lg mx-auto">
         <div className="bg-blue-700 text-white rounded-xl p-4 mb-6">
-          <p className="text-sm opacity-80">{assignmentAtivo?.uh.numero}</p>
-          <h2 className="text-xl font-bold">Fotos obrigatórias</h2>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm opacity-80">{assignmentAtivo?.uh.numero}</p>
+              <h2 className="text-xl font-bold">Fotos obrigatórias</h2>
+            </div>
+            <button
+              onClick={() => { setCancelandoUH(true); setErroCancelamento(null); }}
+              className="flex-shrink-0 flex items-center gap-1 text-xs bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg transition-colors"
+            >
+              <Undo2 className="w-3 h-3" /> Cancelar
+            </button>
+          </div>
           <div className="flex items-center gap-2 mt-2">
             <Clock className="w-4 h-4" />
             <span className="font-mono">{formatarTempo(elapsed)}</span>
           </div>
         </div>
+        <ModalCancelarUH />
 
         <p className="text-sm text-gray-600 mb-4">
           Tire as fotos dos ambientes abaixo antes de finalizar.
@@ -1278,8 +1372,18 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
       return (
         <div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
           <div className="bg-blue-700 text-white p-5">
-            <p className="text-sm opacity-80">{assignmentAtivo.uh.numero}</p>
-            <p className="font-bold text-lg">{assignmentAtivo.program?.nome || "Limpeza"}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm opacity-80">{assignmentAtivo.uh.numero}</p>
+                <p className="font-bold text-lg">{assignmentAtivo.program?.nome || "Limpeza"}</p>
+              </div>
+              <button
+                onClick={() => { setCancelandoUH(true); setErroCancelamento(null); }}
+                className="flex-shrink-0 flex items-center gap-1 text-xs bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg transition-colors"
+              >
+                <Undo2 className="w-3 h-3" /> Cancelar
+              </button>
+            </div>
             {assignmentAtivo.observacoes && (
               <div className="mt-2 bg-amber-100 text-amber-900 rounded-lg px-3 py-2 text-sm">
                 <span className="font-semibold">Observações: </span>{assignmentAtivo.observacoes}
@@ -1301,6 +1405,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
               </button>
             </div>
           </div>
+          <ModalCancelarUH />
         </div>
       );
     }
@@ -1374,9 +1479,16 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
               >
                 <ShieldAlert className="w-3 h-3" /> Bloquear
               </button>
+              <button
+                onClick={() => { setCancelandoUH(true); setErroCancelamento(null); }}
+                className="flex items-center gap-1 text-xs bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg transition-colors"
+              >
+                <Undo2 className="w-3 h-3" /> Cancelar
+              </button>
             </div>
           </div>
         </div>
+        <ModalCancelarUH />
 
         {/* Etapa atual */}
         {stepAtual && (

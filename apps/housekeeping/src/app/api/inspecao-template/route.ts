@@ -68,7 +68,10 @@ export async function PUT(req: NextRequest) {
   const { itens } = await req.json();
   if (!Array.isArray(itens)) return NextResponse.json({ error: "itens obrigatório" }, { status: 400 });
 
-  // Deleta existentes e recria
+  // Deleta existentes e recria — troca os ids, mas isso é seguro: nenhuma
+  // outra tabela referencia InspectionTemplate por FK (InspectionItem só
+  // copia os valores na criação de cada InspectionSession, ver
+  // POST /api/inspecoes).
   await prisma.inspectionTemplate.deleteMany({ where: { tenantId } });
   await prisma.inspectionTemplate.createMany({
     data: itens.map((item: any, i: number) => ({
@@ -77,6 +80,7 @@ export async function PUT(req: NextRequest) {
       item: item.item,
       ordem: i + 1,
       ativo: true,
+      tipoFalha: item.tipoFalha === "GERENCIAL" ? "GERENCIAL" : "CAMAREIRA",
     })),
   });
 

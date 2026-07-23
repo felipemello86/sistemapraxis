@@ -58,6 +58,7 @@ model Tenant {
   falhasLavanderia    FalhaLavanderia[]
   guestComplaints     GuestComplaint[]
   geoArrivals         GeoArrival[]
+  hkManagerialFailureCards HkManagerialFailureCard[]
 
   // Avaliações (Booking-Reviews)
   reviewsConfig        ReviewsConfig?
@@ -153,6 +154,7 @@ model User {
   hkInspections      InspectionSession[] @relation("HkGovernanta")
   hkPushTokens       PushToken[]
   hkGeoArrivals      GeoArrival[]
+  hkManagerialFailuresResolved HkManagerialFailureCard[] @relation("HkManagerialFailureResolvedBy")
 
   // Queixas de hóspede (ver GuestComplaint) — quem registrou (Atendimento)
   // e, separadamente, a camareira penalizada quando a queixa é de Limpeza.
@@ -270,6 +272,14 @@ model InspectionTemplate {
   item      String
   ordem     Int
   ativo     Boolean @default(true)
+  // Natureza do item — define, na inspeção da Governanta, se uma falha
+  // nesse item pesa contra a camareira (CAMAREIRA) ou gera um card em
+  // "Falhas Gerenciais" + notifica o Gerente (GERENCIAL), sem afetar o
+  // score da camareira. Copiado pro InspectionItem.tipoFalha na criação de
+  // cada InspectionSession (ver POST /api/inspecoes) — depois disso é fixo
+  // por item da inspeção, não editável durante a inspeção em si (só aqui,
+  // na configuração do checklist).
+  tipoFalha String  @default("CAMAREIRA") // CAMAREIRA | GERENCIAL
 }
 
 model PushToken {
@@ -381,6 +391,7 @@ model UH {
   inspections      InspectionSession[]
   selecoes         DailyUHSelection[]
   guestComplaints  GuestComplaint[]
+  hkManagerialFailureCards HkManagerialFailureCard[]
 
   // Manutenção (Upkeep) — cadastro de UH continua centralizado aqui (gateway),
   // o módulo Manutenção referencia via FK em vez de ter seu próprio model
@@ -617,8 +628,44 @@ model InspectionItem {
   item         String
   ordem        Int
   resultado    String            @default("OK") // OK | FALHA | NAO_APLICAVEL
-  tipoFalha    String            @default("CAMAREIRA") // CAMAREIRA | GERENCIAL
+  tipoFalha    String            @default("CAMAREIRA") // CAMAREIRA | GERENCIAL — copiado do InspectionTemplate na criação, fixo daí em diante (ver comentário lá)
   observacao   String?
+
+  falhaGerencial HkManagerialFailureCard?
+}
+
+// Card em "Falhas Gerenciais" (tela nova, kanban Pendências/Resolvido) —
+// criado automaticamente quando a Governanta marca como FALHA um item cujo
+// tipoFalha é GERENCIAL (ver PATCH /api/inspecoes, ação avaliar_item).
+// Diferente do fluxo de Correção da Manutenção (MaintenanceCorrectionCard),
+// aqui é bem mais simples: só 2 status, sem triagem de material/serviço —
+// pedido explícito do Felipe. 1:1 com o InspectionItem que a originou (se a
+// Governanta desmarcar a falha antes de resolvida, o card é apagado — ver
+// mesma rota).
+model HkManagerialFailureCard {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  inspectionItemId String         @unique
+  inspectionItem   InspectionItem @relation(fields: [inspectionItemId], references: [id], onDelete: Cascade)
+  uhId             String
+  uh               UH             @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  // Snapshot no momento da criação — sobrevive a uma futura edição/remoção
+  // do item no checklist de configuração.
+  itemNome  String
+  descricao String @db.Text // texto obrigatório digitado pela Governanta ao marcar a falha
+
+  status String @default("PENDENTE") // PENDENTE | RESOLVIDO
+
+  resolvedDescricao String?   @db.Text // obrigatório ao resolver (validado na API, não aqui)
+  resolvedPhotos    String    @default("[]") // JSON string[] — opcional
+  resolvedAt        DateTime?
+  resolvedById      String?
+  resolvedBy        User?     @relation("HkManagerialFailureResolvedBy", fields: [resolvedById], references: [id])
+
+  createdAt DateTime @default(now())
 }
 
 model FalhaLavanderia {
