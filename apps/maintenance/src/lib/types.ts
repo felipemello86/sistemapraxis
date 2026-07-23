@@ -207,4 +207,18 @@ export type DailyCommitmentView = {
     executionStatus: "A_FAZER" | "PLANEJADA" | "EXECUTADA";
     executedAt: string | null; // ISO
   }[];
+  // Não conformidades (IV) identificadas nesse dia (createdAt do card de
+  // Correção cai nesse dia, fuso America/Sao_Paulo) que ainda não foram
+  // resolvidas — nada a ver com o compromisso diário do Kanban de Execução
+  // acima (pode ser card de qualquer um dos 3 kanbans, ou nenhum ainda
+  // fechado). Calculado "ao vivo" (estado atual), não é um retrato
+  // congelado do fim daquele dia — mesmo critério já usado por "cards"
+  // acima (executionStatus também reflete o estado atual).
+  naoConformidadesIdentificadas: {
+    id: string;
+    uhName: string;
+    checklistItemName: string | null;
+    comment: string | null;
+    createdAt: string; // ISO
+  }[];
 };

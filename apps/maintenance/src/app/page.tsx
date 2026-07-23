@@ -310,6 +310,21 @@ export default async function Home() {
     checklistItemIds: s.checklistItems.map((ci) => ci.checklistItemId),
   }));
 
+  // "Não-conformidades identificadas no dia" do relatório de Performance —
+  // agrupa os cards de Correção (já buscados acima, e já filtrados por
+  // inspectionItem.status "NAO_CONFORME", ou seja, ainda em aberto) pelo dia
+  // (fuso America/Sao_Paulo) em que foram criados, sem precisar de uma nova
+  // consulta ao banco. Estado "ao vivo": um card criado num dia mas resolvido
+  // depois já não aparece mais aqui (o filtro NAO_CONFORME já cuidou disso),
+  // mesmo critério de "estado atual" já usado por commitment.cards abaixo.
+  const naoConformidadesPorDia = new Map<string, typeof correctionCards>();
+  for (const c of correctionCards) {
+    const dia = c.createdAt.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const lista = naoConformidadesPorDia.get(dia) ?? [];
+    lista.push(c);
+    naoConformidadesPorDia.set(dia, lista);
+  }
+
   const commitmentsView: DailyCommitmentView[] = commitments.map((cm) => ({
     id: cm.id,
     data: cm.data,
@@ -324,6 +339,13 @@ export default async function Home() {
       checklistItemName: card.checklistItem?.name ?? null,
       executionStatus: card.executionStatus as "A_FAZER" | "PLANEJADA" | "EXECUTADA",
       executedAt: card.executedAt ? card.executedAt.toISOString() : null,
+    })),
+    naoConformidadesIdentificadas: (naoConformidadesPorDia.get(cm.data) ?? []).map((c) => ({
+      id: c.id,
+      uhName: c.uh.numero,
+      checklistItemName: c.checklistItem?.name ?? null,
+      comment: c.inspectionItem.comment,
+      createdAt: c.createdAt.toISOString(),
     })),
   }));
 

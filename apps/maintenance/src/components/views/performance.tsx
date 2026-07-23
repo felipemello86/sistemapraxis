@@ -4,7 +4,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import { AreaChart, Area, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
-import { BarChart3, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
 import type { DailyCommitmentView } from '@/lib/types'
 
 // Tela "Performance" — lista de relatórios diários do Kanban de Execução +
@@ -208,6 +208,36 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
                       </ul>
                     )}
                   </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <AlertTriangle className="h-3.5 w-3.5 text-[var(--warning)]" />
+                    Não-conformidades identificadas no dia ({c.naoConformidadesIdentificadas.length})
+                  </p>
+                  {c.naoConformidadesIdentificadas.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma identificada nesse dia.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {c.naoConformidadesIdentificadas.map((item) => (
+                        <li
+                          key={item.id}
+                          className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/8 px-2.5 py-1.5 text-sm"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span>
+                              Unidade {item.uhName} — {item.checklistItemName ?? 'item'}
+                            </span>
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {formatarHora(item.createdAt)}
+                            </span>
+                          </div>
+                          {item.comment && <p className="mt-0.5 text-xs text-muted-foreground">{item.comment}</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </Panel>
