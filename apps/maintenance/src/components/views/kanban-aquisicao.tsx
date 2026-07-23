@@ -101,61 +101,65 @@ export function KanbanAquisicao({ podeOperar, cards }: { podeOperar: boolean; ca
   return (
     <>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
-          <div className="flex items-center gap-2">
+        <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
+          <div className="mb-3 flex items-center gap-2">
             <Package className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">A Adquirir</h3>
             <span className="text-xs text-muted-foreground">({aAdquirir.length})</span>
           </div>
-          {aAdquirir.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nada pendente de aquisição.</p>
-          ) : (
-            aAdquirir.map((card) => (
-              <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-                <CardResumo card={card} />
-                <Button
-                  size="sm"
-                  className="mt-3 w-full rounded-xl"
-                  disabled={!podeOperar}
-                  title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
-                  onClick={() => {
-                    setCardComprando(card)
-                    setCupomUrl(null)
-                  }}
-                >
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                  Marcar como comprado
-                </Button>
-              </div>
-            ))
-          )}
+          <div className="space-y-3 overflow-y-auto pr-1">
+            {aAdquirir.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nada pendente de aquisição.</p>
+            ) : (
+              aAdquirir.map((card) => (
+                <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
+                  <CardResumo card={card} />
+                  <Button
+                    size="sm"
+                    className="mt-3 w-full rounded-xl"
+                    disabled={!podeOperar}
+                    title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                    onClick={() => {
+                      setCardComprando(card)
+                      setCupomUrl(null)
+                    }}
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5" />
+                    Marcar como comprado
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
-          <div className="flex items-center gap-2">
+        <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
+          <div className="mb-3 flex items-center gap-2">
             <ShoppingCart className="h-4 w-4 text-[var(--success)]" />
             <h3 className="text-sm font-semibold">Comprado</h3>
             <span className="text-xs text-muted-foreground">({comprados.length})</span>
           </div>
-          {comprados.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhum material comprado ainda.</p>
-          ) : (
-            comprados.map((card) => (
-              <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
-                <CardResumo card={card} />
-                {card.materialCompradoEm && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Comprado em {formatarData(card.materialCompradoEm)}
-                  </p>
-                )}
-                {card.needsExternalService && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Aguardando também o fluxo de Serviços Externos.
-                  </p>
-                )}
-              </div>
-            ))
-          )}
+          <div className="space-y-3 overflow-y-auto pr-1">
+            {comprados.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nenhum material comprado ainda.</p>
+            ) : (
+              comprados.map((card) => (
+                <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
+                  <CardResumo card={card} />
+                  {card.materialCompradoEm && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Comprado em {formatarData(card.materialCompradoEm)}
+                    </p>
+                  )}
+                  {card.needsExternalService && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Aguardando também o fluxo de Serviços Externos.
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 

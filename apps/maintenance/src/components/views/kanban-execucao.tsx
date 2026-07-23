@@ -98,8 +98,8 @@ export function KanbanExecucao({
   return (
     <>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
-          <div className="flex items-center gap-2">
+        <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
+          <div className="mb-3 flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">A Fazer</h3>
             <span className="text-xs text-muted-foreground">({aFazer.length})</span>
@@ -115,6 +115,7 @@ export function KanbanExecucao({
             </p>
           ) : (
             <>
+              <div className="space-y-3 overflow-y-auto pr-1">
               {aFazer.map((card) => (
                 <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
                   <label className="flex items-start gap-2">
@@ -180,9 +181,10 @@ export function KanbanExecucao({
                   )}
                 </div>
               ))}
+              </div>
 
               <Button
-                className="w-full rounded-xl"
+                className="mt-3 w-full shrink-0 rounded-xl"
                 disabled={!podeOperar || selecionados.size === 0}
                 onClick={() => setConfirmando(true)}
               >
@@ -193,69 +195,73 @@ export function KanbanExecucao({
           )}
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
-          <div className="flex items-center gap-2">
+        <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
+          <div className="mb-3 flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold">Planejadas</h3>
             <span className="text-xs text-muted-foreground">({planejadas.length})</span>
           </div>
-          {planejadas.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhum item planejado pra hoje ainda.</p>
-          ) : (
-            planejadas.map((card) => (
-              <div key={card.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-                <p className="flex items-center gap-1.5 text-sm font-medium">
-                  Unidade {card.uhName}
-                  {card.urgente && (
-                    <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-                      <Siren className="h-2.5 w-2.5" />
-                      Urgente
-                    </span>
-                  )}
-                </p>
-                <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
-                <Button
-                  size="sm"
-                  className="mt-3 w-full rounded-xl"
-                  disabled={!podeOperar}
-                  title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
-                  onClick={() => setCardExecutando(card)}
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Marcar como executada
-                </Button>
-              </div>
-            ))
-          )}
+          <div className="space-y-3 overflow-y-auto pr-1">
+            {planejadas.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nenhum item planejado pra hoje ainda.</p>
+            ) : (
+              planejadas.map((card) => (
+                <div key={card.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    Unidade {card.uhName}
+                    {card.urgente && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                        <Siren className="h-2.5 w-2.5" />
+                        Urgente
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
+                  <Button
+                    size="sm"
+                    className="mt-3 w-full rounded-xl"
+                    disabled={!podeOperar}
+                    title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                    onClick={() => setCardExecutando(card)}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Marcar como executada
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
-          <div className="flex items-center gap-2">
+        <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
+          <div className="mb-3 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-[var(--success)]" />
             <h3 className="text-sm font-semibold">Executadas</h3>
             <span className="text-xs text-muted-foreground">({executadas.length})</span>
           </div>
-          {executadas.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma execução ainda hoje.</p>
-          ) : (
-            executadas.map((card) => (
-              <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
-                <p className="flex items-center gap-1.5 text-sm font-medium">
-                  Unidade {card.uhName}
-                  {card.urgente && (
-                    <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-                      <Siren className="h-2.5 w-2.5" />
-                      Urgente
-                    </span>
+          <div className="space-y-3 overflow-y-auto pr-1">
+            {executadas.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma execução ainda hoje.</p>
+            ) : (
+              executadas.map((card) => (
+                <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    Unidade {card.uhName}
+                    {card.urgente && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                        <Siren className="h-2.5 w-2.5" />
+                        Urgente
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
+                  {card.executedAt && (
+                    <p className="mt-1 text-xs text-muted-foreground">Executado às {formatarHoraExecucao(card.executedAt)}</p>
                   )}
-                </p>
-                <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
-                {card.executedAt && (
-                  <p className="mt-1 text-xs text-muted-foreground">Executado às {formatarHoraExecucao(card.executedAt)}</p>
-                )}
-              </div>
-            ))
-          )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 

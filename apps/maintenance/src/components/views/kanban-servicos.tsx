@@ -219,17 +219,19 @@ export function KanbanServicos({
 
 function Coluna({ titulo, total, children }: { titulo: string; total: number; children: React.ReactNode }) {
   return (
-    <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-4">
-      <div className="flex items-center gap-2">
+    <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
+      <div className="mb-3 flex items-center gap-2">
         <Truck className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">{titulo}</h3>
         <span className="text-xs text-muted-foreground">({total})</span>
       </div>
-      {total === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">Nada aqui no momento.</p>
-      ) : (
-        children
-      )}
+      <div className="space-y-3 overflow-y-auto pr-1">
+        {total === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Nada aqui no momento.</p>
+        ) : (
+          children
+        )}
+      </div>
     </div>
   )
 }
