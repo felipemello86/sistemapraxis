@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Box,
+  BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -21,13 +22,16 @@ import {
 } from '@/components/ui/avatar'
 import type {
   AtribuicoesPorUnidade,
+  CorrectionCardView,
   CorrectionSummary,
+  DailyCommitmentView,
   DashboardUser,
   InspecaoComUnidade,
   ChecklistItem,
   ItemInfo,
   ItemInfoLogEntry,
   MaintenanceConfigView,
+  SupplierView,
   UhImage,
   UhSpot,
   UnitOption,
@@ -36,7 +40,8 @@ import type {
 import { VisaoGerencial } from '@/components/views/visao-gerencial'
 import { Evolucao } from '@/components/views/evolucao'
 import { Informacoes } from '@/components/views/informacoes'
-import { RotaCorrecao } from '@/components/views/correcao'
+import { Correcao } from '@/components/views/correcao'
+import { Performance } from '@/components/views/performance'
 import { Uh3D } from '@/components/views/uh-3d'
 import { Configuracoes } from '@/components/views/configuracoes'
 
@@ -74,7 +79,8 @@ const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'gerencial', label: 'Visão Gerencial', icon: LayoutDashboard },
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
   { id: 'informacoes', label: 'Inspeções', icon: Route },
-  { id: 'correcao', label: 'Rota de Correção', icon: Wrench },
+  { id: 'correcao', label: 'Correção', icon: Wrench },
+  { id: 'performance', label: 'Performance', icon: BarChart3 },
   { id: 'uh3d', label: 'UH 3D', icon: Box },
   { id: 'config', label: 'Configurações', icon: Settings },
 ]
@@ -92,6 +98,12 @@ export function Dashboard({
   uhSpots,
   itemInfos,
   itemInfoLogs,
+  inspectionItemIdsComCard,
+  correctionCards,
+  suppliers,
+  uhIdsLiberadasHoje,
+  commitments,
+  hojeSP,
 }: {
   user: DashboardUser
   // false = usuário pode ver todas as telas normalmente, mas os botões de
@@ -108,6 +120,12 @@ export function Dashboard({
   uhSpots: UhSpot[]
   itemInfos: ItemInfo[]
   itemInfoLogs: ItemInfoLogEntry[]
+  inspectionItemIdsComCard: string[]
+  correctionCards: CorrectionCardView[]
+  suppliers: SupplierView[]
+  uhIdsLiberadasHoje: string[]
+  commitments: DailyCommitmentView[]
+  hojeSP: string
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -322,19 +340,21 @@ export function Dashboard({
               maxDias={config.maxDaysBetweenInspections}
               itemInfos={itemInfos}
               itemInfoLogs={itemInfoLogs}
+              inspectionItemIdsComCard={inspectionItemIdsComCard}
             />
           )}
           {view === 'correcao' && (
-            <RotaCorrecao
+            <Correcao
               podeOperar={podeOperar}
-              unidades={unidades}
-              itens={itens}
-              inspecoes={inspecoes}
+              cards={correctionCards}
+              suppliers={suppliers}
+              uhIdsLiberadasHoje={uhIdsLiberadasHoje}
+              commitments={commitments}
+              hojeSP={hojeSP}
               correcoesRecentes={correcoes}
-              itemInfos={itemInfos}
-              itemInfoLogs={itemInfoLogs}
             />
           )}
+          {view === 'performance' && <Performance commitments={commitments} />}
           {view === 'uh3d' && (
             <Uh3D
               podeOperar={podeOperar}

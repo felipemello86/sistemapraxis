@@ -44,7 +44,7 @@ import {
   temPendencia,
   ultimaInspecaoPorUnidade,
 } from '@/lib/domain'
-import { deleteInspecaoAction } from '@/app/actions/data'
+import { deleteInspecaoAction, triarCorrecaoCardAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { InspecaoWizard } from '@/components/inspecao-wizard'
 import { ItemInfoField } from '@/components/item-info-field'
@@ -52,6 +52,7 @@ import type {
   AtribuicoesPorUnidade,
   ChecklistItem,
   InspecaoComUnidade,
+  InspectionItem,
   ItemInfo,
   ItemInfoLogEntry,
   UnitOption,
@@ -78,6 +79,7 @@ export function Informacoes({
   maxDias,
   itemInfos,
   itemInfoLogs,
+  inspectionItemIdsComCard,
 }: {
   podeOperar: boolean
   unidades: UnitOption[]
@@ -87,8 +89,40 @@ export function Informacoes({
   maxDias: number
   itemInfos: ItemInfo[]
   itemInfoLogs: ItemInfoLogEntry[]
+  // Itens NAO_CONFORME registrados antes da funcionalidade de Correção
+  // (Aquisição/Serviços Externos/Execução) existir não têm card ainda —
+  // pedido do Felipe pra não ter tela de triagem retroativa dedicada, e sim
+  // um botão aqui mesmo (ver triandoItem abaixo).
+  inspectionItemIdsComCard: string[]
 }) {
   const [pending, startTransition] = useTransition()
+  const [triandoItem, setTriandoItem] = useState<{ unidade: UnitOption; item: InspectionItem } | null>(null)
+  const [triarMaterial, setTriarMaterial] = useState<boolean | null>(null)
+  const [triarServico, setTriarServico] = useState<boolean | null>(null)
+  const [triando, setTriando] = useState(false)
+  const idsComCard = useMemo(() => new Set(inspectionItemIdsComCard), [inspectionItemIdsComCard])
+
+  async function confirmarTriagem() {
+    if (!triandoItem || triarMaterial === null || triarServico === null) return
+    setTriando(true)
+    try {
+      unwrapSafeAction(
+        await triarCorrecaoCardAction({
+          inspectionItemId: triandoItem.item.id,
+          needsMaterial: triarMaterial,
+          needsExternalService: triarServico,
+        }),
+      )
+      toast.success('Item adicionado ao fluxo de Correção.')
+      setTriandoItem(null)
+      setTriarMaterial(null)
+      setTriarServico(null)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao registrar a triagem.')
+    } finally {
+      setTriando(false)
+    }
+  }
   const [busca, setBusca] = useState('')
   const [situacao, setSituacao] = useState<FiltroSituacao>('todas')
   const [sortField, setSortField] = useState<SortField>('ultima')
@@ -341,6 +375,19 @@ export function Informacoes({
                         <span className="min-w-0 flex-1 truncate text-sm">
                           {catalogo?.name ?? 'Item removido do catálogo'}
                         </span>
+                        {it.status === 'NAO_CONFORME' && !idsComCard.has(it.id) && podeOperar && (
+                          <button
+                            onClick={() => {
+                              setTriandoItem({ unidade, item: it })
+                              setTriarMaterial(null)
+                              setTriarServico(null)
+                            }}
+                            className="flex items-center gap-1 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/10 px-2 py-1 text-xs font-medium text-[var(--warning)] transition-colors hover:bg-[var(--warning)]/20"
+                          >
+                            <ClipboardList className="h-3.5 w-3.5" />
+                            Registrar material/serviço
+                          </button>
+                        )}
                         {catalogo && (
                           <button
                             onClick={() => setHistorico({ unidade, item: catalogo })}
@@ -693,6 +740,74 @@ export function Informacoes({
                 </div>
               </div>
             ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Triagem manual de material/serviço externo — só existe pra itens
+          NAO_CONFORME registrados antes dessa funcionalidade existir (sem
+          card de Correção ainda). Ver comentário na prop
+          inspectionItemIdsComCard. */}
+      <Dialog open={triandoItem !== null} onOpenChange={(open) => !open && setTriandoItem(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Registrar material/serviço</DialogTitle>
+            <DialogDescription>
+              {triandoItem
+                ? `Unidade ${triandoItem.unidade.name} — informe se essa não conformidade precisa de material e/ou de serviço externo, pra ela entrar no fluxo de Correção.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Precisa adquirir algum material? *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={triarMaterial === true ? 'default' : 'outline'}
+                  className="rounded-xl"
+                  onClick={() => setTriarMaterial(true)}
+                >
+                  Sim
+                </Button>
+                <Button
+                  type="button"
+                  variant={triarMaterial === false ? 'default' : 'outline'}
+                  className="rounded-xl"
+                  onClick={() => setTriarMaterial(false)}
+                >
+                  Não
+                </Button>
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">Precisa contratar serviço externo? *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={triarServico === true ? 'default' : 'outline'}
+                  className="rounded-xl"
+                  onClick={() => setTriarServico(true)}
+                >
+                  Sim
+                </Button>
+                <Button
+                  type="button"
+                  variant={triarServico === false ? 'default' : 'outline'}
+                  className="rounded-xl"
+                  onClick={() => setTriarServico(false)}
+                >
+                  Não
+                </Button>
+              </div>
+            </div>
+            <Button
+              onClick={confirmarTriagem}
+              disabled={triando || triarMaterial === null || triarServico === null}
+              className="w-full rounded-xl"
+            >
+              {triando ? 'Salvando...' : 'Confirmar'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, getSession, hasModuleAccess } from "@praxis/core";
+import { createCorrectionCardForItem, prisma, getSession, hasModuleAccess } from "@praxis/core";
 
 // POST /api/manutencao-reporte — etapa obrigatória "Necessidade de
 // Manutenção?" da camareira (ver CamareiraView, fase "manutencao"), quando
@@ -28,10 +28,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso a este módulo" }, { status: 403 });
   }
 
-  const { uhId, checklistItemId, descricao, fotos } = await req.json();
+  const { uhId, checklistItemId, descricao, fotos, needsMaterial, needsExternalService } = await req.json();
 
   if (!uhId || !checklistItemId || !descricao || String(descricao).trim().length < 5) {
     return NextResponse.json({ error: "Descreva a falha detectada (mínimo 5 caracteres)." }, { status: 400 });
+  }
+  if (typeof needsMaterial !== "boolean" || typeof needsExternalService !== "boolean") {
+    return NextResponse.json(
+      { error: "Informe se precisa de material e de serviço externo." },
+      { status: 400 },
+    );
   }
 
   const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { tenantId: true } });
@@ -56,6 +62,8 @@ export async function POST(req: NextRequest) {
     include: { items: true },
   });
 
+  let inspectionItemId: string;
+
   if (ultima) {
     const itemAtual = ultima.items.find((it) => it.checklistItemId === checklistItemId);
 
@@ -68,8 +76,9 @@ export async function POST(req: NextRequest) {
         where: { id: itemAtual.id },
         data: { status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, corrigidoEm: null },
       });
+      inspectionItemId = itemAtual.id;
     } else {
-      await prisma.maintenanceInspectionItem.create({
+      const novoItem = await prisma.maintenanceInspectionItem.create({
         data: {
           inspectionId: ultima.id,
           checklistItemId,
@@ -78,9 +87,10 @@ export async function POST(req: NextRequest) {
           photos: fotosJson,
         },
       });
+      inspectionItemId = novoItem.id;
     }
   } else {
-    await prisma.maintenanceInspection.create({
+    const novaInspecao = await prisma.maintenanceInspection.create({
       data: {
         tenantId: session.tenantId,
         uhId,
@@ -90,8 +100,23 @@ export async function POST(req: NextRequest) {
           create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson }],
         },
       },
+      include: { items: true },
     });
+    inspectionItemId = novaInspecao.items[0].id;
   }
+
+  // Não conformidade nova (não é "jaRegistrado") — sempre precisa do card de
+  // Correção com as duas flags respondidas (pedido explícito, mesmo
+  // tratamento dos outros 3 pontos de entrada: inspeção completa e UH 3D).
+  await createCorrectionCardForItem({
+    tenantId: session.tenantId,
+    inspectionItemId,
+    uhId,
+    checklistItemId,
+    needsMaterial,
+    needsExternalService,
+    triagedById: session.userId,
+  });
 
   return NextResponse.json({ ok: true, jaRegistrado: false });
 }

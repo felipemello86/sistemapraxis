@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { createCorrectionCardForItem, getSession, hasModuleAccess, prisma, resolveCorrectionCard } from "@praxis/core";
 import { safeAction } from "@/lib/safeAction";
 
 // Portado de apps/maintenance/src/app/actions/data.ts (v1). Diferenças:
@@ -73,6 +73,12 @@ async function createInspecaoImpl(input: {
     status: "CONFORME" | "NAO_CONFORME";
     comment?: string;
     photos?: string[]; // URLs já hospedadas no Cloudinary (ver /api/upload)
+    // Só usado quando status = NAO_CONFORME e o item NÃO tem uma não
+    // conformidade já em aberto (ver comentário mais abaixo sobre
+    // "carryover") — pedido explícito: toda não conformidade NOVA precisa
+    // informar se vai precisar de material e/ou de serviço externo.
+    needsMaterial?: boolean;
+    needsExternalService?: boolean;
   }[];
 }) {
   const session = await requireModuleSession();
@@ -97,7 +103,55 @@ async function createInspecaoImpl(input: {
         })),
       },
     },
+    include: { items: true },
   });
+
+  // Uma inspeção completa sempre cria linhas novas de MaintenanceInspectionItem
+  // (nunca reaproveita a antiga) — então, quando um item CONTINUA não
+  // conforme entre uma inspeção e outra (pré-preenchido a partir da última
+  // pendência, ver InspecaoWizard), a linha nova não pode gerar um SEGUNDO
+  // card de Correção duplicado por cima do que já está em andamento no
+  // kanban. Só cria card novo pra quem realmente é NÃO CONFORME pela
+  // primeira vez (sem nenhum card em aberto ainda pra essa UH+item).
+  const itensNaoConformes = input.itens.filter((it) => it.status === "NAO_CONFORME");
+  if (itensNaoConformes.length > 0) {
+    const checklistIds = itensNaoConformes.map((it) => it.checklistItemId);
+
+    const cardsJaAbertos = await prisma.maintenanceCorrectionCard.findMany({
+      where: {
+        uhId: input.uhId,
+        checklistItemId: { in: checklistIds },
+        inspectionItem: { status: "NAO_CONFORME" },
+        // Exclui os itens recém-criados nesta própria inspeção (nenhum card
+        // ainda existe pra eles nesse ponto, então isso é só defensivo).
+        inspectionItemId: { notIn: insp.items.map((it) => it.id) },
+      },
+      select: { checklistItemId: true },
+    });
+    const jaTemCardAberto = new Set(cardsJaAbertos.map((c) => c.checklistItemId));
+
+    const itemCriadoPorChecklistId = new Map(insp.items.map((it) => [it.checklistItemId, it.id]));
+
+    for (const it of itensNaoConformes) {
+      if (jaTemCardAberto.has(it.checklistItemId)) continue; // carryover — já tem card cuidando
+      const inspectionItemId = itemCriadoPorChecklistId.get(it.checklistItemId);
+      if (!inspectionItemId) continue;
+      if (typeof it.needsMaterial !== "boolean" || typeof it.needsExternalService !== "boolean") {
+        throw new Error(
+          "Informe se cada não conformidade nova precisa de material e/ou de serviço externo.",
+        );
+      }
+      await createCorrectionCardForItem({
+        tenantId: session.tenantId,
+        inspectionItemId,
+        uhId: input.uhId,
+        checklistItemId: it.checklistItemId,
+        needsMaterial: it.needsMaterial,
+        needsExternalService: it.needsExternalService,
+        triagedById: session.userId,
+      });
+    }
+  }
 
   revalidatePath("/");
   return insp.id;
@@ -166,6 +220,46 @@ async function createCorrecaoImpl(input: {
   revalidatePath("/");
 }
 export const createCorrecaoAction = safeAction(createCorrecaoImpl);
+
+// Triagem manual — pra não conformidades registradas ANTES dessa
+// funcionalidade existir (sem card de Correção ainda). Felipe optou por não
+// ter uma tela de triagem retroativa dedicada: em vez disso, esse botão
+// aparece na tela Informações, ao lado de qualquer item ainda NAO_CONFORME
+// sem card, e cria o card na hora com as duas flags.
+async function triarCorrecaoCardImpl(input: {
+  inspectionItemId: string;
+  needsMaterial: boolean;
+  needsExternalService: boolean;
+}) {
+  const session = await requireModuleSession();
+
+  const item = await prisma.maintenanceInspectionItem.findUnique({
+    where: { id: input.inspectionItemId },
+    include: { inspection: { select: { tenantId: true, uhId: true } }, correctionCard: true },
+  });
+  if (!item || item.inspection.tenantId !== session.tenantId) {
+    throw new Error("Item de inspeção não encontrado.");
+  }
+  if (item.status !== "NAO_CONFORME") {
+    throw new Error("Este item não está mais não conforme.");
+  }
+  if (item.correctionCard) {
+    throw new Error("Este item já tem um card de Correção.");
+  }
+
+  await createCorrectionCardForItem({
+    tenantId: session.tenantId,
+    inspectionItemId: item.id,
+    uhId: item.inspection.uhId,
+    checklistItemId: item.checklistItemId,
+    needsMaterial: input.needsMaterial,
+    needsExternalService: input.needsExternalService,
+    triagedById: session.userId,
+  });
+
+  revalidatePath("/");
+}
+export const triarCorrecaoCardAction = safeAction(triarCorrecaoCardImpl);
 
 /* --------------------- Atribuição de itens por UH -------------------------- */
 // UH em si é cadastro central do gateway (ver comentário em
@@ -390,6 +484,11 @@ async function editarSpotInspecaoImpl(input: {
   status: "CONFORME" | "NAO_CONFORME";
   comment?: string;
   photos?: string[];
+  // Só usado quando esse clique está REGISTRANDO uma não conformidade nova
+  // (CONFORME → NAO_CONFORME) — se o item já estava NAO_CONFORME e isso é só
+  // edição de descrição/fotos, o card de Correção já existe e não muda.
+  needsMaterial?: boolean;
+  needsExternalService?: boolean;
 }) {
   const session = await requireModuleSession();
 
@@ -404,6 +503,13 @@ async function editarSpotInspecaoImpl(input: {
   const comment = input.comment?.trim() || "";
   if (input.status === "NAO_CONFORME" && comment.length < 5) {
     throw new Error("Descreva a não conformidade (mínimo 5 caracteres).");
+  }
+  if (
+    input.status === "NAO_CONFORME" &&
+    item.status === "CONFORME" &&
+    (typeof input.needsMaterial !== "boolean" || typeof input.needsExternalService !== "boolean")
+  ) {
+    throw new Error("Informe se essa não conformidade precisa de material e/ou de serviço externo.");
   }
 
   const now = new Date();
@@ -431,6 +537,8 @@ async function editarSpotInspecaoImpl(input: {
   } else {
     // NAO_CONFORME → NAO_CONFORME (editar descrição/fotos) ou
     // CONFORME → NAO_CONFORME (marcar como quebrado agora).
+    const eraNovoRegistro = input.status === "NAO_CONFORME" && item.status === "CONFORME";
+
     await prisma.maintenanceInspectionItem.update({
       where: { id: item.id },
       data: {
@@ -440,6 +548,18 @@ async function editarSpotInspecaoImpl(input: {
         corrigidoEm: input.status === "CONFORME" ? now : null,
       },
     });
+
+    if (eraNovoRegistro) {
+      await createCorrectionCardForItem({
+        tenantId: session.tenantId,
+        inspectionItemId: item.id,
+        uhId: item.inspection.uhId,
+        checklistItemId: item.checklistItemId,
+        needsMaterial: input.needsMaterial as boolean,
+        needsExternalService: input.needsExternalService as boolean,
+        triagedById: session.userId,
+      });
+    }
   }
 
   revalidatePath("/");

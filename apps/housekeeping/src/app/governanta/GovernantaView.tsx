@@ -151,6 +151,10 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   const [itemManutencaoSelecionado, setItemManutencaoSelecionado] = useState<ItemChecklistManutencao | null>(null);
   const [descricaoManutencao, setDescricaoManutencao] = useState("");
   const [fotosManutencao, setFotosManutencao] = useState<string[]>([]);
+  // Perguntas obrigatórias antes de concluir o registro — mesmo padrão da
+  // Camareira (ver comentário lá). null = ainda não respondeu.
+  const [precisaMaterialManutencao, setPrecisaMaterialManutencao] = useState<boolean | null>(null);
+  const [precisaServicoManutencao, setPrecisaServicoManutencao] = useState<boolean | null>(null);
   const [uploadandoFotoManutencao, setUploadandoFotoManutencao] = useState(false);
   const [enviandoManutencao, setEnviandoManutencao] = useState(false);
   const [resultadoManutencao, setResultadoManutencao] = useState<{ jaRegistrado: boolean; itemNome: string } | null>(null);
@@ -386,6 +390,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     setItemManutencaoSelecionado(item);
     setDescricaoManutencao("");
     setFotosManutencao([]);
+    setPrecisaMaterialManutencao(null);
+    setPrecisaServicoManutencao(null);
     setManutencaoSubFase("descrever");
   }
 
@@ -415,7 +421,14 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   }
 
   async function enviarManutencao() {
-    if (!itemManutencaoSelecionado || !sessaoAtiva || descricaoManutencao.trim().length < 5) return;
+    if (
+      !itemManutencaoSelecionado ||
+      !sessaoAtiva ||
+      descricaoManutencao.trim().length < 5 ||
+      precisaMaterialManutencao === null ||
+      precisaServicoManutencao === null
+    )
+      return;
     setEnviandoManutencao(true);
     try {
       const res = await apiFetch("/api/manutencao-reporte", {
@@ -426,6 +439,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
           checklistItemId: itemManutencaoSelecionado.id,
           descricao: descricaoManutencao.trim(),
           fotos: fotosManutencao,
+          needsMaterial: precisaMaterialManutencao,
+          needsExternalService: precisaServicoManutencao,
         }),
       });
       const json = await res.json();
@@ -923,6 +938,38 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                       )}
                     </div>
                   </div>
+                  <div className="card mt-3">
+                    <p className="text-xs text-gray-500 font-medium mb-1.5">Precisa adquirir algum material? *</p>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <button
+                        onClick={() => setPrecisaMaterialManutencao(true)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${precisaMaterialManutencao === true ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Sim
+                      </button>
+                      <button
+                        onClick={() => setPrecisaMaterialManutencao(false)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${precisaMaterialManutencao === false ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Não
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 font-medium mb-1.5">Precisa contratar serviço externo? *</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setPrecisaServicoManutencao(true)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${precisaServicoManutencao === true ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Sim
+                      </button>
+                      <button
+                        onClick={() => setPrecisaServicoManutencao(false)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${precisaServicoManutencao === false ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Não
+                      </button>
+                    </div>
+                  </div>
                   <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => setManutencaoSubFase("selecionar")}
@@ -933,7 +980,14 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                     </button>
                     <button
                       onClick={enviarManutencao}
-                      disabled={descricaoManutencao.trim().length < 5 || enviandoManutencao || uploadandoFotoManutencao || !podeOperar}
+                      disabled={
+                        descricaoManutencao.trim().length < 5 ||
+                        enviandoManutencao ||
+                        uploadandoFotoManutencao ||
+                        !podeOperar ||
+                        precisaMaterialManutencao === null ||
+                        precisaServicoManutencao === null
+                      }
                       title={!podeOperar ? tituloSemAcesso : undefined}
                       className="flex-[2] py-3 rounded-xl bg-orange-500 text-white font-bold disabled:opacity-50"
                     >

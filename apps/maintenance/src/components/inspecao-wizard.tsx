@@ -44,6 +44,12 @@ type Resposta = {
   status: 'CONFORME' | 'NAO_CONFORME'
   comment: string
   photos: string[]
+  // Só relevante quando status = NAO_CONFORME e o item NÃO é um carryover
+  // (ver pendenciaAtual) — pra não conformidade nova, precisa responder as
+  // duas antes de avançar/salvar (pedido explícito). null = ainda não
+  // respondeu.
+  needsMaterial: boolean | null
+  needsExternalService: boolean | null
 }
 
 export function InspecaoWizard({
@@ -84,8 +90,14 @@ export function InspecaoWizard({
         return [
           it.id,
           pendencia
-            ? { status: 'NAO_CONFORME' as const, comment: pendencia.comment, photos: pendencia.photos }
-            : { status: 'CONFORME' as const, comment: '', photos: [] },
+            ? {
+                status: 'NAO_CONFORME' as const,
+                comment: pendencia.comment,
+                photos: pendencia.photos,
+                needsMaterial: null,
+                needsExternalService: null,
+              }
+            : { status: 'CONFORME' as const, comment: '', photos: [], needsMaterial: null, needsExternalService: null },
         ]
       }),
     ),
@@ -100,6 +112,14 @@ export function InspecaoWizard({
 
   function setComentario(itemId: string, comment: string) {
     setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], comment } }))
+  }
+
+  function setNeedsMaterial(itemId: string, needsMaterial: boolean) {
+    setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], needsMaterial } }))
+  }
+
+  function setNeedsExternalService(itemId: string, needsExternalService: boolean) {
+    setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], needsExternalService } }))
   }
 
   async function adicionarFotos(itemId: string, files: FileList | null) {
@@ -196,6 +216,8 @@ export function InspecaoWizard({
         status: resp?.status ?? 'CONFORME',
         comment: resp?.status === 'NAO_CONFORME' ? resp.comment || undefined : undefined,
         photos: resp?.status === 'NAO_CONFORME' ? resp.photos : [],
+        needsMaterial: resp?.status === 'NAO_CONFORME' ? resp.needsMaterial ?? undefined : undefined,
+        needsExternalService: resp?.status === 'NAO_CONFORME' ? resp.needsExternalService ?? undefined : undefined,
       }
     })
 
@@ -394,6 +416,70 @@ export function InspecaoWizard({
                   )}
                 </div>
               </div>
+
+              {/* Carryover (pendenciaAtual) já tem card de Correção em
+                  andamento — não faz sentido re-perguntar. Só pergunta pra
+                  não conformidade genuinamente nova (pedido explícito: toda
+                  não conformidade nova precisa informar as duas flags antes
+                  de concluir o registro). */}
+              {!pendenciaAtual && (
+                <div className="space-y-3 border-t border-[var(--warning)]/30 pt-3">
+                  <div>
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                      Precisa adquirir algum material? *
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setNeedsMaterial(item.id, true)}
+                        className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                          resp?.needsMaterial === true
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:bg-accent'
+                        }`}
+                      >
+                        Sim
+                      </button>
+                      <button
+                        onClick={() => setNeedsMaterial(item.id, false)}
+                        className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                          resp?.needsMaterial === false
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:bg-accent'
+                        }`}
+                      >
+                        Não
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                      Precisa contratar serviço externo? *
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setNeedsExternalService(item.id, true)}
+                        className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                          resp?.needsExternalService === true
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:bg-accent'
+                        }`}
+                      >
+                        Sim
+                      </button>
+                      <button
+                        onClick={() => setNeedsExternalService(item.id, false)}
+                        className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                          resp?.needsExternalService === false
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-muted-foreground hover:bg-accent'
+                        }`}
+                      >
+                        Não
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </Panel>
@@ -442,7 +528,11 @@ export function InspecaoWizard({
           </Button>
           <Button
             onClick={() => irPara(indice + 1)}
-            disabled={naoConforme && !resp?.comment?.trim()}
+            disabled={
+              naoConforme &&
+              (!resp?.comment?.trim() ||
+                (!pendenciaAtual && (resp?.needsMaterial === null || resp?.needsExternalService === null)))
+            }
             className="h-11 flex-1 rounded-xl"
           >
             {indice === itens.length - 1 ? 'Ver resumo' : 'Próximo'}

@@ -625,11 +625,20 @@ function SpotDetailDialog({
   const [uploading, setUploading] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null)
+  // Só relevante quando isto é um registro NOVO de não conformidade (item
+  // estava CONFORME antes de abrir o popup) — editar a descrição de uma não
+  // conformidade já existente não reabre essas perguntas, o card de
+  // Correção já existe e já foi respondido. Ver comentário no salvar().
+  const [needsMaterial, setNeedsMaterial] = useState<boolean | null>(null)
+  const [needsExternalService, setNeedsExternalService] = useState<boolean | null>(null)
+  const eraNovoRegistro = status === 'NAO_CONFORME' && inspectionItem?.status !== 'NAO_CONFORME'
 
   useEffect(() => {
     setStatus(inspectionItem?.status ?? 'CONFORME')
     setComentario(inspectionItem?.comment ?? '')
     setFotos(inspectionItem?.photos ?? [])
+    setNeedsMaterial(null)
+    setNeedsExternalService(null)
   }, [inspectionItem])
 
   async function adicionarFotos(files: FileList | null) {
@@ -681,6 +690,10 @@ function SpotDetailDialog({
       toast.error('Descreva a não conformidade (mínimo 5 caracteres).')
       return
     }
+    if (eraNovoRegistro && (needsMaterial === null || needsExternalService === null)) {
+      toast.error('Informe se precisa de material e de serviço externo.')
+      return
+    }
     setSalvando(true)
     try {
       unwrapSafeAction(
@@ -689,6 +702,8 @@ function SpotDetailDialog({
           status,
           comment: comentarioLimpo,
           photos: fotos,
+          needsMaterial: eraNovoRegistro ? needsMaterial ?? undefined : undefined,
+          needsExternalService: eraNovoRegistro ? needsExternalService ?? undefined : undefined,
         }),
       )
       toast.success('Item atualizado.')
@@ -814,6 +829,57 @@ function SpotDetailDialog({
                     )}
                   </div>
                 </div>
+
+                {eraNovoRegistro && (
+                  <div className="space-y-3 rounded-xl border border-red-200 bg-red-50/40 p-3">
+                    <div>
+                      <p className="mb-1.5 text-xs font-bold text-red-600">Precisa adquirir algum material? *</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant={needsMaterial === true ? 'default' : 'outline'}
+                          disabled={!podeOperar}
+                          className="rounded-xl"
+                          onClick={() => setNeedsMaterial(true)}
+                        >
+                          Sim
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={needsMaterial === false ? 'default' : 'outline'}
+                          disabled={!podeOperar}
+                          className="rounded-xl"
+                          onClick={() => setNeedsMaterial(false)}
+                        >
+                          Não
+                        </Button>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="mb-1.5 text-xs font-bold text-red-600">Precisa contratar serviço externo? *</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant={needsExternalService === true ? 'default' : 'outline'}
+                          disabled={!podeOperar}
+                          className="rounded-xl"
+                          onClick={() => setNeedsExternalService(true)}
+                        >
+                          Sim
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={needsExternalService === false ? 'default' : 'outline'}
+                          disabled={!podeOperar}
+                          className="rounded-xl"
+                          onClick={() => setNeedsExternalService(false)}
+                        >
+                          Não
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -847,7 +913,8 @@ function SpotDetailDialog({
               disabled={
                 !podeOperar ||
                 salvando ||
-                (status === 'NAO_CONFORME' && comentario.trim().length < 5)
+                (status === 'NAO_CONFORME' && comentario.trim().length < 5) ||
+                (eraNovoRegistro && (needsMaterial === null || needsExternalService === null))
               }
               className="rounded-xl"
             >

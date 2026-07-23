@@ -78,6 +78,11 @@ model Tenant {
   maintenanceUhSpots             MaintenanceUhSpot[]
   maintenanceItemInfos           MaintenanceItemInfo[]
   maintenanceItemInfoLogs        MaintenanceItemInfoLog[]
+  maintenanceCorrectionCards     MaintenanceCorrectionCard[]
+  maintenanceSuppliers           MaintenanceSupplier[]
+  maintenanceSupplierQuotes      MaintenanceCorrectionSupplierQuote[]
+  maintenanceSchedulingLogs      MaintenanceSchedulingLog[]
+  maintenanceDailyCommitments    MaintenanceDailyCommitment[]
 
   // Estoque (módulo novo, migrado de um sistema Flask/Postgres avulso —
   // "estoque-bnb-flex" — que rodava fora da suíte, no Render).
@@ -185,6 +190,18 @@ model User {
   // (IV-UH) e quem é o autor de cada alteração no log correspondente.
   maintenanceItemInfoUpdates MaintenanceItemInfo[]    @relation("MaintenanceItemInfoUpdatedBy")
   maintenanceItemInfoLogs    MaintenanceItemInfoLog[] @relation("MaintenanceItemInfoLogAuthor")
+
+  // Manutenção — fluxo de Correção (Aquisição/Serviços Externos/Execução):
+  // quem triou, quem comprou o material, quem contratou/agendou, quem
+  // executou o card, quem fechou a programação do dia, autor de cada
+  // registro de cotação e de cada edição de agendamento.
+  maintenanceCardsTriaged        MaintenanceCorrectionCard[] @relation("MaintenanceCardTriagedBy")
+  maintenanceCardsMaterialCompra MaintenanceCorrectionCard[] @relation("MaintenanceCardMaterialComprador")
+  maintenanceCardsScheduled      MaintenanceCorrectionCard[] @relation("MaintenanceCardScheduledBy")
+  maintenanceCardsExecuted       MaintenanceCorrectionCard[] @relation("MaintenanceCardExecutedBy")
+  maintenanceQuotesCreated       MaintenanceCorrectionSupplierQuote[] @relation("MaintenanceQuoteCreatedBy")
+  maintenanceSchedulingLogs      MaintenanceSchedulingLog[]  @relation("MaintenanceSchedulingLogAuthor")
+  maintenanceCommitmentsClosed   MaintenanceDailyCommitment[] @relation("MaintenanceCommitmentClosedBy")
 
   // Estoque — usuário que registrou a movimentação (opcional: dado migrado
   // do sistema antigo não tem FK real, ver comentário em StockMovement).
@@ -369,6 +386,7 @@ model UH {
   maintenanceUhImages           MaintenanceUhImage[]
   maintenanceItemInfos          MaintenanceItemInfo[]
   maintenanceItemInfoLogs       MaintenanceItemInfoLog[]
+  maintenanceCorrectionCards    MaintenanceCorrectionCard[]
 
   @@unique([tenantId, numero])
 }
@@ -1081,6 +1099,8 @@ model MaintenanceChecklistItem {
   uhSpots          MaintenanceUhSpot[]
   itemInfos        MaintenanceItemInfo[]
   itemInfoLogs     MaintenanceItemInfoLog[]
+  correctionCards  MaintenanceCorrectionCard[]
+  supplierAssociations MaintenanceSupplierChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1128,6 +1148,11 @@ model MaintenanceInspectionItem {
 
   corrections MaintenanceCorrection[]
 
+  // Card do fluxo de Correção (Aquisição/Serviços Externos/Execução) — 1:1,
+  // criado automaticamente no instante em que este item vira NAO_CONFORME.
+  // Ver comentário completo em MaintenanceCorrectionCard.
+  correctionCard MaintenanceCorrectionCard?
+
   @@index([inspectionId])
 }
 
@@ -1161,6 +1186,210 @@ model MaintenanceCorrection {
   @@index([tenantId, createdAt])
   @@index([inspectionItemId])
   @@index([uhId])
+}
+
+// Card do fluxo de Correção (telas "Aquisição" / "Serviços Externos" /
+// "Execução", que substituem a antiga Rota de Correção de passo único) — um
+// por não conformidade em aberto, 1:1 com o MaintenanceInspectionItem que
+// ainda não voltou a CONFORME. Criado automaticamente no instante em que um
+// item vira NAO_CONFORME, em qualquer um dos pontos de entrada (Inspeções,
+// UH 3D, relato rápido de camareira/governanta) — ver
+// createCorrectionCardForItem em packages/core/src/maintenanceCorrection.ts.
+//
+// needsMaterial/needsExternalService nulos = ainda não triado. Isso só
+// acontece em cards migrados de antes dessa funcionalidade existir — a
+// migração inicial os deixa com as duas flags null de propósito, pra forçar
+// a passagem pela tela de "Triagem retroativa" antes de aparecerem em
+// qualquer kanban (decisão explícita do Felipe: não presumir "não precisa de
+// nada" pra dado histórico). Todo card novo já nasce com as duas flags
+// respondidas (não-nulas), porque a pergunta é obrigatória no ato do
+// registro da não conformidade.
+model MaintenanceCorrectionCard {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  inspectionItemId String                    @unique
+  inspectionItem   MaintenanceInspectionItem @relation(fields: [inspectionItemId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  checklistItemId String?
+  checklistItem   MaintenanceChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+
+  needsMaterial        Boolean?
+  needsExternalService Boolean?
+  triagedAt            DateTime?
+  triagedById          String?
+  triagedBy            User?     @relation("MaintenanceCardTriagedBy", fields: [triagedById], references: [id])
+
+  // Kanban "Aquisição" — só relevante quando needsMaterial = true.
+  materialStatus        String    @default("A_ADQUIRIR") // A_ADQUIRIR | COMPRADO
+  materialReceiptPhoto  String? // URL do cupom fiscal — obrigatório pra virar COMPRADO
+  materialCompradoEm    DateTime?
+  materialCompradoPorId String?
+  materialCompradoPor   User?     @relation("MaintenanceCardMaterialComprador", fields: [materialCompradoPorId], references: [id])
+
+  // Kanban "Serviços Externos" — só relevante quando needsExternalService = true.
+  externalServiceStatus String    @default("A_CONTRATAR") // A_CONTRATAR | EM_NEGOCIACAO | AGENDADO | EXECUTADO
+  hiredSupplierId       String?
+  hiredSupplier         MaintenanceSupplier? @relation("MaintenanceCardHiredSupplier", fields: [hiredSupplierId], references: [id], onDelete: SetNull)
+  scheduledDate         DateTime?
+  scheduledById         String?
+  scheduledBy           User?     @relation("MaintenanceCardScheduledBy", fields: [scheduledById], references: [id])
+
+  // Kanban "Execução" — relevante quando não precisa de nada, ou já
+  // resolveu material/serviço (ver itensElegiveisExecucao em domain.ts).
+  executionStatus     String                      @default("A_FAZER") // A_FAZER | PLANEJADA | EXECUTADA
+  dailyCommitmentId   String?
+  dailyCommitment     MaintenanceDailyCommitment? @relation(fields: [dailyCommitmentId], references: [id], onDelete: SetNull)
+  // Perguntado ao selecionar o card pra programação do dia — dispara
+  // notificação pra Atendimento/Gerente/Master, não altera nenhum estado
+  // sozinho (a UH não é bloqueada automaticamente, é decisão humana).
+  blockForReservation Boolean?
+
+  // Preenchimento comum do passo "executado" — tanto do kanban de Serviços
+  // Externos quanto do de Execução — volta o MaintenanceInspectionItem pra
+  // CONFORME e gera um MaintenanceCorrection histórico (mesma tabela usada
+  // pela Rota de Correção antiga).
+  executedDescription String?   @db.Text
+  executedPhotos      String    @default("[]")
+  executedAt          DateTime?
+  executedById        String?
+  executedBy          User?     @relation("MaintenanceCardExecutedBy", fields: [executedById], references: [id])
+
+  quotes        MaintenanceCorrectionSupplierQuote[]
+  schedulingLogs MaintenanceSchedulingLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([uhId])
+  @@index([dailyCommitmentId])
+}
+
+// Fornecedor de serviço externo — cadastro simples (nome + contato), tenant-
+// -scoped. Pode ser criado avulso (tela de cadastro futura) ou, mais comum,
+// direto de dentro de um card na etapa "Em negociação" (pedido explícito).
+model MaintenanceSupplier {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome       String
+  contato    String?
+  observacao String? @db.Text
+
+  checklistItems MaintenanceSupplierChecklistItem[]
+  hiredCards     MaintenanceCorrectionCard[]          @relation("MaintenanceCardHiredSupplier")
+  quotes         MaintenanceCorrectionSupplierQuote[]
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// Associação fornecedor <-> tipo de item de verificação — "uma vez
+// cadastrado o fornecedor dentro do card, este fornecedor entra pra lista de
+// fornecedores associados a esse tipo de item de verificação" (pedido
+// explícito). Usado pra sugerir, na próxima não conformidade do mesmo tipo
+// de item, os fornecedores já usados antes.
+model MaintenanceSupplierChecklistItem {
+  id         String              @id @default(cuid())
+  supplierId String
+  supplier   MaintenanceSupplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  checklistItemId String
+  checklistItem   MaintenanceChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([supplierId, checklistItemId])
+  @@index([checklistItemId])
+}
+
+// Fornecedor(es) registrado(s) durante a negociação de um card — pode haver
+// mais de um por card (recomendação discreta de 3 cotações na UI, mas nunca
+// obrigatório, pedido explícito).
+model MaintenanceCorrectionSupplierQuote {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  cardId String
+  card   MaintenanceCorrectionCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  supplierId String
+  supplier   MaintenanceSupplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User?   @relation("MaintenanceQuoteCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([cardId])
+  @@index([tenantId])
+}
+
+// Log de edição do agendamento (fornecedor contratado + data do serviço) —
+// "esse agendamento pode ser editado depois, gerando um log de edição"
+// (pedido explícito). O estado atual fica em
+// MaintenanceCorrectionCard.hiredSupplierId/scheduledDate; aqui só o
+// histórico de mudanças.
+model MaintenanceSchedulingLog {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  cardId String
+  card   MaintenanceCorrectionCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  previousSupplierId String?
+  previousSupplierNome String?
+  previousDate         DateTime?
+  newSupplierId        String?
+  newSupplierNome      String?
+  newDate              DateTime?
+
+  authorId String?
+  author   User?   @relation("MaintenanceSchedulingLogAuthor", fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([cardId])
+  @@index([tenantId])
+}
+
+// "Programação do dia" fechada no Kanban de Execução — a seleção da coluna
+// Planejadas precisa ser diária e "fechar" um compromisso pro dia (pedido
+// explícito, com pop-up de confirmação antes de fechar). Guarda os
+// snapshots de conformidade geral antes/depois pro relatório da tela
+// Performance, e reportSentAt garante que a notificação de "Resultado
+// Diário" (disparada às 19h OU ao executar o último card, o que vier
+// primeiro) nunca sai duas vezes.
+model MaintenanceDailyCommitment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  data String // "YYYY-MM-DD"
+
+  closedAt   DateTime @default(now())
+  closedById String?
+  closedBy   User?    @relation("MaintenanceCommitmentClosedBy", fields: [closedById], references: [id])
+
+  conformidadeAntes  Int?
+  conformidadeDepois Int?
+  reportSentAt       DateTime?
+
+  cards MaintenanceCorrectionCard[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, data])
+  @@index([tenantId, data])
 }
 
 // Atribuição de item de checklist por UH. Ausência de linhas pra uma UH

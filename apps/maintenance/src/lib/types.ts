@@ -49,6 +49,7 @@ export type ViewId =
   | "evolucao"
   | "informacoes"
   | "correcao"
+  | "performance"
   | "uh3d"
   | "config";
 
@@ -130,4 +131,80 @@ export type CorrectionSummary = {
   photos: string[];
   createdAt: string; // ISO
   authorName: string | null;
+};
+
+/* --------------------------- Fluxo de Correção ---------------------------- */
+// Tela "Correção" (Aquisição / Serviços Externos / Execução) — ver
+// comentário completo em MaintenanceCorrectionCard no schema Prisma e em
+// packages/core/src/maintenanceCorrection.ts (kanbansDoCard,
+// podeAgendarServico).
+
+export type SupplierView = {
+  id: string;
+  nome: string;
+  contato: string | null;
+  observacao: string | null;
+  checklistItemIds: string[]; // pra sugerir "fornecedores já usados nesse tipo de item"
+};
+
+export type SchedulingLogView = {
+  id: string;
+  previousSupplierNome: string | null;
+  previousDate: string | null; // ISO
+  newSupplierNome: string | null;
+  newDate: string | null; // ISO
+  authorName: string | null;
+  createdAt: string; // ISO
+};
+
+export type CorrectionCardView = {
+  id: string;
+  uhId: string;
+  uhName: string;
+  checklistItemId: string | null;
+  checklistItemName: string | null;
+  checklistItemCategory: string | null;
+  comment: string | null; // descrição atual da não conformidade (do InspectionItem)
+  photos: string[]; // fotos atuais da não conformidade
+  createdAt: string; // ISO — quando o card nasceu
+
+  needsMaterial: boolean; // sempre não-nulo aqui — cards não triados são filtrados na query
+  needsExternalService: boolean;
+
+  materialStatus: "A_ADQUIRIR" | "COMPRADO";
+  materialReceiptPhoto: string | null;
+  materialCompradoEm: string | null; // ISO
+
+  externalServiceStatus: "A_CONTRATAR" | "EM_NEGOCIACAO" | "AGENDADO" | "EXECUTADO";
+  hiredSupplierId: string | null;
+  hiredSupplierNome: string | null;
+  scheduledDate: string | null; // ISO
+  quotes: { id: string; supplierId: string; supplierNome: string; createdAt: string }[];
+  schedulingLogs: SchedulingLogView[];
+
+  executionStatus: "A_FAZER" | "PLANEJADA" | "EXECUTADA";
+  dailyCommitmentId: string | null;
+  blockForReservation: boolean | null;
+
+  executedDescription: string | null;
+  executedPhotos: string[];
+  executedAt: string | null; // ISO
+  executedByName: string | null;
+};
+
+export type DailyCommitmentView = {
+  id: string;
+  data: string; // "YYYY-MM-DD"
+  closedAt: string; // ISO
+  closedByName: string | null;
+  conformidadeAntes: number | null;
+  conformidadeDepois: number | null;
+  reportSentAt: string | null; // ISO
+  cards: {
+    id: string;
+    uhName: string;
+    checklistItemName: string | null;
+    executionStatus: "A_FAZER" | "PLANEJADA" | "EXECUTADA";
+    executedAt: string | null; // ISO
+  }[];
 };

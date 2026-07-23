@@ -4,6 +4,8 @@ export * from "./tenant";
 export * from "./moduleAccess";
 export { prisma } from "./prisma";
 export { sendPushToUser } from "./push";
+export * from "./maintenanceCorrection";
+export * from "./timezone";
 export type {
   SuiteModule,
   User,
