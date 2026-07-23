@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Clock, Camera, ChevronRight, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info } from "lucide-react";
+import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import GeoCheckin from "./GeoCheckin";
@@ -95,6 +95,10 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   const [uploadandoFotoManutencao, setUploadandoFotoManutencao] = useState(false);
   const [enviandoManutencao, setEnviandoManutencao] = useState(false);
   const [resultadoManutencao, setResultadoManutencao] = useState<{ jaRegistrado: boolean; itemNome: string } | null>(null);
+  // Categorias (Banheiro, Cozinha, Estrutura do quarto...) começam
+  // minimizadas na tela de seleção — expande só a que a camareira tocar,
+  // pra lista longa de itens não ficar poluída/difícil de escanear.
+  const [categoriasManutencaoAbertas, setCategoriasManutencaoAbertas] = useState<Set<string>>(new Set());
   // Registrados nesta sessão de "manutencao" (antes do próximo carregar()
   // trazer o /api/sessoes atualizado) — evita deixar selecionar de novo um
   // item que ela acabou de registrar, no mesmo loop.
@@ -265,6 +269,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setFotosManutencao([]);
     setResultadoManutencao(null);
     setItensManutencaoRegistradosAgora(new Set());
+    setCategoriasManutencaoAbertas(new Set());
     setFase("manutencao");
     if (sessaoId) {
       try {
@@ -302,6 +307,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     } else {
       finalizarEtapaManutencao();
     }
+  }
+
+  function toggleCategoriaManutencao(categoria: string) {
+    setCategoriasManutencaoAbertas((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoria)) next.delete(categoria);
+      else next.add(categoria);
+      return next;
+    });
   }
 
   function selecionarItemManutencao(item: ItemChecklistManutencao, pendentes: Set<string>) {
@@ -697,6 +711,12 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
 
         {manutencaoSubFase === "selecionar" && (
           <>
+            <button
+              onClick={() => setManutencaoSubFase("pergunta")}
+              className="flex items-center gap-1 text-sm text-gray-500 font-medium mb-3 hover:text-gray-700"
+            >
+              <ChevronLeft className="w-4 h-4" /> Voltar
+            </button>
             <p className="text-sm text-gray-600 mb-3">Selecione o item com necessidade de manutenção:</p>
             {Object.keys(itensPorCategoria).length === 0 ? (
               <div className="card text-center py-6">
@@ -706,33 +726,47 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                 </button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {Object.entries(itensPorCategoria).map(([categoria, itens]) => (
-                  <div key={categoria}>
-                    <p className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">{categoria}</p>
-                    <div className="space-y-2">
-                      {itens.map((it) => {
-                        const jaRegistrado = pendentesSet.has(it.id) || itensManutencaoRegistradosAgora.has(it.id);
-                        return (
-                          <button
-                            key={it.id}
-                            onClick={() => selecionarItemManutencao(it, pendentesSet)}
-                            className={`w-full text-left card flex items-center justify-between gap-2 ${jaRegistrado ? "opacity-60" : ""}`}
-                          >
-                            <span className="font-medium text-gray-800">{it.name}</span>
-                            {jaRegistrado ? (
-                              <span className="text-xs text-amber-600 font-medium flex items-center gap-1 flex-shrink-0">
-                                <Info className="w-3.5 h-3.5" /> Já registrado
-                              </span>
-                            ) : (
-                              <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
+              <div className="space-y-3">
+                {Object.entries(itensPorCategoria).map(([categoria, itens]) => {
+                  const aberta = categoriasManutencaoAbertas.has(categoria);
+                  return (
+                    <div key={categoria} className="card !p-0 overflow-hidden">
+                      <button
+                        onClick={() => toggleCategoriaManutencao(categoria)}
+                        className="w-full flex items-center justify-between gap-2 px-4 py-3.5"
+                      >
+                        <span className="text-sm font-bold text-gray-800 uppercase tracking-wide">{categoria}</span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs text-gray-400">{itens.length} item{itens.length > 1 ? "s" : ""}</span>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${aberta ? "rotate-180" : ""}`} />
+                        </div>
+                      </button>
+                      {aberta && (
+                        <div className="border-t border-gray-100">
+                          {itens.map((it) => {
+                            const jaRegistrado = pendentesSet.has(it.id) || itensManutencaoRegistradosAgora.has(it.id);
+                            return (
+                              <button
+                                key={it.id}
+                                onClick={() => selecionarItemManutencao(it, pendentesSet)}
+                                className={`w-full text-left flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 last:border-b-0 ${jaRegistrado ? "opacity-60" : ""}`}
+                              >
+                                <span className="font-medium text-gray-800">{it.name}</span>
+                                {jaRegistrado ? (
+                                  <span className="text-xs text-amber-600 font-medium flex items-center gap-1 flex-shrink-0">
+                                    <Info className="w-3.5 h-3.5" /> Já registrado
+                                  </span>
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
