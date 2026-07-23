@@ -47,28 +47,39 @@ export function Evolucao({
     return meses
   }, [inspecoes])
 
-  // Conformidade ao longo do tempo — agora diária, ordenada do dia mais
-  // antigo (esquerda) pro mais atual/hoje (direita), últimos DIAS_JANELA dias.
+  // Conformidade ao longo do tempo — NÃO é "conformidade das inspeções feitas
+  // naquele dia" (isso derrubava o gráfico pra 0% em qualquer dia sem
+  // inspeção nova, mesmo com a conformidade geral em 91%). É o estado
+  // ACUMULADO da conformidade geral até aquele dia (inclusive), com o mesmo
+  // cálculo do card "Conformidade geral" — por isso o ponto de hoje sempre
+  // bate com esse card. Ordenada do dia mais antigo (esquerda) pro mais
+  // atual/hoje (direita), últimos DIAS_JANELA dias.
   const serieDiaria = useMemo(() => {
+    const inspecoesOrdenadas = [...inspecoes].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    )
     const dias: { dia: string; conformidade: number }[] = []
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
+    let ok = 0
+    let total = 0
+    let ponteiro = 0
     for (let i = DIAS_JANELA - 1; i >= 0; i--) {
       const d = new Date(hoje)
       d.setDate(d.getDate() - i)
+      const fimDoDia = new Date(d)
+      fimDoDia.setHours(23, 59, 59, 999)
       const label = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
-      const doDia = inspecoes.filter((insp) => {
-        const di = new Date(insp.date)
-        return (
-          di.getDate() === d.getDate() &&
-          di.getMonth() === d.getMonth() &&
-          di.getFullYear() === d.getFullYear()
-        )
-      })
-      const contagens = doDia.map(contarConformidade)
-      const totalItens = contagens.reduce((s, x) => s + x.total, 0)
-      const ok = contagens.reduce((s, x) => s + x.ok, 0)
-      dias.push({ dia: label, conformidade: totalItens > 0 ? Math.round((ok / totalItens) * 100) : 0 })
+      while (
+        ponteiro < inspecoesOrdenadas.length &&
+        new Date(inspecoesOrdenadas[ponteiro].date) <= fimDoDia
+      ) {
+        const c = contarConformidade(inspecoesOrdenadas[ponteiro])
+        ok += c.ok
+        total += c.total
+        ponteiro++
+      }
+      dias.push({ dia: label, conformidade: total > 0 ? Math.round((ok / total) * 100) : 0 })
     }
     return dias
   }, [inspecoes])
