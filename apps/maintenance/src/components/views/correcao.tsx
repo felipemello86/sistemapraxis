@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Wrench, Truck, HardHat, ListChecks, Package } from 'lucide-react'
+import { HardHat, ListChecks, Package } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { KanbanAquisicao } from '@/components/views/kanban-aquisicao'
 import { KanbanServicos } from '@/components/views/kanban-servicos'
@@ -72,11 +72,6 @@ export function Correcao({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Wrench className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold tracking-tight">Correção</h1>
-      </div>
-
       <div className="flex gap-2 overflow-x-auto border-b border-border/70 pb-px">
         {abas.map((a) => (
           <button
