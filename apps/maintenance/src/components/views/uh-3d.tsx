@@ -91,7 +91,15 @@ export function Uh3D({
   itemInfoLogs: ItemInfoLogEntry[]
   onAbrirMenu?: () => void
 }) {
-  const [uhId, setUhId] = useState<string>(unidades[0]?.id ?? '')
+  // Lista em ordem alfabética (numeric:true trata "102-I", "201-V", "1406-D"
+  // etc. numericamente dentro do texto) — mesmo critério do dropdown de
+  // Configurações > UH 3D.
+  const unidadesOrdenadas = useMemo(
+    () => [...unidades].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })),
+    [unidades],
+  )
+
+  const [uhId, setUhId] = useState<string>(unidadesOrdenadas[0]?.id ?? '')
   const [uhDropdownOpen, setUhDropdownOpen] = useState(false)
   const [currentRoom, setCurrentRoom] = useState<RoomType>('porta')
   const [imageIndex, setImageIndex] = useState(0)
@@ -477,7 +485,7 @@ export function Uh3D({
           </button>
           {uhDropdownOpen && (
             <div className="absolute left-0 top-full mt-2 max-h-72 w-56 overflow-y-auto rounded-2xl bg-black/70 p-1.5 shadow-xl ring-1 ring-white/10 backdrop-blur-xl">
-              {unidades.map((u) => (
+              {unidadesOrdenadas.map((u) => (
                 <button
                   key={u.id}
                   onClick={() => {
