@@ -22,6 +22,10 @@ import type { CorrectionCardView, DailyCommitmentView } from '@/lib/types'
 
 const MAX_FOTOS_EXECUCAO = 4
 
+function formatarHoraExecucao(iso: string) {
+  return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+}
+
 // Kanban "Execução" — só cards sem serviço externo (needsExternalService
 // false) e, se precisar material, já comprado (ver filtro em correcao.tsx).
 // "A Fazer" só mostra cards de UHs liberadas pra limpeza hoje na Governança
@@ -223,7 +227,7 @@ export function KanbanExecucao({
                 <p className="text-sm font-medium">Unidade {card.uhName}</p>
                 <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
                 {card.executedAt && (
-                  <p className="mt-1 text-xs text-muted-foreground">Executado às {formatarData(card.executedAt, true)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Executado às {formatarHoraExecucao(card.executedAt)}</p>
                 )}
               </div>
             ))
