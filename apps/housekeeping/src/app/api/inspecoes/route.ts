@@ -74,7 +74,59 @@ export async function GET() {
     relationLoadStrategy: "join",
   });
 
-  return NextResponse.json(sessions);
+  // Dados pra etapa obrigatória "Necessidade de Manutenção?" da governanta
+  // (ver GovernantaView, gate antes de "Finalizar Inspeção") — mesma lógica
+  // de itensParaUnidade/ultimaInspecaoPorUnidade de
+  // apps/maintenance/src/lib/domain.ts, já replicada em /api/sessoes (ver
+  // comentário lá) pro mesmo passo do lado da camareira.
+  const uhIds = [...new Set(sessions.map((s) => s.uhId))];
+  const [catalogo, atribuicoesCustom, inspecoesManutencao] = await Promise.all([
+    prisma.maintenanceChecklistItem.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, category: true },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+    }),
+    prisma.maintenanceUnitChecklistItem.findMany({
+      where: { tenantId, uhId: { in: uhIds } },
+      select: { uhId: true, checklistItemId: true },
+    }),
+    prisma.maintenanceInspection.findMany({
+      where: { tenantId, uhId: { in: uhIds } },
+      select: { uhId: true, date: true, items: { select: { checklistItemId: true, status: true } } },
+    }),
+  ]);
+
+  const atribuicaoPorUh = new Map<string, Set<string>>();
+  for (const a of atribuicoesCustom) {
+    if (!atribuicaoPorUh.has(a.uhId)) atribuicaoPorUh.set(a.uhId, new Set());
+    atribuicaoPorUh.get(a.uhId)!.add(a.checklistItemId);
+  }
+
+  const ultimaInspecaoPorUh = new Map<string, (typeof inspecoesManutencao)[number]>();
+  for (const insp of inspecoesManutencao) {
+    const atual = ultimaInspecaoPorUh.get(insp.uhId);
+    if (!atual || insp.date > atual.date) ultimaInspecaoPorUh.set(insp.uhId, insp);
+  }
+
+  const pendentesPorUh = new Map<string, string[]>();
+  for (const [uhId, insp] of ultimaInspecaoPorUh) {
+    pendentesPorUh.set(
+      uhId,
+      insp.items.filter((it) => it.status === "NAO_CONFORME" && it.checklistItemId).map((it) => it.checklistItemId!),
+    );
+  }
+
+  const sessionsComManutencao = sessions.map((s) => {
+    const permitidos = atribuicaoPorUh.get(s.uhId);
+    const manutencaoItens = !permitidos || permitidos.size === 0 ? catalogo : catalogo.filter((it) => permitidos.has(it.id));
+    return {
+      ...s,
+      manutencaoItens,
+      manutencaoPendentes: pendentesPorUh.get(s.uhId) ?? [],
+    };
+  });
+
+  return NextResponse.json(sessionsComManutencao);
 }
 
 // POST /api/inspecoes - iniciar inspeção de uma sessão

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil, Star, Undo2, Flag } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ChevronLeft, ChevronDown, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil, Star, Undo2, Flag, Wrench, HelpCircle, Info, Camera } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/g/[token]/GovernantaView.tsx (v1),
@@ -25,7 +25,7 @@ type Sessao = {
   id: string;
   finalizadaEm: string;
   duracaoSegundos: number;
-  uh: { numero: string; tipo: string };
+  uh: { id: string; numero: string; tipo: string };
   camareira: { nome: string };
   assignment: { data: string };
   inspection: {
@@ -44,7 +44,17 @@ type Sessao = {
       observacao: string | null;
     }[];
   } | null;
+  // Dados pra etapa obrigatória "Necessidade de Manutenção?" — ver gate
+  // logo antes de "Finalizar Inspeção" mais abaixo. manutencaoItens = itens
+  // de checklist da Manutenção aplicáveis a essa UH; manutencaoPendentes =
+  // ids dos que já estão NAO_CONFORME hoje (evita registro duplicado).
+  manutencaoItens?: ItemChecklistManutencao[];
+  manutencaoPendentes?: string[];
 };
+
+type ItemChecklistManutencao = { id: string; name: string; category: string };
+
+const MAX_FOTOS_MANUTENCAO = 4;
 
 type Solicitacao = {
   id: string;
@@ -129,6 +139,34 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   const [excluindoUh, setExcluindoUh] = useState<string | null>(null);
   const [justificativaTexto, setJustificativaTexto] = useState("");
   const [salvandoExclusao, setSalvandoExclusao] = useState(false);
+
+  // Etapa obrigatória "Necessidade de Manutenção?" — entre "todos os itens
+  // avaliados" e "Finalizar Inspeção" (mesmo padrão da camareira, ver
+  // ItemChecklistManutencao/manutencaoItens acima e CamareiraView.tsx).
+  // manutencaoConcluidaId guarda o id da inspeção que já passou por essa
+  // etapa nesta sessão do navegador — enquanto for diferente de
+  // `inspecaoId`, o gate substitui a tela de resumo/finalizar.
+  const [manutencaoConcluidaId, setManutencaoConcluidaId] = useState<string | null>(null);
+  const [manutencaoSubFase, setManutencaoSubFase] = useState<"pergunta" | "selecionar" | "descrever" | "resultado">("pergunta");
+  const [itemManutencaoSelecionado, setItemManutencaoSelecionado] = useState<ItemChecklistManutencao | null>(null);
+  const [descricaoManutencao, setDescricaoManutencao] = useState("");
+  const [fotosManutencao, setFotosManutencao] = useState<string[]>([]);
+  const [uploadandoFotoManutencao, setUploadandoFotoManutencao] = useState(false);
+  const [enviandoManutencao, setEnviandoManutencao] = useState(false);
+  const [resultadoManutencao, setResultadoManutencao] = useState<{ jaRegistrado: boolean; itemNome: string } | null>(null);
+  const [itensManutencaoRegistradosAgora, setItensManutencaoRegistradosAgora] = useState<Set<string>>(new Set());
+  const [categoriasManutencaoAbertas, setCategoriasManutencaoAbertas] = useState<Set<string>>(new Set());
+
+  // Reseta o sub-fluxo sempre que uma inspeção diferente é aberta.
+  useEffect(() => {
+    setManutencaoSubFase("pergunta");
+    setItemManutencaoSelecionado(null);
+    setDescricaoManutencao("");
+    setFotosManutencao([]);
+    setResultadoManutencao(null);
+    setItensManutencaoRegistradosAgora(new Set());
+    setCategoriasManutencaoAbertas(new Set());
+  }, [inspecaoId]);
 
   const carregar = useCallback(async () => {
     const [insp, sol, fin] = await Promise.all([
@@ -258,6 +296,162 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     setComentarioGovernanta("");
     setFase("lista");
     await carregar();
+  }
+
+  // ─── Etapa "Necessidade de Manutenção?" (mesmo padrão da camareira) ─────
+  // Ao contrário da CleaningSession da camareira, InspectionSession não tem
+  // campo de duração/score baseado em tempo — não há timer pra pausar aqui,
+  // só o gate de conteúdo (ver manutencaoConcluidaId acima).
+
+  // Mesma função robusta de CamareiraView.tsx — evita canvas.toBlob travar
+  // pra sempre em fotos grandes (WebKit/Safari mobile).
+  async function comprimirImagem(file: File, maxWidth = 1200, quality = 0.82): Promise<File> {
+    const tentativa = new Promise<File>((resolve) => {
+      try {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        const falhar = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+        };
+        img.onload = () => {
+          try {
+            URL.revokeObjectURL(objectUrl);
+            const canvas = document.createElement("canvas");
+            let { width, height } = img;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) {
+              resolve(file);
+              return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+                } else {
+                  resolve(file);
+                }
+              },
+              "image/jpeg",
+              quality,
+            );
+          } catch {
+            resolve(file);
+          }
+        };
+        img.onerror = falhar;
+        img.src = objectUrl;
+      } catch {
+        resolve(file);
+      }
+    });
+
+    const timeout = new Promise<File>((resolve) => {
+      setTimeout(() => resolve(file), 8000);
+    });
+
+    return Promise.race([tentativa, timeout]);
+  }
+
+  function toggleCategoriaManutencao(categoria: string) {
+    setCategoriasManutencaoAbertas((prev) => {
+      const next = new Set(prev);
+      if (next.has(categoria)) next.delete(categoria);
+      else next.add(categoria);
+      return next;
+    });
+  }
+
+  function responderPerguntaManutencao(necessario: boolean) {
+    if (necessario) {
+      setManutencaoSubFase("selecionar");
+    } else if (inspecaoId) {
+      setManutencaoConcluidaId(inspecaoId);
+    }
+  }
+
+  function selecionarItemManutencao(item: ItemChecklistManutencao, pendentes: Set<string>) {
+    if (pendentes.has(item.id) || itensManutencaoRegistradosAgora.has(item.id)) {
+      setResultadoManutencao({ jaRegistrado: true, itemNome: item.name });
+      setManutencaoSubFase("resultado");
+      return;
+    }
+    setItemManutencaoSelecionado(item);
+    setDescricaoManutencao("");
+    setFotosManutencao([]);
+    setManutencaoSubFase("descrever");
+  }
+
+  async function handleFotoManutencao(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || fotosManutencao.length >= MAX_FOTOS_MANUTENCAO) return;
+    setUploadandoFotoManutencao(true);
+    try {
+      const fileComprimido = await comprimirImagem(file);
+      const fd = new FormData();
+      fd.append("file", fileComprimido);
+      fd.append("tipo", "manutencao");
+      fd.append("pasta", "manutencao-governanta");
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (json.url) setFotosManutencao((prev) => [...prev, json.url]);
+    } catch {
+      // Foto é opcional — falha silenciosa não impede o registro.
+    } finally {
+      setUploadandoFotoManutencao(false);
+    }
+  }
+
+  function removerFotoManutencao(idx: number) {
+    setFotosManutencao((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function enviarManutencao() {
+    if (!itemManutencaoSelecionado || !sessaoAtiva || descricaoManutencao.trim().length < 5) return;
+    setEnviandoManutencao(true);
+    try {
+      const res = await apiFetch("/api/manutencao-reporte", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uhId: sessaoAtiva.uh.id,
+          checklistItemId: itemManutencaoSelecionado.id,
+          descricao: descricaoManutencao.trim(),
+          fotos: fotosManutencao,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Erro ${res.status}`);
+      if (!json.jaRegistrado) {
+        setItensManutencaoRegistradosAgora((prev) => new Set(prev).add(itemManutencaoSelecionado.id));
+      }
+      setResultadoManutencao({ jaRegistrado: !!json.jaRegistrado, itemNome: itemManutencaoSelecionado.name });
+      setManutencaoSubFase("resultado");
+    } catch {
+      // Mantém na tela de descrição — a governanta pode tentar de novo.
+    } finally {
+      setEnviandoManutencao(false);
+    }
+  }
+
+  function continuarAposResultadoManutencao(registrarOutro: boolean) {
+    if (registrarOutro) {
+      setItemManutencaoSelecionado(null);
+      setDescricaoManutencao("");
+      setFotosManutencao([]);
+      setResultadoManutencao(null);
+      setManutencaoSubFase("selecionar");
+    } else if (inspecaoId) {
+      setManutencaoConcluidaId(inspecaoId);
+    }
   }
 
   async function excluirUh(sessaoId: string) {
@@ -432,6 +626,17 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   if (fase === "inspecao" && sessaoAtiva) {
     const jaFinalizada = sessaoAtiva.inspection?.finalizadaEm != null;
 
+    // Dados frescos pra etapa "Necessidade de Manutenção?" — sessaoAtiva é
+    // um snapshot de quando a inspeção foi aberta; `sessoes` é atualizado a
+    // cada carregar().
+    const sessaoFresca = sessoes.find((s) => s.id === sessaoAtiva.id) ?? sessaoAtiva;
+    const manutencaoItensDisponiveis = sessaoFresca.manutencaoItens ?? [];
+    const pendentesManutencaoSet = new Set(sessaoFresca.manutencaoPendentes ?? []);
+    const itensPorCategoriaManutencao = manutencaoItensDisponiveis.reduce<Record<string, ItemChecklistManutencao[]>>((acc, it) => {
+      (acc[it.category] ??= []).push(it);
+      return acc;
+    }, {});
+
     return (
       <div className="min-h-screen bg-gray-50 max-w-lg mx-auto">
         <div className="bg-indigo-700 text-white p-5 sticky top-0 z-10">
@@ -568,6 +773,217 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                 )}
               </div>
             )
+          ) : todosAvaliados && manutencaoConcluidaId !== inspecaoId ? (
+            <div>
+              <div className="bg-indigo-700 text-white rounded-xl p-4 mb-4">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <Wrench className="w-5 h-5" /> Necessidade de manutenção
+                </h2>
+              </div>
+
+              {manutencaoSubFase === "pergunta" && (
+                <div className="card text-center py-8">
+                  <HelpCircle className="w-10 h-10 text-indigo-500 mx-auto mb-3" />
+                  <p className="text-lg font-semibold text-gray-800 mb-1">
+                    Foi detectada necessidade de manutenção nesta UH?
+                  </p>
+                  <p className="text-sm text-gray-500 mb-6">
+                    Ar-condicionado, chuveiro, tomadas, móveis danificados, etc.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => responderPerguntaManutencao(false)}
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex-1 py-4 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Não
+                    </button>
+                    <button
+                      onClick={() => responderPerguntaManutencao(true)}
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex-1 py-4 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600 disabled:opacity-50"
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {manutencaoSubFase === "selecionar" && (
+                <>
+                  <button
+                    onClick={() => setManutencaoSubFase("pergunta")}
+                    className="flex items-center gap-1 text-sm text-gray-500 font-medium mb-3 hover:text-gray-700"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Voltar
+                  </button>
+                  <p className="text-sm text-gray-600 mb-3">Selecione o item com necessidade de manutenção:</p>
+                  {Object.keys(itensPorCategoriaManutencao).length === 0 ? (
+                    <div className="card text-center py-6">
+                      <p className="text-gray-500 mb-4">Nenhum item de checklist de manutenção cadastrado.</p>
+                      <button onClick={() => continuarAposResultadoManutencao(false)} className="btn-primary w-full py-3">
+                        Continuar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {Object.entries(itensPorCategoriaManutencao).map(([categoria, itensCat]) => {
+                        const aberta = categoriasManutencaoAbertas.has(categoria);
+                        return (
+                          <div key={categoria} className="card !p-0 overflow-hidden">
+                            <button
+                              onClick={() => toggleCategoriaManutencao(categoria)}
+                              className="w-full flex items-center justify-between gap-2 px-4 py-3.5"
+                            >
+                              <span className="text-sm font-bold text-gray-800 uppercase tracking-wide">{categoria}</span>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-xs text-gray-400">{itensCat.length} item{itensCat.length > 1 ? "s" : ""}</span>
+                                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${aberta ? "rotate-180" : ""}`} />
+                              </div>
+                            </button>
+                            {aberta && (
+                              <div className="border-t border-gray-100">
+                                {itensCat.map((it) => {
+                                  const jaRegistrado = pendentesManutencaoSet.has(it.id) || itensManutencaoRegistradosAgora.has(it.id);
+                                  return (
+                                    <button
+                                      key={it.id}
+                                      onClick={() => selecionarItemManutencao(it, pendentesManutencaoSet)}
+                                      disabled={!podeOperar}
+                                      title={!podeOperar ? tituloSemAcesso : undefined}
+                                      className={`w-full text-left flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 last:border-b-0 disabled:opacity-40 ${jaRegistrado ? "opacity-60" : ""}`}
+                                    >
+                                      <span className="font-medium text-gray-800">{it.name}</span>
+                                      {jaRegistrado ? (
+                                        <span className="text-xs text-amber-600 font-medium flex items-center gap-1 flex-shrink-0">
+                                          <Info className="w-3.5 h-3.5" /> Já registrado
+                                        </span>
+                                      ) : (
+                                        <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {manutencaoSubFase === "descrever" && itemManutencaoSelecionado && (
+                <>
+                  <div className="card mb-3">
+                    <p className="text-xs text-gray-500">Item selecionado</p>
+                    <p className="font-bold text-gray-800">{itemManutencaoSelecionado.name}</p>
+                  </div>
+                  <div className="card">
+                    <label className="block text-xs text-gray-500 font-medium mb-1.5">Descreva a falha detectada *</label>
+                    <textarea
+                      rows={4}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-400 resize-none"
+                      style={{ fontSize: "16px" }}
+                      placeholder="Ex.: Ar-condicionado não gela, chuveiro sem água quente..."
+                      value={descricaoManutencao}
+                      onChange={(e) => setDescricaoManutencao(e.target.value)}
+                    />
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-500 font-medium mb-1.5">Fotos (opcional)</p>
+                      {fotosManutencao.length > 0 && (
+                        <div className="flex gap-2 flex-wrap mb-2">
+                          {fotosManutencao.map((url, idx) => (
+                            <div key={idx} className="relative">
+                              <img src={url} alt={`foto-${idx}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                              <button
+                                onClick={() => removerFotoManutencao(idx)}
+                                className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                              >×</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {fotosManutencao.length < MAX_FOTOS_MANUTENCAO && (
+                        <label className={`flex items-center gap-2 cursor-pointer text-sm rounded-lg px-3 py-2.5 border ${uploadandoFotoManutencao ? "opacity-50 border-gray-200 bg-gray-50 text-gray-400" : "border-indigo-200 bg-indigo-50 text-indigo-700"}`}>
+                          <Camera className="w-4 h-4 flex-shrink-0" />
+                          <span>{uploadandoFotoManutencao ? "Enviando foto..." : "Adicionar foto"}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={handleFotoManutencao}
+                            disabled={uploadandoFotoManutencao || !podeOperar}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => setManutencaoSubFase("selecionar")}
+                      disabled={enviandoManutencao}
+                      className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-600 font-medium disabled:opacity-50"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={enviarManutencao}
+                      disabled={descricaoManutencao.trim().length < 5 || enviandoManutencao || uploadandoFotoManutencao || !podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex-[2] py-3 rounded-xl bg-orange-500 text-white font-bold disabled:opacity-50"
+                    >
+                      {enviandoManutencao ? "Registrando..." : "Registrar falha"}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {manutencaoSubFase === "resultado" && resultadoManutencao && (
+                <div className="card text-center py-8">
+                  {resultadoManutencao.jaRegistrado ? (
+                    <>
+                      <Info className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                      <p className="text-lg font-semibold text-gray-800 mb-1">Não é necessário registrar</p>
+                      <p className="text-sm text-gray-500 mb-6">
+                        A não-conformidade do item &ldquo;{resultadoManutencao.itemNome}&rdquo; já está registrada no sistema de Manutenção.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-3" />
+                      <p className="text-lg font-semibold text-gray-800 mb-1">Falha registrada</p>
+                      <p className="text-sm text-gray-500 mb-6">
+                        &ldquo;{resultadoManutencao.itemNome}&rdquo; já consta como não conforme na Manutenção.
+                      </p>
+                    </>
+                  )}
+                  <p className="text-sm text-gray-700 font-medium mb-3">Deseja registrar falha em mais algum item?</p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => continuarAposResultadoManutencao(false)}
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex-1 py-4 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Não, continuar
+                    </button>
+                    <button
+                      onClick={() => continuarAposResultadoManutencao(true)}
+                      disabled={!podeOperar}
+                      title={!podeOperar ? tituloSemAcesso : undefined}
+                      className="flex-1 py-4 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : todosAvaliados ? (
             <div>
               <div className={`card mb-4 text-center ${totalFalhasAtual === 0 ? "bg-green-50" : "bg-yellow-50"}`}>
