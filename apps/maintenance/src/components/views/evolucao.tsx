@@ -17,8 +17,8 @@ import {
 } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
 import { Activity, ClipboardList } from 'lucide-react'
-import { contarConformidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
-import type { InspecaoComUnidade } from '@/lib/types'
+import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
+import type { AtribuicoesPorUnidade, ChecklistItem, InspecaoComUnidade, UnitOption } from '@/lib/types'
 
 // Janela da série diária de conformidade — pedido explícito (era mensal, virou
 // diária, hoje sempre na ponta direita). 30 dias é um piso razoável pra não
@@ -27,8 +27,14 @@ const DIAS_JANELA = 30
 
 export function Evolucao({
   inspecoes,
+  unidades,
+  itens,
+  atribuicoes,
 }: {
   inspecoes: InspecaoComUnidade[]
+  unidades: UnitOption[]
+  itens: ChecklistItem[]
+  atribuicoes: AtribuicoesPorUnidade
 }) {
   // Volume de inspeções continua mensal (não fazia parte do pedido de virar
   // diário) — usado só pelo último gráfico da tela.
@@ -96,19 +102,17 @@ export function Evolucao({
     [ultimaPorUnidade],
   )
   const itensInspecionadosAtual = contagensAtuais.reduce((s, x) => s + x.total, 0)
-  const naoConformeAtual = contagensAtuais.reduce((s, x) => s + x.problema, 0)
+  const conformeAtual = contagensAtuais.reduce((s, x) => s + x.ok, 0)
   const conformidadeAtual =
-    itensInspecionadosAtual > 0
-      ? Math.round(((itensInspecionadosAtual - naoConformeAtual) / itensInspecionadosAtual) * 100)
-      : 0
+    itensInspecionadosAtual > 0 ? Math.round((conformeAtual / itensInspecionadosAtual) * 100) : 0
 
-  // Quantidade total de itens de verificação somados — soma bruta de itens
-  // em TODAS as inspeções já registradas (histórico completo, não só o
-  // estado atual). Serve de contexto/volume abaixo da fração acima, não
-  // substitui ela.
-  const itensSomadosHistorico = useMemo(
-    () => inspecoes.reduce((s, insp) => s + insp.items.length, 0),
-    [inspecoes],
+  // Total de itens de verificação do HOTEL — soma dos itens de checklist
+  // aplicáveis a cada UH (itensParaUnidade), inspecionados ou não. Diferente
+  // do denominador da fração acima (que só conta o que já foi inspecionado
+  // ao menos uma vez) — este é o universo completo, serve de contexto/escala.
+  const totalItensHotel = useMemo(
+    () => unidades.reduce((s, u) => s + itensParaUnidade(u.id, itens, atribuicoes).length, 0),
+    [unidades, itens, atribuicoes],
   )
 
   // Largura mínima do gráfico diário — cada dia precisa de espaço pra
@@ -137,8 +141,8 @@ export function Evolucao({
         />
         <StatCard
           label="Itens de Verificação"
-          value={`${naoConformeAtual}/${itensInspecionadosAtual}`}
-          hint={`${itensSomadosHistorico} itens de verificação somados no total`}
+          value={`${conformeAtual}/${itensInspecionadosAtual}`}
+          hint={`${totalItensHotel} itens de verificação do hotel no total`}
           tone="primary"
           icon={<ClipboardList className="h-[18px] w-[18px]" />}
         />

@@ -304,7 +304,14 @@ export function Dashboard({
               itemInfoLogs={itemInfoLogs}
             />
           )}
-          {view === 'evolucao' && <Evolucao inspecoes={inspecoes} />}
+          {view === 'evolucao' && (
+            <Evolucao
+              inspecoes={inspecoes}
+              unidades={unidades}
+              itens={itens}
+              atribuicoes={atribuicoes}
+            />
+          )}
           {view === 'informacoes' && (
             <Informacoes
               podeOperar={podeOperar}
