@@ -56,6 +56,7 @@ export function InspecaoWizard({
   unidade,
   itens: itensIniciais,
   pendenciasAtuais = {},
+  itensComCardAberto,
   onCancel,
   onSaved,
 }: {
@@ -66,6 +67,15 @@ export function InspecaoWizard({
   // o relato atual em vez de partir de "Conforme" em branco. Ver comentário
   // em respostas abaixo.
   pendenciasAtuais?: Record<string, { comment: string; photos: string[] }>
+  // checklistItemId cujo item NAO_CONFORME atual já tem um card de Correção
+  // aberto cuidando dele — critério que precisa bater exatamente com o do
+  // servidor (createInspecaoImpl) pra decidir se pula a pergunta de
+  // material/serviço externo. Diferente de pendenciasAtuais (que é "está
+  // não conforme", usado só pra pré-preencher descrição/fotos): um item
+  // pode estar não conforme SEM ter card ainda (não conformidade legada,
+  // de antes dessa funcionalidade existir) — nesse caso a pergunta
+  // continua obrigatória, senão o servidor rejeita o salvamento.
+  itensComCardAberto?: Set<string>
   onCancel: () => void
   onSaved: () => void
 }) {
@@ -254,6 +264,9 @@ export function InspecaoWizard({
     const progresso = ((indice + 1) / itens.length) * 100
     const naoConforme = resp?.status === 'NAO_CONFORME'
     const pendenciaAtual = pendenciasAtuais[item.id]
+    // Gate real da pergunta de material/serviço — precisa ter card aberto,
+    // não só estar não conforme (ver comentário na prop itensComCardAberto).
+    const jaTemCard = itensComCardAberto?.has(item.id) ?? false
 
     return (
       <div className="mx-auto max-w-xl space-y-5">
@@ -417,12 +430,16 @@ export function InspecaoWizard({
                 </div>
               </div>
 
-              {/* Carryover (pendenciaAtual) já tem card de Correção em
-                  andamento — não faz sentido re-perguntar. Só pergunta pra
-                  não conformidade genuinamente nova (pedido explícito: toda
-                  não conformidade nova precisa informar as duas flags antes
-                  de concluir o registro). */}
-              {!pendenciaAtual && (
+              {/* Só pula a pergunta quando já existe um card de Correção
+                  cuidando desse item (jaTemCard) — não basta estar não
+                  conforme (pendenciaAtual): item legado, de antes dessa
+                  funcionalidade existir, pode estar não conforme sem card
+                  nenhum, e nesse caso a pergunta é obrigatória (é assim que
+                  a triagem retroativa acontece — reinspecionando o item).
+                  Esse critério precisa bater com o do servidor
+                  (createInspecaoImpl, jaTemCardAberto), senão o salvamento
+                  quebra. */}
+              {!jaTemCard && (
                 <div className="space-y-3 border-t border-[var(--warning)]/30 pt-3">
                   <div>
                     <p className="mb-1.5 text-xs font-medium text-muted-foreground">
@@ -531,7 +548,7 @@ export function InspecaoWizard({
             disabled={
               naoConforme &&
               (!resp?.comment?.trim() ||
-                (!pendenciaAtual && (resp?.needsMaterial === null || resp?.needsExternalService === null)))
+                (!jaTemCard && (resp?.needsMaterial === null || resp?.needsExternalService === null)))
             }
             className="h-11 flex-1 rounded-xl"
           >

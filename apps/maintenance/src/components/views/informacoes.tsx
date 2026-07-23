@@ -264,6 +264,20 @@ export function Informacoes({
         .filter((it) => it.status === 'NAO_CONFORME' && it.checklistItemId)
         .map((it) => [it.checklistItemId as string, { comment: it.comment ?? '', photos: it.photos }]),
     )
+    // Diferente de pendenciasAtuais acima (qualquer item ainda NAO_CONFORME,
+    // usado só pra pré-preencher descrição/fotos): aqui é especificamente
+    // "esse item já tem um card de Correção cuidando dele" — critério que
+    // precisa bater exatamente com o do servidor (createInspecaoImpl,
+    // jaTemCardAberto), senão o wizard pula a pergunta de material/serviço
+    // pra um item legado sem card e o salvamento quebra no servidor (esse
+    // era o bug: item NAO_CONFORME antigo, sem card, marcado como
+    // "pendência" só por já estar não conforme — pulava a pergunta no
+    // client, mas o server não achava card nenhum e exigia a resposta).
+    const itensComCardAberto = new Set(
+      (ultimaInsp?.items ?? [])
+        .filter((it) => it.status === 'NAO_CONFORME' && it.checklistItemId && idsComCard.has(it.id))
+        .map((it) => it.checklistItemId as string),
+    )
     return (
       // Sem prop podeOperar aqui: o wizard só é alcançável clicando em
       // "Iniciar inspeção", que já fica desabilitado (e ignora o clique,
@@ -273,6 +287,7 @@ export function Informacoes({
         unidade={unidadeAtiva}
         itens={itensDaUnidade}
         pendenciasAtuais={pendenciasAtuais}
+        itensComCardAberto={itensComCardAberto}
         onCancel={encerrarInspecao}
         onSaved={encerrarInspecao}
       />
