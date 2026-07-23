@@ -11,7 +11,9 @@ export default async function ConfiguracoesPage() {
   if (!session) redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
 
   const podeAcessar = await hasModuleAccess(session, "BOOKING_REVIEWS");
-  if (!podeAcessar) redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
+  // Volta pro hub do tenant (tiles + Sair), não pra landing genérica — ver
+  // comentário equivalente em apps/booking-reviews/src/app/page.tsx.
+  if (!podeAcessar) redirect(`${process.env.NEXT_PUBLIC_GATEWAY_URL || "https://sistemaspraxis.com.br"}/${session.tenantSlug}`);
 
   const [config, categories] = await Promise.all([
     prisma.reviewsConfig.findUnique({ where: { tenantId: session.tenantId } }),

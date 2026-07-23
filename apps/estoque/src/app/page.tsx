@@ -12,7 +12,9 @@ export default async function EstoqueHome() {
 
   const podeAcessar = await hasModuleAccess(session, "STOCK");
   if (!podeAcessar) {
-    redirect(process.env.NEXT_PUBLIC_GATEWAY_URL || "/");
+    // Volta pro hub do próprio tenant (tiles + Sair), não pra landing
+    // genérica do domínio raiz — essa não tem navegação nenhuma.
+    redirect(`${process.env.NEXT_PUBLIC_GATEWAY_URL || "https://sistemaspraxis.com.br"}/${session.tenantSlug}`);
   }
 
   redirect("/dashboard");
