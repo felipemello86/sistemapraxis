@@ -369,6 +369,12 @@ model UH {
   bloqueioDescricao       String?
   bloqueioSolicitanteNome String?
   bloqueioEm              DateTime?
+  // "MANUAL" (bloqueio manual pela Camareira, ver api/bloqueio/route.ts) ou
+  // "NC_URGENTE" (automático, ao registrar uma não conformidade impeditiva
+  // ao uso — ver packages/core/src/maintenanceUrgente.ts). Existe só pra
+  // reavaliarBloqueioUrgencia saber que É SEGURO desbloquear sozinho quando
+  // não sobra nenhuma NC urgente aberta — nunca derruba um bloqueio manual.
+  bloqueioOrigem          String?
 
   assignments      DailyAssignment[]
   cleaningSessions CleaningSession[]
@@ -1140,6 +1146,15 @@ model MaintenanceInspectionItem {
   status  String // CONFORME | NAO_CONFORME
   comment String?
   photos  String  @default("[]") // JSON array de URLs (Cloudinary) — evidência de não conformidade
+
+  // NC "impeditiva ao uso" — pedido explícito do Felipe. Sempre respondida
+  // (Sim/Não) nos 4 pontos de entrada de NC enquanto status=NAO_CONFORME
+  // (não só na criação — pode ser reavaliada a cada nova inspeção, urgência
+  // muda). true dispara bloqueio automático da UH + notificação pra todos
+  // os usuários (ver packages/core/src/maintenanceUrgente.ts). Sempre
+  // resetada pra false quando o item volta a CONFORME (mesmo padrão de
+  // comment/photos abaixo, limpos na resolução).
+  urgente Boolean @default(false)
 
   // Preenchido quando uma MaintenanceCorrection resolve este item (o status
   // acima volta pra CONFORME e este campo guarda quando isso aconteceu —

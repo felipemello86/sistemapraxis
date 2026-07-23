@@ -21,6 +21,12 @@ type UHSel = {
   temReserva: boolean;
   emManutencao: boolean;
   manutencaoDescricao: string | null;
+  // Bloqueio pra reservas — automático (NC urgente registrada, ver
+  // packages/core/src/maintenanceUrgente.ts) ou manual (ver
+  // apps/housekeeping/src/app/api/bloqueio/route.ts). Só indicador visual
+  // aqui, não gateia a liberação pra limpeza (decisão do Felipe).
+  bloqueada: boolean;
+  bloqueioDescricao: string | null;
   assignmentId: string | null;
   camareiraId: string | null;
   camareiraNome: string | null;
@@ -644,7 +650,9 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
       ? uhsLiberacao.filter((u) => u.temReserva)
       : filtroStatus === "__MANUTENCAO__"
         ? uhsLiberacao.filter((u) => u.emManutencao)
-        : uhsLiberacao.filter((u) => (u.assignmentStatus ?? "PENDENTE") === filtroStatus);
+        : filtroStatus === "__BLOQUEADA__"
+          ? uhsLiberacao.filter((u) => u.bloqueada)
+          : uhsLiberacao.filter((u) => (u.assignmentStatus ?? "PENDENTE") === filtroStatus);
 
   const sortedLiberacao = [...uhsFiltradas].sort((a, b) => {
     if (sortBy === "status") {
@@ -663,7 +671,11 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   const statusPresentes = Array.from(new Set(uhsLiberacao.map((u) => u.assignmentStatus ?? "PENDENTE")));
   const comReserva = uhsLiberacao.filter((u) => u.temReserva).length;
   const emManutencaoCount = uhsLiberacao.filter((u) => u.emManutencao).length;
+  const bloqueadaCount = uhsLiberacao.filter((u) => u.bloqueada).length;
   const FILTROS_ESPECIAIS: { key: string; label: string; count: number; cor: string }[] = [
+    // Bloqueio (NC urgente ou manual) primeiro — é o status mais crítico.
+    // Só indicador/filtro visual, não gateia a liberação pra limpeza.
+    ...(bloqueadaCount > 0     ? [{ key: "__BLOQUEADA__",  label: "Bloqueada",     count: bloqueadaCount,    cor: "bloqueada" }] : []),
     ...(comReserva > 0        ? [{ key: "__RESERVA__",    label: "Com Reserva",   count: comReserva,        cor: "reserva" }] : []),
     ...(emManutencaoCount > 0 ? [{ key: "__MANUTENCAO__", label: "Em Manutenção", count: emManutencaoCount, cor: "manutencao" }] : []),
   ];
@@ -1027,12 +1039,16 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
               </button>
               {FILTROS_ESPECIAIS.map((f) => {
                 const ativo = filtroStatus === f.key;
-                const corAtivo = f.cor === "reserva"
-                  ? "bg-red-600 text-white border-red-600"
-                  : "bg-orange-500 text-white border-orange-500";
-                const corInativo = f.cor === "reserva"
-                  ? "bg-white text-red-600 border-red-300 hover:border-red-400"
-                  : "bg-white text-orange-600 border-orange-300 hover:border-orange-400";
+                const corAtivo = f.cor === "bloqueada"
+                  ? "bg-red-800 text-white border-red-800"
+                  : f.cor === "reserva"
+                    ? "bg-red-600 text-white border-red-600"
+                    : "bg-orange-500 text-white border-orange-500";
+                const corInativo = f.cor === "bloqueada"
+                  ? "bg-white text-red-800 border-red-400 hover:border-red-500"
+                  : f.cor === "reserva"
+                    ? "bg-white text-red-600 border-red-300 hover:border-red-400"
+                    : "bg-white text-orange-600 border-orange-300 hover:border-orange-400";
                 return (
                   <button
                     key={f.key}
@@ -1126,8 +1142,16 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                       </div>
                     </div>
 
-                    {(uh.emManutencao || uh.temReserva || uh.queixas.length > 0 || (uh.lateCheckout && !liberada)) && (
+                    {(uh.bloqueada || uh.emManutencao || uh.temReserva || uh.queixas.length > 0 || (uh.lateCheckout && !liberada)) && (
                       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {uh.bloqueada && (
+                          <span
+                            title={uh.bloqueioDescricao ?? undefined}
+                            className="flex items-center gap-1 text-xs font-semibold text-red-800 bg-red-100 border border-red-300 rounded-full px-2 py-0.5"
+                          >
+                            <Lock className="w-3 h-3" /> Bloqueada
+                          </span>
+                        )}
                         {uh.emManutencao && (
                           <span className="flex items-center gap-1 text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">
                             <Wrench className="w-3 h-3" /> Manutenção
@@ -1157,6 +1181,11 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                           </button>
                         )}
                       </div>
+                    )}
+                    {uh.bloqueada && uh.bloqueioDescricao && (
+                      <p className="text-xs text-red-800 bg-red-50 rounded-lg px-2 py-1 mt-1 border border-red-200">
+                        {uh.bloqueioDescricao}
+                      </p>
                     )}
                     {uh.emManutencao && uh.manutencaoDescricao && (
                       <p className="text-xs text-orange-700 bg-orange-50 rounded-lg px-2 py-1 mt-1 border border-orange-100">

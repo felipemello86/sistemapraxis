@@ -14,6 +14,7 @@ import {
   Trash2,
   ClipboardList,
   MapPin,
+  Siren,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -262,7 +263,10 @@ export function Informacoes({
     const pendenciasAtuais = Object.fromEntries(
       (ultimaInsp?.items ?? [])
         .filter((it) => it.status === 'NAO_CONFORME' && it.checklistItemId)
-        .map((it) => [it.checklistItemId as string, { comment: it.comment ?? '', photos: it.photos }]),
+        .map((it) => [
+          it.checklistItemId as string,
+          { comment: it.comment ?? '', photos: it.photos, urgente: it.urgente },
+        ]),
     )
     // Diferente de pendenciasAtuais acima (qualquer item ainda NAO_CONFORME,
     // usado só pra pré-preencher descrição/fotos): aqui é especificamente
@@ -390,6 +394,12 @@ export function Informacoes({
                         <span className="min-w-0 flex-1 truncate text-sm">
                           {catalogo?.name ?? 'Item removido do catálogo'}
                         </span>
+                        {it.status === 'NAO_CONFORME' && it.urgente && (
+                          <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                            <Siren className="h-2.5 w-2.5" />
+                            Urgente
+                          </span>
+                        )}
                         {it.status === 'NAO_CONFORME' && !idsComCard.has(it.id) && podeOperar && (
                           <button
                             onClick={() => {

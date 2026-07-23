@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Camera, CheckCircle2, ClipboardList, Lock, Loader2, ListChecks } from 'lucide-react'
+import { Camera, CheckCircle2, ClipboardList, Lock, Loader2, ListChecks, Siren } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -127,7 +127,15 @@ export function KanbanExecucao({
                     />
                     <div className="flex-1 space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">Unidade {card.uhName}</p>
+                        <p className="flex items-center gap-1.5 text-sm font-medium">
+                          Unidade {card.uhName}
+                          {card.urgente && (
+                            <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                              <Siren className="h-2.5 w-2.5" />
+                              Urgente
+                            </span>
+                          )}
+                        </p>
                         {card.checklistItemCategory && (
                           <Badge
                             variant="outline"
@@ -196,7 +204,15 @@ export function KanbanExecucao({
           ) : (
             planejadas.map((card) => (
               <div key={card.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-                <p className="text-sm font-medium">Unidade {card.uhName}</p>
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  Unidade {card.uhName}
+                  {card.urgente && (
+                    <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                      <Siren className="h-2.5 w-2.5" />
+                      Urgente
+                    </span>
+                  )}
+                </p>
                 <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
                 <Button
                   size="sm"
@@ -224,7 +240,15 @@ export function KanbanExecucao({
           ) : (
             executadas.map((card) => (
               <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
-                <p className="text-sm font-medium">Unidade {card.uhName}</p>
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  Unidade {card.uhName}
+                  {card.urgente && (
+                    <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                      <Siren className="h-2.5 w-2.5" />
+                      Urgente
+                    </span>
+                  )}
+                </p>
                 <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
                 {card.executedAt && (
                   <p className="mt-1 text-xs text-muted-foreground">Executado às {formatarHoraExecucao(card.executedAt)}</p>

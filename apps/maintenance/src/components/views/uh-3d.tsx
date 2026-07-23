@@ -15,6 +15,7 @@ import {
   BedDouble,
   ChefHat,
   ShowerHead,
+  Siren,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -314,6 +315,14 @@ export function Uh3D({
     return it.status
   }
 
+  // NC impeditiva ao uso — sinalização extra em cima do marcador normal de
+  // não conforme (pedido explícito: "a sinalização dos spots na tela UH 3D
+  // deve vir acompanhada de uma sinalização de urgência").
+  function urgenteDoSpot(spot: UhSpot): boolean {
+    const it = statusPorItem.get(spot.checklistItemId)
+    return it?.status === 'NAO_CONFORME' && it.urgente === true
+  }
+
   const { maxX: maxPanX, maxY: maxPanY } = getMaxPan(zoom)
   const podeArrastar = maxPanX > 0 || maxPanY > 0
   const displayed = getDisplayedSize(zoom)
@@ -384,6 +393,7 @@ export function Uh3D({
           {displayed &&
             spotsDaImagem.map((spot) => {
               const status = statusDoSpot(spot)
+              const urgente = urgenteDoSpot(spot)
               const item = itemPorId.get(spot.checklistItemId)
               const offsetX = (spot.x / 100 - 0.5) * displayed.w
               const offsetY = (spot.y / 100 - 0.5) * displayed.h
@@ -412,13 +422,19 @@ export function Uh3D({
                   title={item?.name ?? 'Item'}
                 >
                   {status === 'NAO_CONFORME' && (
-                    <span className="absolute inset-0 animate-ping rounded-full bg-rose-400/30" />
+                    <span
+                      className={cn(
+                        'absolute inset-0 animate-ping rounded-full',
+                        urgente ? 'bg-red-600/45' : 'bg-rose-400/30',
+                      )}
+                    />
                   )}
                   <span
                     className={cn(
                       'relative flex h-6 w-6 items-center justify-center rounded-full shadow-sm ring-1 backdrop-blur-[2px] transition-transform group-hover:scale-125',
                       status === 'CONFORME' && 'bg-emerald-500/25 ring-emerald-300/80',
-                      status === 'NAO_CONFORME' && 'bg-rose-500/30 ring-rose-300/85',
+                      status === 'NAO_CONFORME' && !urgente && 'bg-rose-500/30 ring-rose-300/85',
+                      status === 'NAO_CONFORME' && urgente && 'bg-red-600/45 ring-red-300',
                       status === 'NAO_AVALIADO' && 'bg-white/10 ring-white/45',
                     )}
                   >
@@ -426,8 +442,14 @@ export function Uh3D({
                     {status === 'NAO_CONFORME' && <X className="h-3 w-3 text-rose-200" strokeWidth={2.75} />}
                     {status === 'NAO_AVALIADO' && <Minus className="h-2.5 w-2.5 text-white/80" strokeWidth={2.75} />}
                   </span>
+                  {urgente && (
+                    <span className="absolute -right-1 -top-1 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-600 ring-2 ring-black/40">
+                      <Siren className="h-2 w-2 text-white" strokeWidth={3} />
+                    </span>
+                  )}
                   <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-popover px-2 py-1 text-xs text-popover-foreground shadow-lg ring-1 ring-foreground/10 group-hover:block">
                     {item?.name ?? 'Item removido do catálogo'}
+                    {urgente && <span className="ml-1 font-semibold text-red-500">· urgente</span>}
                   </span>
                 </button>
               )
@@ -631,6 +653,13 @@ function SpotDetailDialog({
   // Correção já existe e já foi respondido. Ver comentário no salvar().
   const [needsMaterial, setNeedsMaterial] = useState<boolean | null>(null)
   const [needsExternalService, setNeedsExternalService] = useState<boolean | null>(null)
+  // Diferente das duas acima: sempre perguntada quando NAO_CONFORME (nova
+  // ou edição de descrição de uma já existente) — urgência pode mudar,
+  // pedido explícito. Pré-preenchida com o valor atual do item quando já
+  // estava NAO_CONFORME.
+  const [urgente, setUrgente] = useState<boolean | null>(
+    inspectionItem?.status === 'NAO_CONFORME' ? inspectionItem.urgente : null,
+  )
   const eraNovoRegistro = status === 'NAO_CONFORME' && inspectionItem?.status !== 'NAO_CONFORME'
 
   useEffect(() => {
@@ -639,6 +668,7 @@ function SpotDetailDialog({
     setFotos(inspectionItem?.photos ?? [])
     setNeedsMaterial(null)
     setNeedsExternalService(null)
+    setUrgente(inspectionItem?.status === 'NAO_CONFORME' ? inspectionItem.urgente : null)
   }, [inspectionItem])
 
   async function adicionarFotos(files: FileList | null) {
@@ -694,6 +724,10 @@ function SpotDetailDialog({
       toast.error('Informe se precisa de material e de serviço externo.')
       return
     }
+    if (status === 'NAO_CONFORME' && urgente === null) {
+      toast.error('Informe se é uma NC impeditiva ao uso (urgente).')
+      return
+    }
     setSalvando(true)
     try {
       unwrapSafeAction(
@@ -704,6 +738,7 @@ function SpotDetailDialog({
           photos: fotos,
           needsMaterial: eraNovoRegistro ? needsMaterial ?? undefined : undefined,
           needsExternalService: eraNovoRegistro ? needsExternalService ?? undefined : undefined,
+          urgente: status === 'NAO_CONFORME' ? urgente ?? undefined : undefined,
         }),
       )
       toast.success('Item atualizado.')
@@ -830,6 +865,33 @@ function SpotDetailDialog({
                   </div>
                 </div>
 
+                <div className="space-y-1.5 rounded-xl border-2 border-red-300 bg-red-50/60 p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-red-700">
+                    <Siren className="h-3.5 w-3.5" />
+                    É uma NC impeditiva ao uso (urgente)? *
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant={urgente === true ? 'destructive' : 'outline'}
+                      disabled={!podeOperar}
+                      className="rounded-xl"
+                      onClick={() => setUrgente(true)}
+                    >
+                      Sim, urgente
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={urgente === false ? 'default' : 'outline'}
+                      disabled={!podeOperar}
+                      className="rounded-xl"
+                      onClick={() => setUrgente(false)}
+                    >
+                      Não
+                    </Button>
+                  </div>
+                </div>
+
                 {eraNovoRegistro && (
                   <div className="space-y-3 rounded-xl border border-red-200 bg-red-50/40 p-3">
                     <div>
@@ -914,6 +976,7 @@ function SpotDetailDialog({
                 !podeOperar ||
                 salvando ||
                 (status === 'NAO_CONFORME' && comentario.trim().length < 5) ||
+                (status === 'NAO_CONFORME' && urgente === null) ||
                 (eraNovoRegistro && (needsMaterial === null || needsExternalService === null))
               }
               className="rounded-xl"

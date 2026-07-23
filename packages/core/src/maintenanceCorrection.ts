@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { reavaliarBloqueioUrgencia } from "./maintenanceUrgente";
 
 // Fluxo de Correção (Aquisição / Serviços Externos / Execução) — substitui a
 // antiga Rota de Correção de passo único. Compartilhado em @praxis/core (em
@@ -60,6 +61,7 @@ export async function resolveCorrectionCard(params: {
 }) {
   const card = await prisma.maintenanceCorrectionCard.findUniqueOrThrow({
     where: { id: params.cardId },
+    include: { inspectionItem: { select: { urgente: true } } },
   });
 
   const now = new Date();
@@ -68,7 +70,7 @@ export async function resolveCorrectionCard(params: {
   await prisma.$transaction([
     prisma.maintenanceInspectionItem.update({
       where: { id: card.inspectionItemId },
-      data: { status: "CONFORME", corrigidoEm: now },
+      data: { status: "CONFORME", corrigidoEm: now, urgente: false },
     }),
     prisma.maintenanceCorrection.create({
       data: {
@@ -91,6 +93,15 @@ export async function resolveCorrectionCard(params: {
       },
     }),
   ]);
+
+  // Resolvido pelos kanbans (Serviços Externos "Executado" ou Execução
+  // "Executadas") — se essa NC era urgente, reavalia se dá pra desbloquear
+  // a UH automaticamente (só desbloqueia se não sobrar outra NC urgente
+  // aberta e o bloqueio foi originado por NC urgente, ver
+  // reavaliarBloqueioUrgencia).
+  if (card.inspectionItem.urgente) {
+    await reavaliarBloqueioUrgencia({ tenantId: params.tenantId, uhId: card.uhId });
+  }
 }
 
 /**

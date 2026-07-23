@@ -65,7 +65,18 @@ export async function GET(req: NextRequest) {
     prisma.dailySelectionStatus.findUnique({ where: { tenantId_data: { tenantId, data } } }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId, data },
-      include: { uh: { select: { id: true, numero: true, emManutencao: true, manutencaoDescricao: true } } },
+      include: {
+        uh: {
+          select: {
+            id: true,
+            numero: true,
+            emManutencao: true,
+            manutencaoDescricao: true,
+            bloqueada: true,
+            bloqueioDescricao: true,
+          },
+        },
+      },
       relationLoadStrategy: "join",
     }),
     prisma.dailyAssignment.findMany({
@@ -97,6 +108,8 @@ export async function GET(req: NextRequest) {
         temReserva: s.temReserva,
         emManutencao: s.uh.emManutencao,
         manutencaoDescricao: s.uh.manutencaoDescricao ?? null,
+        bloqueada: s.uh.bloqueada,
+        bloqueioDescricao: s.uh.bloqueioDescricao ?? null,
         assignmentId: a?.id ?? null,
         camareiraId: a?.camareiraId ?? null,
         camareiraNome: a?.camareira.nome ?? null,

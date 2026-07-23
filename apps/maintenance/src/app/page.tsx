@@ -137,7 +137,7 @@ export default async function Home() {
     prisma.maintenanceCorrectionCard.findMany({
       where: { tenantId: session.tenantId, inspectionItem: { status: "NAO_CONFORME" } },
       include: {
-        inspectionItem: { select: { comment: true, photos: true } },
+        inspectionItem: { select: { comment: true, photos: true, urgente: true } },
         uh: { select: { id: true, numero: true } },
         checklistItem: { select: { id: true, name: true, category: true } },
         hiredSupplier: { select: { id: true, nome: true } },
@@ -174,7 +174,11 @@ export default async function Home() {
       include: {
         closedBy: { select: { nome: true } },
         cards: {
-          include: { uh: { select: { numero: true } }, checklistItem: { select: { name: true } } },
+          include: {
+            uh: { select: { numero: true } },
+            checklistItem: { select: { name: true } },
+            inspectionItem: { select: { urgente: true } },
+          },
         },
       },
       orderBy: { data: "desc" },
@@ -212,6 +216,7 @@ export default async function Home() {
       comment: it.comment,
       photos: safeParsePhotos(it.photos),
       corrigidoEm: it.corrigidoEm ? it.corrigidoEm.toISOString() : null,
+      urgente: it.urgente,
     })),
   }));
 
@@ -269,6 +274,7 @@ export default async function Home() {
     comment: c.inspectionItem.comment,
     photos: safeParsePhotos(c.inspectionItem.photos),
     createdAt: c.createdAt.toISOString(),
+    urgente: c.inspectionItem.urgente,
     needsMaterial: c.needsMaterial ?? false,
     needsExternalService: c.needsExternalService ?? false,
     materialStatus: c.materialStatus as "A_ADQUIRIR" | "COMPRADO",
@@ -339,6 +345,7 @@ export default async function Home() {
       checklistItemName: card.checklistItem?.name ?? null,
       executionStatus: card.executionStatus as "A_FAZER" | "PLANEJADA" | "EXECUTADA",
       executedAt: card.executedAt ? card.executedAt.toISOString() : null,
+      urgente: card.inspectionItem.urgente,
     })),
     naoConformidadesIdentificadas: (naoConformidadesPorDia.get(cm.data) ?? []).map((c) => ({
       id: c.id,
@@ -346,6 +353,7 @@ export default async function Home() {
       checklistItemName: c.checklistItem?.name ?? null,
       comment: c.inspectionItem.comment,
       createdAt: c.createdAt.toISOString(),
+      urgente: c.inspectionItem.urgente,
     })),
   }));
 

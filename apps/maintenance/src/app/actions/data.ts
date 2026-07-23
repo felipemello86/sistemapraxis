@@ -1,7 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createCorrectionCardForItem, getSession, hasModuleAccess, prisma, resolveCorrectionCard } from "@praxis/core";
+import {
+  aplicarBloqueioPorUrgencia,
+  createCorrectionCardForItem,
+  getSession,
+  hasModuleAccess,
+  prisma,
+  reavaliarBloqueioUrgencia,
+  resolveCorrectionCard,
+} from "@praxis/core";
 import { safeAction } from "@/lib/safeAction";
 
 // Portado de apps/maintenance/src/app/actions/data.ts (v1). Diferenças:
@@ -79,6 +87,11 @@ async function createInspecaoImpl(input: {
     // informar se vai precisar de material e/ou de serviço externo.
     needsMaterial?: boolean;
     needsExternalService?: boolean;
+    // Diferente das duas acima: SEMPRE exigido quando status=NAO_CONFORME,
+    // mesmo em carryover — urgência pode mudar de uma inspeção pra outra
+    // (pedido explícito do Felipe). Ver comparação com o valor anterior
+    // mais abaixo.
+    urgente?: boolean;
   }[];
 }) {
   const session = await requireModuleSession();
@@ -87,6 +100,12 @@ async function createInspecaoImpl(input: {
 
   const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
   if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
+
+  for (const it of input.itens) {
+    if (it.status === "NAO_CONFORME" && typeof it.urgente !== "boolean") {
+      throw new Error("Informe se cada não conformidade é impeditiva ao uso (urgente).");
+    }
+  }
 
   const insp = await prisma.maintenanceInspection.create({
     data: {
@@ -100,6 +119,7 @@ async function createInspecaoImpl(input: {
           status: it.status,
           comment: it.comment ?? null,
           photos: JSON.stringify(it.photos ?? []),
+          urgente: it.status === "NAO_CONFORME" ? Boolean(it.urgente) : false,
         })),
       },
     },
@@ -126,16 +146,39 @@ async function createInspecaoImpl(input: {
         // ainda existe pra eles nesse ponto, então isso é só defensivo).
         inspectionItemId: { notIn: insp.items.map((it) => it.id) },
       },
-      select: { checklistItemId: true },
+      select: { checklistItemId: true, inspectionItem: { select: { urgente: true } } },
     });
-    const jaTemCardAberto = new Set(cardsJaAbertos.map((c) => c.checklistItemId));
+    // checklistItemId -> urgente do item anterior (o que essa nova
+    // inspeção está "continuando") — pra saber se a urgência escalou,
+    // desescalou ou não mudou, sem precisar re-perguntar nem duplicar card.
+    const urgenteAnteriorPorChecklistId = new Map(
+      cardsJaAbertos.map((c) => [c.checklistItemId, c.inspectionItem.urgente]),
+    );
 
     const itemCriadoPorChecklistId = new Map(insp.items.map((it) => [it.checklistItemId, it.id]));
 
     for (const it of itensNaoConformes) {
-      if (jaTemCardAberto.has(it.checklistItemId)) continue; // carryover — já tem card cuidando
       const inspectionItemId = itemCriadoPorChecklistId.get(it.checklistItemId);
       if (!inspectionItemId) continue;
+
+      if (urgenteAnteriorPorChecklistId.has(it.checklistItemId)) {
+        // Carryover — já tem card de Correção cuidando, não cria outro.
+        // Só reage se a urgência mudou de estado.
+        const urgenteAntes = urgenteAnteriorPorChecklistId.get(it.checklistItemId);
+        if (it.urgente === true && urgenteAntes !== true) {
+          await aplicarBloqueioPorUrgencia({
+            tenantId: session.tenantId,
+            uhId: input.uhId,
+            checklistItemId: it.checklistItemId,
+            comment: it.comment?.trim() || "Não conformidade urgente.",
+            solicitanteNome: session.nome,
+          });
+        } else if (it.urgente !== true && urgenteAntes === true) {
+          await reavaliarBloqueioUrgencia({ tenantId: session.tenantId, uhId: input.uhId });
+        }
+        continue;
+      }
+
       if (typeof it.needsMaterial !== "boolean" || typeof it.needsExternalService !== "boolean") {
         throw new Error(
           "Informe se cada não conformidade nova precisa de material e/ou de serviço externo.",
@@ -150,6 +193,15 @@ async function createInspecaoImpl(input: {
         needsExternalService: it.needsExternalService,
         triagedById: session.userId,
       });
+      if (it.urgente === true) {
+        await aplicarBloqueioPorUrgencia({
+          tenantId: session.tenantId,
+          uhId: input.uhId,
+          checklistItemId: it.checklistItemId,
+          comment: it.comment?.trim() || "Não conformidade urgente.",
+          solicitanteNome: session.nome,
+        });
+      }
     }
   }
 
@@ -489,6 +541,10 @@ async function editarSpotInspecaoImpl(input: {
   // edição de descrição/fotos, o card de Correção já existe e não muda.
   needsMaterial?: boolean;
   needsExternalService?: boolean;
+  // Diferente das duas acima: SEMPRE exigido quando status=NAO_CONFORME,
+  // nova ou edição — urgência pode mudar (pedido explícito). Comparado com
+  // o valor anterior do item pra decidir se escala/desescala o bloqueio.
+  urgente?: boolean;
 }) {
   const session = await requireModuleSession();
 
@@ -511,6 +567,9 @@ async function editarSpotInspecaoImpl(input: {
   ) {
     throw new Error("Informe se essa não conformidade precisa de material e/ou de serviço externo.");
   }
+  if (input.status === "NAO_CONFORME" && typeof input.urgente !== "boolean") {
+    throw new Error("Informe se essa não conformidade é impeditiva ao uso (urgente).");
+  }
 
   const now = new Date();
 
@@ -531,13 +590,19 @@ async function editarSpotInspecaoImpl(input: {
       }),
       prisma.maintenanceInspectionItem.update({
         where: { id: item.id },
-        data: { status: "CONFORME", corrigidoEm: now, comment: null, photos: "[]" },
+        data: { status: "CONFORME", corrigidoEm: now, comment: null, photos: "[]", urgente: false },
       }),
     ]);
+    // Resolveu direto pelo UH 3D (bypassa os kanbans de Correção) — se
+    // essa NC era urgente, reavalia se dá pra desbloquear a UH.
+    if (item.urgente) {
+      await reavaliarBloqueioUrgencia({ tenantId: session.tenantId, uhId: item.inspection.uhId });
+    }
   } else {
     // NAO_CONFORME → NAO_CONFORME (editar descrição/fotos) ou
     // CONFORME → NAO_CONFORME (marcar como quebrado agora).
     const eraNovoRegistro = input.status === "NAO_CONFORME" && item.status === "CONFORME";
+    const urgenteAntes = item.urgente;
 
     await prisma.maintenanceInspectionItem.update({
       where: { id: item.id },
@@ -546,6 +611,7 @@ async function editarSpotInspecaoImpl(input: {
         comment: input.status === "NAO_CONFORME" ? comment : null,
         photos: input.status === "NAO_CONFORME" ? JSON.stringify(input.photos ?? []) : "[]",
         corrigidoEm: input.status === "CONFORME" ? now : null,
+        urgente: input.status === "NAO_CONFORME" ? Boolean(input.urgente) : false,
       },
     });
 
@@ -559,6 +625,20 @@ async function editarSpotInspecaoImpl(input: {
         needsExternalService: input.needsExternalService as boolean,
         triagedById: session.userId,
       });
+    }
+
+    if (input.status === "NAO_CONFORME") {
+      if (input.urgente === true && urgenteAntes !== true) {
+        await aplicarBloqueioPorUrgencia({
+          tenantId: session.tenantId,
+          uhId: item.inspection.uhId,
+          checklistItemId: item.checklistItemId,
+          comment: comment || "Não conformidade urgente.",
+          solicitanteNome: session.nome,
+        });
+      } else if (input.urgente !== true && urgenteAntes === true) {
+        await reavaliarBloqueioUrgencia({ tenantId: session.tenantId, uhId: item.inspection.uhId });
+      }
     }
   }
 

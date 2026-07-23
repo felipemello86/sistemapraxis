@@ -31,6 +31,11 @@ export async function POST(req: NextRequest) {
       bloqueioDescricao: motivo.trim(),
       bloqueioSolicitanteNome: session.nome,
       bloqueioEm: new Date(),
+      // Distingue de um bloqueio automático por NC urgente (ver
+      // packages/core/src/maintenanceUrgente.ts) — importante pra
+      // reavaliarBloqueioUrgencia nunca desfazer este bloqueio manual
+      // quando uma NC urgente qualquer for resolvida.
+      bloqueioOrigem: "MANUAL",
       emManutencao: true,
       manutencaoDescricao: `🚨 BLOQUEIO: ${motivo.trim()}`,
     },

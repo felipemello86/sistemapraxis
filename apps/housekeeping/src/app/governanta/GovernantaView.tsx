@@ -155,6 +155,9 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   // Camareira (ver comentário lá). null = ainda não respondeu.
   const [precisaMaterialManutencao, setPrecisaMaterialManutencao] = useState<boolean | null>(null);
   const [precisaServicoManutencao, setPrecisaServicoManutencao] = useState<boolean | null>(null);
+  // NC impeditiva ao uso — pedido explícito: bloqueia a UH automaticamente
+  // e notifica todos os usuários (ver packages/core/src/maintenanceUrgente.ts).
+  const [ehUrgenteManutencao, setEhUrgenteManutencao] = useState<boolean | null>(null);
   const [uploadandoFotoManutencao, setUploadandoFotoManutencao] = useState(false);
   const [enviandoManutencao, setEnviandoManutencao] = useState(false);
   const [resultadoManutencao, setResultadoManutencao] = useState<{ jaRegistrado: boolean; itemNome: string } | null>(null);
@@ -392,6 +395,7 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     setFotosManutencao([]);
     setPrecisaMaterialManutencao(null);
     setPrecisaServicoManutencao(null);
+    setEhUrgenteManutencao(null);
     setManutencaoSubFase("descrever");
   }
 
@@ -426,7 +430,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
       !sessaoAtiva ||
       descricaoManutencao.trim().length < 5 ||
       precisaMaterialManutencao === null ||
-      precisaServicoManutencao === null
+      precisaServicoManutencao === null ||
+      ehUrgenteManutencao === null
     )
       return;
     setEnviandoManutencao(true);
@@ -441,6 +446,7 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
           fotos: fotosManutencao,
           needsMaterial: precisaMaterialManutencao,
           needsExternalService: precisaServicoManutencao,
+          urgente: ehUrgenteManutencao,
         }),
       });
       const json = await res.json();
@@ -938,6 +944,23 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                       )}
                     </div>
                   </div>
+                  <div className="card mt-3 border-2 border-red-300 bg-red-50">
+                    <p className="text-xs text-red-700 font-bold mb-1.5">É uma falha impeditiva ao uso (urgente)? *</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setEhUrgenteManutencao(true)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${ehUrgenteManutencao === true ? "border-red-600 bg-red-100 text-red-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Sim, urgente
+                      </button>
+                      <button
+                        onClick={() => setEhUrgenteManutencao(false)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${ehUrgenteManutencao === false ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Não
+                      </button>
+                    </div>
+                  </div>
                   <div className="card mt-3">
                     <p className="text-xs text-gray-500 font-medium mb-1.5">Precisa adquirir algum material? *</p>
                     <div className="grid grid-cols-2 gap-2 mb-3">
@@ -986,7 +1009,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                         uploadandoFotoManutencao ||
                         !podeOperar ||
                         precisaMaterialManutencao === null ||
-                        precisaServicoManutencao === null
+                        precisaServicoManutencao === null ||
+                        ehUrgenteManutencao === null
                       }
                       title={!podeOperar ? tituloSemAcesso : undefined}
                       className="flex-[2] py-3 rounded-xl bg-orange-500 text-white font-bold disabled:opacity-50"

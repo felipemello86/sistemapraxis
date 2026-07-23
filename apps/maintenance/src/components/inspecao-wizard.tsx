@@ -12,6 +12,7 @@ import {
   X,
   ClipboardList,
   History,
+  Siren,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +51,11 @@ type Resposta = {
   // respondeu.
   needsMaterial: boolean | null
   needsExternalService: boolean | null
+  // Diferente das duas acima: sempre perguntada quando NAO_CONFORME, mesmo
+  // em carryover (pré-preenchida com a resposta anterior, mas o usuário
+  // pode mudar — urgência pode escalar ou desescalar entre inspeções,
+  // pedido explícito do Felipe). null = ainda não respondeu.
+  urgente: boolean | null
 }
 
 export function InspecaoWizard({
@@ -66,7 +72,7 @@ export function InspecaoWizard({
   // (não corrigidos ainda) — usado pra pré-preencher a tela de execução com
   // o relato atual em vez de partir de "Conforme" em branco. Ver comentário
   // em respostas abaixo.
-  pendenciasAtuais?: Record<string, { comment: string; photos: string[] }>
+  pendenciasAtuais?: Record<string, { comment: string; photos: string[]; urgente: boolean }>
   // checklistItemId cujo item NAO_CONFORME atual já tem um card de Correção
   // aberto cuidando dele — critério que precisa bater exatamente com o do
   // servidor (createInspecaoImpl) pra decidir se pula a pergunta de
@@ -106,8 +112,16 @@ export function InspecaoWizard({
                 photos: pendencia.photos,
                 needsMaterial: null,
                 needsExternalService: null,
+                urgente: pendencia.urgente,
               }
-            : { status: 'CONFORME' as const, comment: '', photos: [], needsMaterial: null, needsExternalService: null },
+            : {
+                status: 'CONFORME' as const,
+                comment: '',
+                photos: [],
+                needsMaterial: null,
+                needsExternalService: null,
+                urgente: null,
+              },
         ]
       }),
     ),
@@ -130,6 +144,10 @@ export function InspecaoWizard({
 
   function setNeedsExternalService(itemId: string, needsExternalService: boolean) {
     setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], needsExternalService } }))
+  }
+
+  function setUrgente(itemId: string, urgente: boolean) {
+    setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], urgente } }))
   }
 
   async function adicionarFotos(itemId: string, files: FileList | null) {
@@ -228,6 +246,7 @@ export function InspecaoWizard({
         photos: resp?.status === 'NAO_CONFORME' ? resp.photos : [],
         needsMaterial: resp?.status === 'NAO_CONFORME' ? resp.needsMaterial ?? undefined : undefined,
         needsExternalService: resp?.status === 'NAO_CONFORME' ? resp.needsExternalService ?? undefined : undefined,
+        urgente: resp?.status === 'NAO_CONFORME' ? resp.urgente ?? undefined : undefined,
       }
     })
 
@@ -430,6 +449,42 @@ export function InspecaoWizard({
                 </div>
               </div>
 
+              {/* Diferente de material/serviço externo abaixo: essa pergunta
+                  SEMPRE aparece quando não conforme, mesmo em carryover —
+                  urgência pode escalar ou desescalar de uma inspeção pra
+                  outra (pedido explícito). Pré-preenchida com a resposta
+                  anterior quando é pendência, mas o usuário pode mudar.
+                  Sim aciona bloqueio automático da UH + notificação pra
+                  todos (ver aplicarBloqueioPorUrgencia, createInspecaoImpl). */}
+              <div className="space-y-1.5 rounded-xl border-2 border-destructive/40 bg-destructive/8 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-destructive">
+                  <Siren className="h-3.5 w-3.5" />
+                  É uma NC impeditiva ao uso (urgente)? *
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setUrgente(item.id, true)}
+                    className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                      resp?.urgente === true
+                        ? 'border-destructive bg-destructive/15 text-destructive'
+                        : 'border-border text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    Sim, urgente
+                  </button>
+                  <button
+                    onClick={() => setUrgente(item.id, false)}
+                    className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                      resp?.urgente === false
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    Não
+                  </button>
+                </div>
+              </div>
+
               {/* Só pula a pergunta quando já existe um card de Correção
                   cuidando desse item (jaTemCard) — não basta estar não
                   conforme (pendenciaAtual): item legado, de antes dessa
@@ -548,6 +603,7 @@ export function InspecaoWizard({
             disabled={
               naoConforme &&
               (!resp?.comment?.trim() ||
+                resp?.urgente === null ||
                 (!jaTemCard && (resp?.needsMaterial === null || resp?.needsExternalService === null)))
             }
             className="h-11 flex-1 rounded-xl"

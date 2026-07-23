@@ -6,6 +6,8 @@ export { prisma } from "./prisma";
 export { sendPushToUser } from "./push";
 export * from "./maintenanceCorrection";
 export * from "./timezone";
+export * from "./notify";
+export * from "./maintenanceUrgente";
 export type {
   SuiteModule,
   User,

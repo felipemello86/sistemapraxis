@@ -25,6 +25,10 @@ export type InspectionItem = {
   comment: string | null;
   photos: string[];
   corrigidoEm: string | null; // ISO — preenchido quando uma MaintenanceCorrection resolve o item
+  // NC impeditiva ao uso — bloqueia a UH automaticamente + notifica todos
+  // (ver packages/core/src/maintenanceUrgente.ts). Sempre false quando
+  // status = CONFORME.
+  urgente: boolean;
 };
 
 export type InspecaoComUnidade = {
@@ -167,6 +171,9 @@ export type CorrectionCardView = {
   comment: string | null; // descrição atual da não conformidade (do InspectionItem)
   photos: string[]; // fotos atuais da não conformidade
   createdAt: string; // ISO — quando o card nasceu
+  // NC impeditiva ao uso — evidenciada em todo lugar que exibe a NC (pedido
+  // explícito). Vem do MaintenanceInspectionItem, não duplicada no card.
+  urgente: boolean;
 
   needsMaterial: boolean; // sempre não-nulo aqui — cards não triados são filtrados na query
   needsExternalService: boolean;
@@ -206,6 +213,7 @@ export type DailyCommitmentView = {
     checklistItemName: string | null;
     executionStatus: "A_FAZER" | "PLANEJADA" | "EXECUTADA";
     executedAt: string | null; // ISO
+    urgente: boolean;
   }[];
   // Não conformidades (IV) identificadas nesse dia (createdAt do card de
   // Correção cai nesse dia, fuso America/Sao_Paulo) que ainda não foram
@@ -220,5 +228,6 @@ export type DailyCommitmentView = {
     checklistItemName: string | null;
     comment: string | null;
     createdAt: string; // ISO
+    urgente: boolean;
   }[];
 };

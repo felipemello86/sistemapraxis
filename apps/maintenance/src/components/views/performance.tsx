@@ -4,7 +4,7 @@ import { useMemo, useRef, useEffect } from 'react'
 import { AreaChart, Area, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
-import { AlertTriangle, BarChart3, CheckCircle2, Clock, TrendingUp } from 'lucide-react'
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, Siren, TrendingUp } from 'lucide-react'
 import type { DailyCommitmentView } from '@/lib/types'
 
 // Tela "Performance" — lista de relatórios diários do Kanban de Execução +
@@ -222,11 +222,21 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
                       {c.naoConformidadesIdentificadas.map((item) => (
                         <li
                           key={item.id}
-                          className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/8 px-2.5 py-1.5 text-sm"
+                          className={`rounded-lg border px-2.5 py-1.5 text-sm ${
+                            item.urgente
+                              ? 'border-destructive/40 bg-destructive/10'
+                              : 'border-[var(--warning)]/30 bg-[var(--warning)]/8'
+                          }`}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span>
+                            <span className="flex items-center gap-1.5">
                               Unidade {item.uhName} — {item.checklistItemName ?? 'item'}
+                              {item.urgente && (
+                                <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                                  <Siren className="h-2.5 w-2.5" />
+                                  Urgente
+                                </span>
+                              )}
                             </span>
                             <span className="flex items-center gap-1 text-xs text-muted-foreground">
                               <Clock className="h-3 w-3" />

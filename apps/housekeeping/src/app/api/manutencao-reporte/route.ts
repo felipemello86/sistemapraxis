@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createCorrectionCardForItem, prisma, getSession, hasModuleAccess } from "@praxis/core";
+import {
+  aplicarBloqueioPorUrgencia,
+  createCorrectionCardForItem,
+  prisma,
+  getSession,
+  hasModuleAccess,
+} from "@praxis/core";
 
 // POST /api/manutencao-reporte — etapa obrigatória "Necessidade de
 // Manutenção?" da camareira (ver CamareiraView, fase "manutencao"), quando
@@ -28,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso a este módulo" }, { status: 403 });
   }
 
-  const { uhId, checklistItemId, descricao, fotos, needsMaterial, needsExternalService } = await req.json();
+  const { uhId, checklistItemId, descricao, fotos, needsMaterial, needsExternalService, urgente } = await req.json();
 
   if (!uhId || !checklistItemId || !descricao || String(descricao).trim().length < 5) {
     return NextResponse.json({ error: "Descreva a falha detectada (mínimo 5 caracteres)." }, { status: 400 });
@@ -36,6 +42,12 @@ export async function POST(req: NextRequest) {
   if (typeof needsMaterial !== "boolean" || typeof needsExternalService !== "boolean") {
     return NextResponse.json(
       { error: "Informe se precisa de material e de serviço externo." },
+      { status: 400 },
+    );
+  }
+  if (typeof urgente !== "boolean") {
+    return NextResponse.json(
+      { error: "Informe se essa não conformidade é impeditiva ao uso (urgente)." },
       { status: 400 },
     );
   }
@@ -74,7 +86,7 @@ export async function POST(req: NextRequest) {
     if (itemAtual) {
       await prisma.maintenanceInspectionItem.update({
         where: { id: itemAtual.id },
-        data: { status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, corrigidoEm: null },
+        data: { status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, corrigidoEm: null, urgente },
       });
       inspectionItemId = itemAtual.id;
     } else {
@@ -85,6 +97,7 @@ export async function POST(req: NextRequest) {
           status: "NAO_CONFORME",
           comment: descricaoLimpa,
           photos: fotosJson,
+          urgente,
         },
       });
       inspectionItemId = novoItem.id;
@@ -97,7 +110,7 @@ export async function POST(req: NextRequest) {
         inspectorId: session.userId,
         date: new Date(),
         items: {
-          create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson }],
+          create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, urgente }],
         },
       },
       include: { items: true },
@@ -117,6 +130,20 @@ export async function POST(req: NextRequest) {
     needsExternalService,
     triagedById: session.userId,
   });
+
+  // NC impeditiva ao uso — bloqueia a UH automaticamente e notifica todos
+  // os usuários do tenant (pedido explícito). Esta rota só chega aqui pra
+  // registro genuinamente novo (early-return acima se já estava
+  // NAO_CONFORME), então não há valor anterior pra comparar.
+  if (urgente) {
+    await aplicarBloqueioPorUrgencia({
+      tenantId: session.tenantId,
+      uhId,
+      checklistItemId,
+      comment: descricaoLimpa,
+      solicitanteNome: session.nome,
+    });
+  }
 
   return NextResponse.json({ ok: true, jaRegistrado: false });
 }

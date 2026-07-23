@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   AlertTriangle,
   CheckCircle2,
+  Siren,
   X,
 } from 'lucide-react'
 import {
@@ -56,6 +57,9 @@ type NcRow = {
   comment: string | null
   photos: string[]
   date: string
+  // NC impeditiva ao uso — evidenciada em todo lugar que exibe a NC (pedido
+  // explícito), inclusive na barra de Conformidade por UH abaixo.
+  urgente: boolean
 }
 
 export function VisaoGerencial({
@@ -113,12 +117,13 @@ export function VisaoGerencial({
   // tem "pontuação" pra ordenar, então cai por nome de UH. Antes essas
   // ficavam misturadas com as piores porque ambas tinham value=0.
   const barData = useMemo(() => {
-    const comInspecao: { unitId: string; label: string; value: number }[] = []
-    const semInspecao: { unitId: string; label: string; value: number }[] = []
+    const comInspecao: { unitId: string; label: string; value: number; temUrgente: boolean }[] = []
+    const semInspecao: { unitId: string; label: string; value: number; temUrgente: boolean }[] = []
     for (const u of unidades) {
       const ult = ultimaMap.get(u.id)
       const { ok, total } = ult ? contarConformidade(ult) : { ok: 0, total: 0 }
-      const entry = { unitId: u.id, label: u.name, value: total > 0 ? Math.round((ok / total) * 100) : 0 }
+      const temUrgente = ult ? ult.items.some((it) => it.status === 'NAO_CONFORME' && it.urgente) : false
+      const entry = { unitId: u.id, label: u.name, value: total > 0 ? Math.round((ok / total) * 100) : 0, temUrgente }
       ;(total > 0 ? comInspecao : semInspecao).push(entry)
     }
     comInspecao.sort((a, b) => a.value - b.value)
@@ -152,6 +157,7 @@ export function VisaoGerencial({
           comment: it.comment,
           photos: it.photos,
           date: insp.date,
+          urgente: it.urgente,
         })
       }
     }
@@ -225,7 +231,7 @@ export function VisaoGerencial({
         description={
           barData.length === 0
             ? undefined
-            : 'Clique numa barra pra filtrar a tabela de detalhamento. Arraste pros lados pra ver todas as unidades.'
+            : 'Clique numa barra pra filtrar a tabela de detalhamento. Arraste pros lados pra ver todas as unidades. O ícone 🔴 acima da barra indica NC impeditiva ao uso (urgente) em aberto.'
         }
       >
         {barData.length === 0 ? (
@@ -264,12 +270,26 @@ export function VisaoGerencial({
                     radius={[6, 6, 0, 0]}
                     cursor="pointer"
                     onClick={(data: any) => clicarBarra(data)}
+                    label={(props: any) => {
+                      const entry = barData[props.index]
+                      if (!entry?.temUrgente) return <g key={`urg-${props.index}`} />
+                      return (
+                        <g key={`urg-${props.index}`} transform={`translate(${props.x + props.width / 2}, ${props.y - 11})`}>
+                          <circle r={7} fill="var(--destructive)" />
+                          <text textAnchor="middle" dy={3} fontSize={9} fontWeight={700} fill="white">
+                            !
+                          </text>
+                        </g>
+                      )
+                    }}
                   >
                     {barData.map((entry) => (
                       <Cell
                         key={entry.unitId}
                         fill={corBarra(entry.value)}
                         fillOpacity={uhSelecionada && uhSelecionada !== entry.unitId ? 0.35 : 1}
+                        stroke={entry.temUrgente ? 'var(--destructive)' : undefined}
+                        strokeWidth={entry.temUrgente ? 2 : undefined}
                       />
                     ))}
                   </Bar>
@@ -293,7 +313,8 @@ export function VisaoGerencial({
                 <tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="pb-2 pr-2 font-medium">UH</th>
                   <th className="pb-2 pr-2 font-medium">Item</th>
-                  <th className="pb-2 font-medium">Categoria</th>
+                  <th className="pb-2 pr-2 font-medium">Categoria</th>
+                  <th className="pb-2 font-medium" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/70">
@@ -308,13 +329,25 @@ export function VisaoGerencial({
                     >
                       <td className="py-2 pr-2 font-medium">{r.unitName}</td>
                       <td className="py-2 pr-2 text-muted-foreground">{r.itemName}</td>
-                      <td className="py-2">
+                      <td className="py-2 pr-2">
                         <Badge
                           variant="outline"
                           style={{ borderColor: corCategoria(r.category), color: corCategoria(r.category) }}
                         >
                           {r.category}
                         </Badge>
+                      </td>
+                      <td className="py-2">
+                        {r.urgente && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-destructive/40 text-destructive"
+                            title="NC impeditiva ao uso (urgente)"
+                          >
+                            <Siren className="h-3 w-3" />
+                            Urgente
+                          </Badge>
+                        )}
                       </td>
                     </tr>
                   )
@@ -338,7 +371,15 @@ export function VisaoGerencial({
                     style={{ backgroundColor: corCategoria(ncSelecionado.category) }}
                   />
                   <div>
-                    <p className="text-sm font-semibold">{ncSelecionado.itemName}</p>
+                    <p className="flex items-center gap-1.5 text-sm font-semibold">
+                      {ncSelecionado.itemName}
+                      {ncSelecionado.urgente && (
+                        <Badge variant="outline" className="gap-1 border-destructive/40 text-destructive">
+                          <Siren className="h-3 w-3" />
+                          Urgente
+                        </Badge>
+                      )}
+                    </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">Unidade {ncSelecionado.unitName}</span>
                       {' · '}

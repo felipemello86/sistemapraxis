@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Camera, Loader2, Package, ShoppingCart } from 'lucide-react'
+import { Camera, Loader2, Package, ShoppingCart, Siren } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -28,7 +28,15 @@ function CardResumo({ card }: { card: CorrectionCardView }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">Unidade {card.uhName}</p>
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          Unidade {card.uhName}
+          {card.urgente && (
+            <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+              <Siren className="h-2.5 w-2.5" />
+              Urgente
+            </span>
+          )}
+        </p>
         {card.checklistItemCategory && (
           <Badge
             variant="outline"

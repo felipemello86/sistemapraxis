@@ -1,4 +1,4 @@
-import { prisma, sendPushToUser } from "@praxis/core";
+import { notificarPorRoles, notificarTodosDoTenant, prisma } from "@praxis/core";
 
 // Lógica compartilhada entre a Server Action que executa o último card do
 // dia (apps/maintenance/src/app/actions/correcao.ts) e o cron de 19h
@@ -8,6 +8,11 @@ import { prisma, sendPushToUser } from "@praxis/core";
 // módulo comum (em vez de só na Server Action) porque uma rota de API não
 // pode importar uma função de um arquivo "use server" que não seja ela
 // mesma uma Server Action.
+//
+// notificarTodosDoTenant/notificarPorRoles foram promovidas pra
+// @praxis/core (packages/core/src/notify.ts) — reexportadas aqui só pra não
+// quebrar quem já importa deste arquivo (correcao.ts).
+export { notificarPorRoles, notificarTodosDoTenant };
 
 /**
  * Conformidade ATUAL do tenant — mesmo critério do card "Conformidade
@@ -37,33 +42,6 @@ export async function calcularConformidadeAtual(tenantId: string): Promise<numbe
     ok += items.filter((i) => i.status === "CONFORME").length;
   }
   return total > 0 ? Math.round((ok / total) * 100) : 0;
-}
-
-export async function notificarTodosDoTenant(
-  tenantId: string,
-  payload: { title: string; body: string; data?: Record<string, string> },
-) {
-  const usuarios = await prisma.user.findMany({
-    where: { tenantId, ativo: true },
-    select: { id: true },
-  });
-  for (const u of usuarios) {
-    await sendPushToUser(u.id, payload);
-  }
-}
-
-export async function notificarPorRoles(
-  tenantId: string,
-  roles: string[],
-  payload: { title: string; body: string; data?: Record<string, string> },
-) {
-  const usuarios = await prisma.user.findMany({
-    where: { tenantId, ativo: true, role: { in: roles } },
-    select: { id: true },
-  });
-  for (const u of usuarios) {
-    await sendPushToUser(u.id, payload);
-  }
 }
 
 /**
