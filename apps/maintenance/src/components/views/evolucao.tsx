@@ -16,8 +16,8 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
-import { Activity } from 'lucide-react'
-import { contarConformidade } from '@/lib/domain'
+import { Activity, ClipboardList } from 'lucide-react'
+import { contarConformidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
 import type { InspecaoComUnidade } from '@/lib/types'
 
 // Janela da série diária de conformidade — pedido explícito (era mensal, virou
@@ -47,13 +47,14 @@ export function Evolucao({
     return meses
   }, [inspecoes])
 
-  // Conformidade ao longo do tempo — NÃO é "conformidade das inspeções feitas
-  // naquele dia" (isso derrubava o gráfico pra 0% em qualquer dia sem
-  // inspeção nova, mesmo com a conformidade geral em 91%). É o estado
-  // ACUMULADO da conformidade geral até aquele dia (inclusive), com o mesmo
-  // cálculo do card "Conformidade geral" — por isso o ponto de hoje sempre
-  // bate com esse card. Ordenada do dia mais antigo (esquerda) pro mais
-  // atual/hoje (direita), últimos DIAS_JANELA dias.
+  // Conformidade ao longo do tempo — o ESTADO da conformidade geral em cada
+  // dia, não "conformidade das inspeções feitas naquele dia" (isso derrubava
+  // o gráfico pra 0% em qualquer dia sem inspeção nova). Estado = pra cada
+  // UH, a inspeção mais recente com data até aquele dia (a mesma lógica de
+  // ultimaInspecaoPorUnidade, só que "congelada" naquele corte de data) —
+  // por isso o ponto de hoje sempre bate com o card "Conformidade atual"
+  // (que usa o mesmo critério, sem corte). Ordenada do dia mais antigo
+  // (esquerda) pro mais atual/hoje (direita), últimos DIAS_JANELA dias.
   const serieDiaria = useMemo(() => {
     const inspecoesOrdenadas = [...inspecoes].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
@@ -61,8 +62,7 @@ export function Evolucao({
     const dias: { dia: string; conformidade: number }[] = []
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
-    let ok = 0
-    let total = 0
+    const ultimaPorUnidadeAteODia = new Map<string, InspecaoComUnidade>()
     let ponteiro = 0
     for (let i = DIAS_JANELA - 1; i >= 0; i--) {
       const d = new Date(hoje)
@@ -74,36 +74,42 @@ export function Evolucao({
         ponteiro < inspecoesOrdenadas.length &&
         new Date(inspecoesOrdenadas[ponteiro].date) <= fimDoDia
       ) {
-        const c = contarConformidade(inspecoesOrdenadas[ponteiro])
-        ok += c.ok
-        total += c.total
+        const insp = inspecoesOrdenadas[ponteiro]
+        ultimaPorUnidadeAteODia.set(insp.unitId, insp)
         ponteiro++
       }
+      const contagens = Array.from(ultimaPorUnidadeAteODia.values()).map(contarConformidade)
+      const total = contagens.reduce((s, x) => s + x.total, 0)
+      const ok = contagens.reduce((s, x) => s + x.ok, 0)
       dias.push({ dia: label, conformidade: total > 0 ? Math.round((ok / total) * 100) : 0 })
     }
     return dias
   }, [inspecoes])
 
-  const contagensGerais = useMemo(() => inspecoes.map(contarConformidade), [inspecoes])
-  const totalAvaliacoes = contagensGerais.reduce((s, x) => s + x.total, 0)
-  const totalOk = contagensGerais.reduce((s, x) => s + x.ok, 0)
-  const conformidadeGeral =
-    totalAvaliacoes > 0 ? Math.round((totalOk / totalAvaliacoes) * 100) : 0
+  // Conformidade ATUAL (não é média histórica): considera só a inspeção mais
+  // recente de cada UH — o estado de hoje, não a mistura de todas as
+  // inspeções já feitas ao longo do tempo (isso inflava/distorcia o número
+  // com UHs reinspecionadas várias vezes).
+  const ultimaPorUnidade = useMemo(() => ultimaInspecaoPorUnidade(inspecoes), [inspecoes])
+  const contagensAtuais = useMemo(
+    () => Array.from(ultimaPorUnidade.values()).map(contarConformidade),
+    [ultimaPorUnidade],
+  )
+  const itensInspecionadosAtual = contagensAtuais.reduce((s, x) => s + x.total, 0)
+  const naoConformeAtual = contagensAtuais.reduce((s, x) => s + x.problema, 0)
+  const conformidadeAtual =
+    itensInspecionadosAtual > 0
+      ? Math.round(((itensInspecionadosAtual - naoConformeAtual) / itensInspecionadosAtual) * 100)
+      : 0
 
-  // "Total de itens avaliados" é a UNIÃO de itens distintos já avaliados em
-  // QUALQUER UH — não a soma bruta de avaliações (que infla com inspeções
-  // repetidas) nem algo restrito aos itens que TODAS as UHs têm em comum.
-  // Um item avaliado numa única UH já entra aqui, mesmo que não esteja
-  // atribuído a nenhuma outra unidade (pedido explícito).
-  const totalItens = useMemo(() => {
-    const ids = new Set<string>()
-    for (const insp of inspecoes) {
-      for (const it of insp.items) {
-        if (it.checklistItemId) ids.add(it.checklistItemId)
-      }
-    }
-    return ids.size
-  }, [inspecoes])
+  // Quantidade total de itens de verificação somados — soma bruta de itens
+  // em TODAS as inspeções já registradas (histórico completo, não só o
+  // estado atual). Serve de contexto/volume abaixo da fração acima, não
+  // substitui ela.
+  const itensSomadosHistorico = useMemo(
+    () => inspecoes.reduce((s, insp) => s + insp.items.length, 0),
+    [inspecoes],
+  )
 
   // Largura mínima do gráfico diário — cada dia precisa de espaço pra
   // legenda não amontoar, mesma lógica aplicada no gráfico de UHs da Visão
@@ -125,16 +131,16 @@ export function Evolucao({
       <div className="grid grid-cols-2 gap-4">
         <StatCard
           label="Conformidade geral"
-          value={`${conformidadeGeral}%`}
-          hint="média histórica"
+          value={`${conformidadeAtual}%`}
           tone="success"
           icon={<Activity className="h-[18px] w-[18px]" />}
         />
         <StatCard
-          label="Total de itens avaliados"
-          value={totalItens}
-          hint="em todas as inspeções"
+          label="Itens de Verificação"
+          value={`${naoConformeAtual}/${itensInspecionadosAtual}`}
+          hint={`${itensSomadosHistorico} itens de verificação somados no total`}
           tone="primary"
+          icon={<ClipboardList className="h-[18px] w-[18px]" />}
         />
       </div>
 
