@@ -58,9 +58,16 @@ export async function enviarResultadoDiarioSeNecessario(commitmentId: string) {
   });
   if (!commitment || commitment.reportSentAt) return;
 
-  const total = commitment.cards.length;
+  // Denominador do % é o congelado no fechamento do dia (totalPrevisto), não
+  // o total ao vivo de commitment.cards — cards intempestivos/urgentes
+  // adicionados depois (previsto=false, ver adicionarCardUrgenteAction)
+  // contam só no numerador, podendo levar o % acima de 100% (pedido
+  // explícito do Felipe: 10 previstos + 1 não previsto executado = 110%).
   const executados = commitment.cards.filter((c) => c.executionStatus === "EXECUTADA").length;
-  const pct = total > 0 ? Math.round((executados / total) * 100) : 0;
+  const totalPrevisto = commitment.totalPrevisto;
+  const pct = totalPrevisto > 0 ? Math.round((executados / totalPrevisto) * 100) : 0;
+  const naoPrevistoExecutados = commitment.cards.filter((c) => !c.previsto && c.executionStatus === "EXECUTADA").length;
+  const naoPrevistoTotal = commitment.cards.filter((c) => !c.previsto).length;
   const conformidadeDepois = await calcularConformidadeAtual(commitment.tenantId);
 
   await prisma.maintenanceDailyCommitment.update({
@@ -69,9 +76,10 @@ export async function enviarResultadoDiarioSeNecessario(commitmentId: string) {
   });
 
   const antes = commitment.conformidadeAntes ?? "—";
+  const extraTexto = naoPrevistoTotal > 0 ? `, +${naoPrevistoExecutados}/${naoPrevistoTotal} não previstos` : "";
   await notificarTodosDoTenant(commitment.tenantId, {
     title: "📋 Resultado Diário da Manutenção",
-    body: `${pct}% da programação de hoje concluída (${executados}/${total} itens). Conformidade geral: ${antes}% → ${conformidadeDepois}%.`,
+    body: `${pct}% da programação de hoje concluída (${executados}/${totalPrevisto} previstos${extraTexto}). Conformidade geral: ${antes}% → ${conformidadeDepois}%.`,
     data: { view: "performance" },
   });
 }

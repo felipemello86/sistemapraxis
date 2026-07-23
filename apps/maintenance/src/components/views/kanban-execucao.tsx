@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Camera, CheckCircle2, ClipboardList, Lock, Loader2, ListChecks, Siren } from 'lucide-react'
+import { Camera, CheckCircle2, ClipboardList, Inbox, Lock, Loader2, ListChecks, Plus, Siren } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,7 +15,12 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { corCategoria } from '@/lib/domain'
-import { executarCardExecucaoAction, fecharProgramacaoDiaAction } from '@/app/actions/correcao'
+import {
+  adicionarCardUrgenteAction,
+  executarCardExecucaoAction,
+  fecharProgramacaoDiaAction,
+  triarCardAProcessarAction,
+} from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
 import type { CorrectionCardView, DailyCommitmentView } from '@/lib/types'
@@ -26,22 +31,32 @@ function formatarHoraExecucao(iso: string) {
   return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 }
 
-// Kanban "Execução" — só cards sem serviço externo (needsExternalService
-// false) e, se precisar material, já comprado (ver filtro em correcao.tsx).
-// "A Fazer" só mostra cards de UHs liberadas pra limpeza hoje na Governança
-// (Seleção e Liberação). Selecionar cards aqui + "Fechar programação do dia"
-// cria o MaintenanceDailyCommitment de hoje (um por dia, não pode reabrir) —
-// só a partir daí os cards viram "Planejadas". "Executadas" volta o IV a
-// Conforme automaticamente (resolveCorrectionCard, na Server Action).
+// Kanban "Execução" — 4 colunas. "A Processar": cards sem triagem, criados
+// pelo módulo Governança (camareira/governanta/flag de manutenção), que não
+// pergunta Material/Serviço Externo — cabe ao perfil Manutenção classificar
+// daqui (ver triarCardAProcessarAction). Depois de triado, o card sai desta
+// coluna e entra no filtro normal (Aquisição/Serviços/"A Fazer" aqui mesmo,
+// ver correcao.tsx). "A Fazer" só mostra cards sem serviço externo (e, se
+// precisar material, já comprado) de UHs liberadas pra limpeza hoje na
+// Governança (Seleção e Liberação). Selecionar cards aqui + "Fechar
+// programação do dia" cria o MaintenanceDailyCommitment de hoje (um por
+// dia, não pode reabrir) — só a partir daí os cards viram "Planejadas". Com
+// o dia já fechado, cards intempestivos/urgentes que ainda apareceriam em
+// "A Fazer" podem ser adicionados direto em "Planejadas" (marcados
+// previsto=false, não contam no denominador do % de realização — ver
+// adicionarCardUrgenteAction). "Executadas" volta o IV a Conforme
+// automaticamente (resolveCorrectionCard, na Server Action).
 
 export function KanbanExecucao({
   podeOperar,
   cards,
+  cardsAProcessar,
   uhIdsLiberadasHoje,
   commitmentHoje,
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
+  cardsAProcessar: CorrectionCardView[]
   uhIdsLiberadasHoje: string[]
   commitmentHoje: DailyCommitmentView | null
 }) {
@@ -63,6 +78,20 @@ export function KanbanExecucao({
   const [confirmando, setConfirmando] = useState(false)
   const [fechando, setFechando] = useState(false)
   const [cardExecutando, setCardExecutando] = useState<{ id: string; uhName: string; checklistItemName: string | null } | null>(null)
+  const [cardTriando, setCardTriando] = useState<CorrectionCardView | null>(null)
+  const [adicionandoUrgente, setAdicionandoUrgente] = useState<string | null>(null)
+
+  async function adicionarUrgente(cardId: string) {
+    setAdicionandoUrgente(cardId)
+    try {
+      unwrapSafeAction(await adicionarCardUrgenteAction({ cardId }))
+      toast.success('Card adicionado à programação de hoje.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao adicionar o card.')
+    } finally {
+      setAdicionandoUrgente(null)
+    }
+  }
 
   function alternarSelecao(id: string) {
     setSelecionados((prev) => {
@@ -97,7 +126,56 @@ export function KanbanExecucao({
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Inbox className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">A Processar</h3>
+            <span className="text-xs text-muted-foreground">({cardsAProcessar.length})</span>
+          </div>
+          <div className="space-y-3 overflow-y-auto pr-1">
+            {cardsAProcessar.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nada aguardando classificação.</p>
+            ) : (
+              cardsAProcessar.map((card) => (
+                <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                      Unidade {card.uhName}
+                      {card.urgente && (
+                        <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                          <Siren className="h-2.5 w-2.5" />
+                          Urgente
+                        </span>
+                      )}
+                    </p>
+                    {card.checklistItemCategory && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px]"
+                        style={{ borderColor: corCategoria(card.checklistItemCategory), color: corCategoria(card.checklistItemCategory) }}
+                      >
+                        {card.checklistItemCategory}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
+                  {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
+                  <Button
+                    size="sm"
+                    className="mt-3 w-full rounded-xl"
+                    disabled={!podeOperar}
+                    title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                    onClick={() => setCardTriando(card)}
+                  >
+                    Classificar
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         <div className="flex max-h-[75vh] flex-col rounded-2xl border border-border/70 bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-muted-foreground" />
@@ -106,9 +184,44 @@ export function KanbanExecucao({
           </div>
 
           {commitmentHoje ? (
-            <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
-              A programação de hoje já foi fechada. Novos cards liberados hoje entram amanhã.
-            </p>
+            aFazer.length === 0 ? (
+              <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
+                A programação de hoje já foi fechada. Nenhum card intempestivo pendente.
+              </p>
+            ) : (
+              <div className="space-y-3 overflow-y-auto pr-1">
+                <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
+                  A programação de hoje já foi fechada. Estes cards surgiram depois — adicione à programação se for
+                  urgente, ou deixe pra amanhã.
+                </p>
+                {aFazer.map((card) => (
+                  <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
+                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                      Unidade {card.uhName}
+                      {card.urgente && (
+                        <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
+                          <Siren className="h-2.5 w-2.5" />
+                          Urgente
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
+                    {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3 w-full rounded-xl"
+                      disabled={!podeOperar || adicionandoUrgente === card.id}
+                      title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                      onClick={() => adicionarUrgente(card.id)}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {adicionandoUrgente === card.id ? 'Adicionando...' : 'Adicionar à programação de hoje'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )
           ) : aFazer.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               Nenhum item pendente de UH liberada pra limpeza hoje.
@@ -215,6 +328,12 @@ export function KanbanExecucao({
                         Urgente
                       </span>
                     )}
+                    {!card.previsto && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                        <Plus className="h-2.5 w-2.5" />
+                        Não previsto
+                      </span>
+                    )}
                   </p>
                   <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
                   <Button
@@ -251,6 +370,12 @@ export function KanbanExecucao({
                       <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
                         <Siren className="h-2.5 w-2.5" />
                         Urgente
+                      </span>
+                    )}
+                    {!card.previsto && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                        <Plus className="h-2.5 w-2.5" />
+                        Não previsto
                       </span>
                     )}
                   </p>
@@ -300,7 +425,110 @@ export function KanbanExecucao({
       </Dialog>
 
       <DialogExecutarCard card={cardExecutando} onClose={() => setCardExecutando(null)} />
+      <DialogTriarCard card={cardTriando} onClose={() => setCardTriando(null)} />
     </>
+  )
+}
+
+function DialogTriarCard({ card, onClose }: { card: CorrectionCardView | null; onClose: () => void }) {
+  const [needsMaterial, setNeedsMaterial] = useState<boolean | null>(null)
+  const [needsExternalService, setNeedsExternalService] = useState<boolean | null>(null)
+  const [salvando, setSalvando] = useState(false)
+
+  function fechar() {
+    setNeedsMaterial(null)
+    setNeedsExternalService(null)
+    onClose()
+  }
+
+  async function confirmar() {
+    if (!card || needsMaterial === null || needsExternalService === null) return
+    setSalvando(true)
+    try {
+      unwrapSafeAction(await triarCardAProcessarAction({ cardId: card.id, needsMaterial, needsExternalService }))
+      toast.success('Card classificado.')
+      fechar()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao classificar o card.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <Dialog open={card !== null} onOpenChange={(open) => !open && fechar()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Classificar necessidade de manutenção</DialogTitle>
+          <DialogDescription>
+            {card ? `Unidade ${card.uhName} — ${card.checklistItemName ?? 'item'}` : ''}
+          </DialogDescription>
+        </DialogHeader>
+        {card?.comment && (
+          <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">{card.comment}</p>
+        )}
+        <div className="space-y-3">
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Precisa de material/peça?</p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={needsMaterial === true ? 'default' : 'outline'}
+                className="flex-1 rounded-xl"
+                onClick={() => setNeedsMaterial(true)}
+              >
+                Sim
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={needsMaterial === false ? 'default' : 'outline'}
+                className="flex-1 rounded-xl"
+                onClick={() => setNeedsMaterial(false)}
+              >
+                Não
+              </Button>
+            </div>
+          </div>
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Precisa de serviço externo?</p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={needsExternalService === true ? 'default' : 'outline'}
+                className="flex-1 rounded-xl"
+                onClick={() => setNeedsExternalService(true)}
+              >
+                Sim
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={needsExternalService === false ? 'default' : 'outline'}
+                className="flex-1 rounded-xl"
+                onClick={() => setNeedsExternalService(false)}
+              >
+                Não
+              </Button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={fechar} disabled={salvando} className="rounded-xl">
+            Cancelar
+          </Button>
+          <Button
+            onClick={confirmar}
+            disabled={salvando || needsMaterial === null || needsExternalService === null}
+            className="rounded-xl"
+          >
+            {salvando ? 'Salvando...' : 'Confirmar classificação'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

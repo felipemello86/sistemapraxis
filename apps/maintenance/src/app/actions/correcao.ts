@@ -244,6 +244,7 @@ async function fecharProgramacaoDiaImpl(input: {
       data,
       closedById: session.userId,
       conformidadeAntes,
+      totalPrevisto: cards.length,
     },
   });
 
@@ -323,3 +324,79 @@ async function executarCardExecucaoImpl(input: { cardId: string; description: st
   revalidatePath("/");
 }
 export const executarCardExecucaoAction = safeAction(executarCardExecucaoImpl);
+
+/* ------------------------------ A Processar -------------------------------- */
+// Cards sem triagem (needsMaterial/needsExternalService null) — nascem
+// assim quando registrados pelo módulo Governança (camareira, governanta,
+// flag de manutenção da Seleção e Liberação), que não pergunta isso, ver
+// packages/core/src/maintenanceCorrection.ts. Cabe ao perfil Manutenção
+// classificar aqui; depois de triado, o card sai de "A Processar" e passa a
+// aparecer no(s) kanban(s) certo(s) — mesma lógica de kanbansDoCard.
+
+async function triarCardAProcessarImpl(input: {
+  cardId: string;
+  needsMaterial: boolean;
+  needsExternalService: boolean;
+}) {
+  const session = await requireModuleSession();
+  const card = await getCardOrThrow(input.cardId, session.tenantId);
+
+  if (card.needsMaterial !== null || card.needsExternalService !== null) {
+    throw new Error("Este card já foi classificado.");
+  }
+
+  await prisma.maintenanceCorrectionCard.update({
+    where: { id: card.id },
+    data: {
+      needsMaterial: input.needsMaterial,
+      needsExternalService: input.needsExternalService,
+      triagedAt: new Date(),
+      triagedById: session.userId,
+    },
+  });
+
+  revalidatePath("/");
+}
+export const triarCardAProcessarAction = safeAction(triarCardAProcessarImpl);
+
+/* --------------------- Adicionar card urgente já com o dia fechado -------- */
+// Depois que "Fechar programação do dia" já rodou, um novo card pode surgir
+// (ex.: triado agora mesmo em "A Processar") e precisar entrar hoje mesmo,
+// não esperar amanhã — pedido explícito do Felipe ("cards
+// intempestivos/urgentes"). Mesmos gates de fecharProgramacaoDiaImpl (sem
+// serviço externo, material já comprado se precisar, ainda A_FAZER), mas
+// sem recriar o commitment — só anexa a ele, marcado previsto=false pra não
+// inflar o denominador do % de realização (ver MaintenanceDailyCommitment.
+// totalPrevisto).
+async function adicionarCardUrgenteImpl(input: { cardId: string }) {
+  const session = await requireModuleSession();
+  const data = dataAtualSP();
+
+  const commitment = await prisma.maintenanceDailyCommitment.findUnique({
+    where: { tenantId_data: { tenantId: session.tenantId, data } },
+  });
+  if (!commitment) throw new Error("A programação de hoje ainda não foi fechada.");
+
+  const card = await getCardOrThrow(input.cardId, session.tenantId);
+  if (card.needsExternalService) {
+    throw new Error("Cards com serviço externo não entram no Kanban de Execução.");
+  }
+  if (card.needsMaterial && card.materialStatus !== "COMPRADO") {
+    throw new Error("Este card ainda precisa de material comprado.");
+  }
+  if (card.executionStatus !== "A_FAZER") {
+    throw new Error("Este card já está numa programação.");
+  }
+
+  await prisma.maintenanceCorrectionCard.update({
+    where: { id: card.id },
+    data: {
+      dailyCommitmentId: commitment.id,
+      executionStatus: "PLANEJADA",
+      previsto: false,
+    },
+  });
+
+  revalidatePath("/");
+}
+export const adicionarCardUrgenteAction = safeAction(adicionarCardUrgenteImpl);

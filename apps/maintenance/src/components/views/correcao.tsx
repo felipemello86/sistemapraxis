@@ -38,10 +38,27 @@ export function Correcao({
 }) {
   const [aba, setAba] = useState<Aba>('aquisicao')
 
-  const cardsAquisicao = useMemo(() => cards.filter((c) => c.needsMaterial), [cards])
-  const cardsServicos = useMemo(() => cards.filter((c) => c.needsExternalService), [cards])
+  // Cards sem triagem (needsMaterial/needsExternalService null) — nascem
+  // assim quando o módulo Governança registra a necessidade de manutenção
+  // (camareira, governanta, flag da Seleção e Liberação — não cabe a essas
+  // pessoas decidir isso, pedido explícito). Vivem na coluna "A Processar"
+  // do Kanban Execução até o perfil Manutenção classificar; só depois
+  // entram nos filtros normais abaixo.
+  const cardsAProcessar = useMemo(
+    () => cards.filter((c) => c.needsMaterial === null || c.needsExternalService === null),
+    [cards],
+  )
+  const cardsAquisicao = useMemo(() => cards.filter((c) => c.needsMaterial === true), [cards])
+  const cardsServicos = useMemo(() => cards.filter((c) => c.needsExternalService === true), [cards])
   const cardsExecucao = useMemo(
-    () => cards.filter((c) => !c.needsExternalService && (!c.needsMaterial || c.materialStatus === 'COMPRADO')),
+    () =>
+      cards.filter(
+        (c) =>
+          c.needsMaterial !== null &&
+          c.needsExternalService !== null &&
+          !c.needsExternalService &&
+          (!c.needsMaterial || c.materialStatus === 'COMPRADO'),
+      ),
     [cards],
   )
 
@@ -50,7 +67,7 @@ export function Correcao({
   const abas: { id: Aba; label: string; icon: typeof Package; total: number }[] = [
     { id: 'aquisicao', label: 'Aquisição', icon: Package, total: cardsAquisicao.length },
     { id: 'servicos', label: 'Serviços Externos', icon: HardHat, total: cardsServicos.length },
-    { id: 'execucao', label: 'Execução', icon: ListChecks, total: cardsExecucao.length },
+    { id: 'execucao', label: 'Execução', icon: ListChecks, total: cardsExecucao.length + cardsAProcessar.length },
   ]
 
   return (
@@ -96,6 +113,7 @@ export function Correcao({
         <KanbanExecucao
           podeOperar={podeOperar}
           cards={cardsExecucao}
+          cardsAProcessar={cardsAProcessar}
           uhIdsLiberadasHoje={uhIdsLiberadasHoje}
           commitmentHoje={commitmentHoje}
         />

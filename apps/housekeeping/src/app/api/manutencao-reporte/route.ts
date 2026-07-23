@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   aplicarBloqueioPorUrgencia,
   createCorrectionCardForItem,
+  notificarPorRoles,
   prisma,
   getSession,
   hasModuleAccess,
@@ -34,16 +35,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso a este módulo" }, { status: 403 });
   }
 
-  const { uhId, checklistItemId, descricao, fotos, needsMaterial, needsExternalService, urgente } = await req.json();
+  const { uhId, checklistItemId, descricao, fotos, urgente } = await req.json();
 
   if (!uhId || !checklistItemId || !descricao || String(descricao).trim().length < 5) {
     return NextResponse.json({ error: "Descreva a falha detectada (mínimo 5 caracteres)." }, { status: 400 });
-  }
-  if (typeof needsMaterial !== "boolean" || typeof needsExternalService !== "boolean") {
-    return NextResponse.json(
-      { error: "Informe se precisa de material e de serviço externo." },
-      { status: 400 },
-    );
   }
   if (typeof urgente !== "boolean") {
     return NextResponse.json(
@@ -52,14 +47,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { tenantId: true } });
+  const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { tenantId: true, numero: true } });
   if (!uh || uh.tenantId !== session.tenantId) {
     return NextResponse.json({ error: "Unidade não encontrada." }, { status: 404 });
   }
 
   const item = await prisma.maintenanceChecklistItem.findUnique({
     where: { id: checklistItemId },
-    select: { tenantId: true },
+    select: { tenantId: true, name: true },
   });
   if (!item || item.tenantId !== session.tenantId) {
     return NextResponse.json({ error: "Item de checklist não encontrado." }, { status: 404 });
@@ -118,17 +113,27 @@ export async function POST(req: NextRequest) {
     inspectionItemId = novaInspecao.items[0].id;
   }
 
-  // Não conformidade nova (não é "jaRegistrado") — sempre precisa do card de
-  // Correção com as duas flags respondidas (pedido explícito, mesmo
-  // tratamento dos outros 3 pontos de entrada: inspeção completa e UH 3D).
+  // Não conformidade nova (não é "jaRegistrado") — cria o card de Correção
+  // sem triagem (needsMaterial/needsExternalService null): não cabe à
+  // camareira/governanta decidir isso (pedido explícito do Felipe) — o card
+  // nasce na coluna "A Processar" do kanban Execução, e cabe ao perfil
+  // Manutenção classificar de lá (ver kanban-execucao.tsx).
   await createCorrectionCardForItem({
     tenantId: session.tenantId,
     inspectionItemId,
     uhId,
     checklistItemId,
-    needsMaterial,
-    needsExternalService,
-    triagedById: session.userId,
+    needsMaterial: null,
+    needsExternalService: null,
+    triagedById: null,
+  });
+
+  // Notifica quem precisa agir/acompanhar: Manutenção (vai triar em "A
+  // Processar"), Gerente e a própria Governanta (pedido explícito).
+  await notificarPorRoles(session.tenantId, ["MANUTENCAO", "GERENTE", "GOVERNANTA"], {
+    title: "🔧 Necessidade de manutenção registrada",
+    body: `UH ${uh.numero}${item.name ? ` — ${item.name}` : ""}: ${descricaoLimpa}`,
+    data: { view: "correcao" },
   });
 
   // NC impeditiva ao uso — bloqueia a UH automaticamente e notifica todos

@@ -175,8 +175,12 @@ export type CorrectionCardView = {
   // explícito). Vem do MaintenanceInspectionItem, não duplicada no card.
   urgente: boolean;
 
-  needsMaterial: boolean; // sempre não-nulo aqui — cards não triados são filtrados na query
-  needsExternalService: boolean;
+  // null = ainda não triado (nasceu do módulo Governança — camareira,
+  // governanta, flag de manutenção — que não pergunta isso). Aparece na
+  // coluna "A Processar" do Kanban Execução até o perfil Manutenção
+  // classificar (ver kanbansDoCard em packages/core).
+  needsMaterial: boolean | null;
+  needsExternalService: boolean | null;
 
   materialStatus: "A_ADQUIRIR" | "COMPRADO";
   materialReceiptPhoto: string | null;
@@ -192,6 +196,10 @@ export type CorrectionCardView = {
   executionStatus: "A_FAZER" | "PLANEJADA" | "EXECUTADA";
   dailyCommitmentId: string | null;
   blockForReservation: boolean | null;
+  // false só pros cards adicionados à programação DEPOIS do fechamento do
+  // dia (intempestivos/urgentes, pedido explícito) — ver
+  // MaintenanceDailyCommitment.totalPrevisto pro denominador congelado do %.
+  previsto: boolean;
 
   executedDescription: string | null;
   executedPhotos: string[];
@@ -207,6 +215,10 @@ export type DailyCommitmentView = {
   conformidadeAntes: number | null;
   conformidadeDepois: number | null;
   reportSentAt: string | null; // ISO
+  // Denominador congelado do % de realização — quantos cards foram
+  // selecionados no momento do fechamento (antes de qualquer adição
+  // posterior). Ver comentário completo no schema (MaintenanceDailyCommitment).
+  totalPrevisto: number;
   cards: {
     id: string;
     uhName: string;
@@ -214,6 +226,7 @@ export type DailyCommitmentView = {
     executionStatus: "A_FAZER" | "PLANEJADA" | "EXECUTADA";
     executedAt: string | null; // ISO
     urgente: boolean;
+    previsto: boolean;
   }[];
   // Não conformidades (IV) identificadas nesse dia (createdAt do card de
   // Correção cai nesse dia, fuso America/Sao_Paulo) que ainda não foram

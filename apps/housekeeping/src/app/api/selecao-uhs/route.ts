@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { createCorrectionCardForItem, getSession, hasModuleAccess, notificarPorRoles, prisma, sendPushToUser } from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
 import { dataAtualSP } from "@/lib/timezone";
@@ -346,6 +346,67 @@ export async function PATCH(req: NextRequest) {
         });
       }
       // TODO: notificar camareira/governantas/gerentes via Telegram sobre a manutenção
+
+      // Sensibiliza o módulo de Manutenção — mesmo mecanismo dos outros 3
+      // pontos de entrada de necessidade de manutenção (camareira arrumando,
+      // governanta inspecionando): cria um MaintenanceInspectionItem (sem
+      // checklistItemId, já que esta flag é da UH inteira, não de um item
+      // específico) + o card de Correção correspondente, sem triagem — cai
+      // direto na coluna "A Processar" do kanban Execução (ver
+      // packages/core/src/maintenanceCorrection.ts). Evita duplicar: só cria
+      // se não existir já um item genérico (checklistItemId null) em aberto
+      // pra essa UH.
+      const ultimaInspecaoManut = await prisma.maintenanceInspection.findFirst({
+        where: { tenantId, uhId },
+        orderBy: { date: "desc" },
+        include: { items: { where: { checklistItemId: null } } },
+      });
+      const itemGenericoAberto = ultimaInspecaoManut?.items.find((it) => it.status === "NAO_CONFORME");
+
+      if (!itemGenericoAberto) {
+        const descricaoFlag = descricao?.trim() || "UH marcada em manutenção na tela Seleção e Liberação.";
+        let inspectionItemId: string;
+
+        if (ultimaInspecaoManut) {
+          const novoItem = await prisma.maintenanceInspectionItem.create({
+            data: {
+              inspectionId: ultimaInspecaoManut.id,
+              checklistItemId: null,
+              status: "NAO_CONFORME",
+              comment: descricaoFlag,
+            },
+          });
+          inspectionItemId = novoItem.id;
+        } else {
+          const novaInspecao = await prisma.maintenanceInspection.create({
+            data: {
+              tenantId,
+              uhId,
+              inspectorId: session.userId,
+              date: new Date(),
+              items: { create: [{ checklistItemId: null, status: "NAO_CONFORME", comment: descricaoFlag }] },
+            },
+            include: { items: true },
+          });
+          inspectionItemId = novaInspecao.items[0].id;
+        }
+
+        await createCorrectionCardForItem({
+          tenantId,
+          inspectionItemId,
+          uhId,
+          checklistItemId: null,
+          needsMaterial: null,
+          needsExternalService: null,
+          triagedById: null,
+        });
+
+        await notificarPorRoles(tenantId, ["MANUTENCAO", "GERENTE", "GOVERNANTA"], {
+          title: "🔧 Necessidade de manutenção registrada",
+          body: `UH ${uh.numero}: ${descricaoFlag}`,
+          data: { view: "correcao" },
+        });
+      }
     }
 
     return NextResponse.json({ emManutencao: novoValor });

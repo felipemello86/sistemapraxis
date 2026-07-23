@@ -101,12 +101,10 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   const [itemManutencaoSelecionado, setItemManutencaoSelecionado] = useState<ItemChecklistManutencao | null>(null);
   const [descricaoManutencao, setDescricaoManutencao] = useState("");
   const [fotosManutencao, setFotosManutencao] = useState<string[]>([]);
-  // Perguntas obrigatórias antes de concluir o registro (pedido explícito:
-  // toda não conformidade nova precisa informar se vai precisar de material
-  // e/ou de serviço externo pra sensibilizar corretamente os kanbans do
-  // módulo de Manutenção). null = ainda não respondeu.
-  const [precisaMaterialManutencao, setPrecisaMaterialManutencao] = useState<boolean | null>(null);
-  const [precisaServicoManutencao, setPrecisaServicoManutencao] = useState<boolean | null>(null);
+  // Precisar de material/serviço externo não é mais perguntado aqui — não
+  // cabe à camareira decidir isso (pedido explícito do Felipe). O card nasce
+  // sem triagem, na coluna "A Processar" do kanban Execução (Manutenção), e
+  // quem classifica de lá é o perfil Manutenção.
   // NC impeditiva ao uso — pedido explícito: bloqueia a UH automaticamente
   // e notifica todos os usuários (ver packages/core/src/maintenanceUrgente.ts).
   const [ehUrgenteManutencao, setEhUrgenteManutencao] = useState<boolean | null>(null);
@@ -345,8 +343,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setItemManutencaoSelecionado(item);
     setDescricaoManutencao("");
     setFotosManutencao([]);
-    setPrecisaMaterialManutencao(null);
-    setPrecisaServicoManutencao(null);
     setEhUrgenteManutencao(null);
     setManutencaoSubFase("descrever");
   }
@@ -381,8 +377,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
       !itemManutencaoSelecionado ||
       !assignmentAtivo ||
       descricaoManutencao.trim().length < 5 ||
-      precisaMaterialManutencao === null ||
-      precisaServicoManutencao === null ||
       ehUrgenteManutencao === null
     )
       return;
@@ -396,8 +390,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
           checklistItemId: itemManutencaoSelecionado.id,
           descricao: descricaoManutencao.trim(),
           fotos: fotosManutencao,
-          needsMaterial: precisaMaterialManutencao,
-          needsExternalService: precisaServicoManutencao,
           urgente: ehUrgenteManutencao,
         }),
       });
@@ -942,38 +934,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                 </button>
               </div>
             </div>
-            <div className="card mt-3">
-              <p className="text-xs text-gray-500 font-medium mb-1.5">Precisa adquirir algum material? *</p>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <button
-                  onClick={() => setPrecisaMaterialManutencao(true)}
-                  className={`py-2.5 rounded-lg border font-medium text-sm ${precisaMaterialManutencao === true ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-300 text-gray-600"}`}
-                >
-                  Sim
-                </button>
-                <button
-                  onClick={() => setPrecisaMaterialManutencao(false)}
-                  className={`py-2.5 rounded-lg border font-medium text-sm ${precisaMaterialManutencao === false ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-300 text-gray-600"}`}
-                >
-                  Não
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 font-medium mb-1.5">Precisa contratar serviço externo? *</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setPrecisaServicoManutencao(true)}
-                  className={`py-2.5 rounded-lg border font-medium text-sm ${precisaServicoManutencao === true ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-300 text-gray-600"}`}
-                >
-                  Sim
-                </button>
-                <button
-                  onClick={() => setPrecisaServicoManutencao(false)}
-                  className={`py-2.5 rounded-lg border font-medium text-sm ${precisaServicoManutencao === false ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-300 text-gray-600"}`}
-                >
-                  Não
-                </button>
-              </div>
-            </div>
             <div className="flex gap-2 mt-3">
               <button
                 onClick={() => setManutencaoSubFase("selecionar")}
@@ -988,8 +948,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                   descricaoManutencao.trim().length < 5 ||
                   enviandoManutencao ||
                   uploadandoFotoManutencao ||
-                  precisaMaterialManutencao === null ||
-                  precisaServicoManutencao === null ||
                   ehUrgenteManutencao === null
                 }
                 className="flex-[2] py-3 rounded-xl bg-orange-500 text-white font-bold disabled:opacity-50"

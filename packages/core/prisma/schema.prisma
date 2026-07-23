@@ -1310,6 +1310,14 @@ model MaintenanceCorrectionCard {
   // notificação pra Atendimento/Gerente/Master, não altera nenhum estado
   // sozinho (a UH não é bloqueada automaticamente, é decisão humana).
   blockForReservation Boolean?
+  // false só pros cards adicionados a "Planejadas" DEPOIS do fechamento da
+  // programação do dia (intempestivos/urgentes — pedido explícito do
+  // Felipe). Usado só pro relatório do dia mostrar "atividades não
+  // previstas" — MaintenanceDailyCommitment.totalPrevisto é o denominador
+  // congelado do % de realização (ver enviarResultadoDiarioSeNecessario/
+  // pctRealizacao), então cards com previsto=false só contam se executados,
+  // nunca reduzem o percentual.
+  previsto            Boolean                     @default(true)
 
   // Preenchimento comum do passo "executado" — tanto do kanban de Serviços
   // Externos quanto do de Execução — volta o MaintenanceInspectionItem pra
@@ -1445,6 +1453,14 @@ model MaintenanceDailyCommitment {
   conformidadeAntes  Int?
   conformidadeDepois Int?
   reportSentAt       DateTime?
+
+  // Quantos cards foram selecionados no fechamento (antes de qualquer
+  // adição posterior) — denominador congelado do % de realização do dia.
+  // Cards intempestivos adicionados depois (ver
+  // MaintenanceCorrectionCard.previsto) entram no numerador se executados,
+  // mas nunca neste denominador — por isso o % pode passar de 100 (pedido
+  // explícito: "10 previstos + 1 intempestivo executado = 110%").
+  totalPrevisto Int @default(0)
 
   cards MaintenanceCorrectionCard[]
 

@@ -10,23 +10,30 @@ import { reavaliarBloqueioUrgencia } from "./maintenanceUrgente";
 
 /**
  * Cria o card de Correção pra uma não conformidade recém-registrada. Chamado
- * a partir de qualquer um dos 4 pontos de entrada que criam/atualizam um
- * MaintenanceInspectionItem pra NAO_CONFORME — a pergunta "precisa de
- * material?/precisa de serviço externo?" é obrigatória em todos eles antes
- * de concluir o registro (pedido explícito do Felipe), então o card sempre
- * nasce já triado aqui. needsMaterial/needsExternalService só ficam nulos em
- * cards migrados de antes dessa funcionalidade existir — só a rota de
- * Triagem retroativa escreve neles depois (ver apps/maintenance triagem).
+ * a partir de qualquer um dos pontos de entrada que criam/atualizam um
+ * MaintenanceInspectionItem pra NAO_CONFORME.
+ *
+ * needsMaterial/needsExternalService podem vir nulos (não-triado) — pedido
+ * explícito do Felipe: quando o registro vem do módulo Governança (camareira
+ * arrumando, governanta inspecionando, ou a flag de manutenção da tela
+ * Seleção e Liberação), não cabe a essas pessoas decidir isso. O card nasce
+ * sem triagem e aparece na coluna "A Processar" do kanban Execução (ver
+ * kanbansDoCard abaixo, que trata null como "sem kanban" — exatamente o
+ * critério usado pra popular "A Processar") — cabe ao perfil Manutenção
+ * classificar de lá. Os 2 pontos de entrada do próprio módulo Manutenção
+ * (inspeção completa, spot UH 3D) continuam perguntando e passando booleans
+ * de verdade, então nascem já triados como sempre.
  */
 export async function createCorrectionCardForItem(params: {
   tenantId: string;
   inspectionItemId: string;
   uhId: string;
   checklistItemId: string | null;
-  needsMaterial: boolean;
-  needsExternalService: boolean;
+  needsMaterial: boolean | null;
+  needsExternalService: boolean | null;
   triagedById: string | null;
 }) {
+  const jaTriado = params.needsMaterial !== null && params.needsExternalService !== null;
   return prisma.maintenanceCorrectionCard.create({
     data: {
       tenantId: params.tenantId,
@@ -35,8 +42,8 @@ export async function createCorrectionCardForItem(params: {
       checklistItemId: params.checklistItemId,
       needsMaterial: params.needsMaterial,
       needsExternalService: params.needsExternalService,
-      triagedAt: new Date(),
-      triagedById: params.triagedById,
+      triagedAt: jaTriado ? new Date() : null,
+      triagedById: jaTriado ? params.triagedById : null,
     },
   });
 }
@@ -114,10 +121,12 @@ export async function resolveCorrectionCard(params: {
  * fechando programação; a UI de Execução decide se bloqueia por material
  * pendente).
  *
- * Cards com needsMaterial/needsExternalService nulos (dado legado, de
- * antes dessa funcionalidade existir) não aparecem em nenhum kanban — o
- * Felipe prefere completar essas manualmente na tela de Informações em vez
- * de uma tela de triagem dedicada.
+ * Cards com needsMaterial/needsExternalService nulos (não-triados — dado
+ * legado de antes da triagem existir, OU qualquer card criado pelo módulo
+ * Governança, que nunca pergunta isso, ver createCorrectionCardForItem)
+ * não aparecem em nenhum kanban normal — aparecem só na coluna "A
+ * Processar" (ver kanban-execucao.tsx), de onde o perfil Manutenção
+ * triagem antes de seguir pro fluxo normal.
  */
 export type CorrectionKanban = "aquisicao" | "servicos" | "execucao";
 

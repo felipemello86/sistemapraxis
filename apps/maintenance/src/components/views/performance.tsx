@@ -22,10 +22,15 @@ function formatarHora(iso: string) {
   return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 }
 
+// Denominador é totalPrevisto (congelado no fechamento do dia), não o total
+// ao vivo de commitment.cards — cards intempestivos/urgentes adicionados
+// depois (previsto=false) só entram no numerador se executados, podendo
+// levar o % acima de 100% (pedido explícito: 10 previstos + 1 não previsto
+// executado = 110%). Ver mesma lógica em dailyReport.ts.
 function pctRealizacao(commitment: DailyCommitmentView) {
-  if (commitment.cards.length === 0) return 0
+  if (commitment.totalPrevisto === 0) return 0
   const executadas = commitment.cards.filter((c) => c.executionStatus === 'EXECUTADA').length
-  return Math.round((executadas / commitment.cards.length) * 100)
+  return Math.round((executadas / commitment.totalPrevisto) * 100)
 }
 
 export function Performance({ commitments }: { commitments: DailyCommitmentView[] }) {
@@ -163,7 +168,12 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
                     size="compact"
                     tone="success"
                   />
-                  <StatCard label="Cards planejados" value={c.cards.length} size="compact" />
+                  <StatCard
+                    label="Cards planejados"
+                    value={c.totalPrevisto}
+                    hint={c.cards.length > c.totalPrevisto ? `+${c.cards.length - c.totalPrevisto} não previsto(s)` : undefined}
+                    size="compact"
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -177,8 +187,13 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
                       <ul className="space-y-1.5">
                         {executadas.map((card) => (
                           <li key={card.id} className="flex items-center justify-between rounded-lg border border-border/70 px-2.5 py-1.5 text-sm">
-                            <span>
+                            <span className="flex items-center gap-1.5">
                               Unidade {card.uhName} — {card.checklistItemName ?? 'item'}
+                              {!card.previsto && (
+                                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                                  Não previsto
+                                </span>
+                              )}
                             </span>
                             {card.executedAt && (
                               <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -201,8 +216,13 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
                     ) : (
                       <ul className="space-y-1.5">
                         {pendentes.map((card) => (
-                          <li key={card.id} className="rounded-lg border border-border/70 px-2.5 py-1.5 text-sm">
+                          <li key={card.id} className="flex items-center gap-1.5 rounded-lg border border-border/70 px-2.5 py-1.5 text-sm">
                             Unidade {card.uhName} — {card.checklistItemName ?? 'item'}
+                            {!card.previsto && (
+                              <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                                Não previsto
+                              </span>
+                            )}
                           </li>
                         ))}
                       </ul>
