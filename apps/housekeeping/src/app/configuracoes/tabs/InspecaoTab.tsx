@@ -25,13 +25,22 @@ export default function InspecaoTab({ somenteLeitura = false }: { somenteLeitura
   const [novoItem, setNovoItem] = useState("");
   const [novaCategoria, setNovaCategoria] = useState("CAMA");
   const [sucesso, setSucesso] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => { carregar(); }, []);
 
   async function carregar() {
-    const data = await apiFetch("/api/inspecao-template").then((r) => r.json());
-    setItens(Array.isArray(data) ? data : []);
-    setLoading(false);
+    setErro(null);
+    try {
+      const res = await apiFetch("/api/inspecao-template");
+      if (!res.ok) throw new Error(`Falha ao carregar checklist (${res.status})`);
+      const data = await res.json();
+      setItens(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao carregar checklist");
+    } finally {
+      setLoading(false);
+    }
   }
 
   function addItem() {
@@ -72,6 +81,16 @@ export default function InspecaoTab({ somenteLeitura = false }: { somenteLeitura
   }
 
   if (loading) return <div className="text-gray-400">Carregando...</div>;
+  if (erro) {
+    return (
+      <div className="max-w-2xl">
+        <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg flex items-center justify-between gap-3">
+          <span>Não foi possível carregar o checklist: {erro}</span>
+          <button onClick={carregar} className="btn-secondary text-xs flex-shrink-0">Tentar de novo</button>
+        </div>
+      </div>
+    );
+  }
 
   const porCategoria = CATEGORIAS.map((cat) => ({
     cat,
