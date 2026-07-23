@@ -703,18 +703,6 @@ function SpotDetailDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Independe do status de conformidade — existe mesmo pra itens
-            nunca inspecionados, por isso fica fora do bloco de status
-            abaixo, com seu próprio salvar. */}
-        <ItemInfoField
-          uhId={uhId}
-          checklistItemId={spot.checklistItemId}
-          initialInfo={infoAtual?.info ?? null}
-          initialPhotos={infoAtual?.photos ?? []}
-          podeOperar={podeOperar}
-          logs={infoLogs}
-        />
-
         {!inspectionItem ? (
           <p className="text-sm text-muted-foreground">
             Este item ainda não foi avaliado nesta UH. Inicie uma inspeção completa na tela Inspeções para
@@ -750,14 +738,14 @@ function SpotDetailDialog({
             {status === 'NAO_CONFORME' && (
               <>
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                    Descreva a falha *
+                  <label className="mb-1.5 block text-sm font-bold text-red-600">
+                    Falha *
                   </label>
                   <Textarea
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
                     placeholder="O que está não conforme?"
-                    className="min-h-20 rounded-xl"
+                    className="min-h-24 rounded-xl border-red-200 focus-visible:ring-red-400"
                     disabled={!podeOperar}
                   />
                 </div>
@@ -822,6 +810,24 @@ function SpotDetailDialog({
             )}
           </div>
         )}
+
+        {/* Cadastro do item — dado técnico/construtivo (ex.: potência,
+            fabricante, serial), independe do status de conformidade e por
+            isso existe mesmo pra itens nunca inspecionados (ver comentário
+            em MaintenanceItemInfo no schema). Deliberadamente discreto aqui:
+            o protagonista deste popup é a falha acima, não o cadastro — ver
+            pedido do Felipe sobre os dois campos serem confundidos. */}
+        <ItemInfoField
+          uhId={uhId}
+          checklistItemId={spot.checklistItemId}
+          initialInfo={infoAtual?.info ?? null}
+          initialPhotos={infoAtual?.photos ?? []}
+          podeOperar={podeOperar}
+          logs={infoLogs}
+          label="Cadastro"
+          compact
+          className="border-t border-border/60 pt-3"
+        />
 
         {inspectionItem && (
           <DialogFooter>

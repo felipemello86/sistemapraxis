@@ -29,6 +29,8 @@ export function ItemInfoField({
   podeOperar,
   logs = [],
   className,
+  label = 'Informações do item',
+  compact = false,
 }: {
   uhId: string
   checklistItemId: string
@@ -37,6 +39,15 @@ export function ItemInfoField({
   podeOperar: boolean
   logs?: ItemInfoLogEntry[]
   className?: string
+  // Rótulo do campo — por padrão "Informações do item", mas telas onde ele
+  // convive lado a lado com um campo de descrição de falha (ex.: UH 3D)
+  // podem sobrescrever pra algo mais curto/neutro (ex.: "Cadastro"), pra não
+  // ser confundido com a falha em si. Ver comentário no SpotDetailDialog.
+  label?: string
+  // Versão reduzida — mesma lógica acima: usado onde este campo precisa ter
+  // presença visual de coadjuvante (menor, mais discreto), não de
+  // protagonista da tela.
+  compact?: boolean
 }) {
   const [valor, setValor] = useState(initialInfo ?? '')
   const [fotos, setFotos] = useState<string[]>(initialPhotos)
@@ -120,10 +131,12 @@ export function ItemInfoField({
     })
   }
 
+  const fotoSize = compact ? 'h-10 w-10' : 'h-16 w-16'
+
   return (
     <div className={className}>
-      <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-        Informações do item
+      <label className={cn('mb-1.5 block font-medium text-muted-foreground', compact ? 'text-[11px]' : 'text-xs')}>
+        {label}
       </label>
       <Textarea
         value={valor}
@@ -132,13 +145,13 @@ export function ItemInfoField({
           marcarSujo(e.target.value, fotos)
         }}
         placeholder="Ex.: potência, fabricante, número de série..."
-        className="min-h-16 rounded-xl"
+        className={cn('rounded-xl', compact ? 'min-h-9 text-xs' : 'min-h-16')}
         disabled={!podeOperar || salvando}
       />
 
       <div className="mt-2 flex flex-wrap gap-2">
         {fotos.map((url) => (
-          <div key={url} className="group/foto relative h-16 w-16 overflow-hidden rounded-lg border border-border/70">
+          <div key={url} className={cn('group/foto relative overflow-hidden rounded-lg border border-border/70', fotoSize)}>
             <button
               type="button"
               onClick={() => setFotoAmpliada(url)}
@@ -163,13 +176,13 @@ export function ItemInfoField({
           </div>
         ))}
         {podeOperar && fotos.length < MAX_FOTOS_INFO && (
-          <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground hover:bg-accent">
+          <label className={cn('flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground hover:bg-accent', fotoSize)}>
             {uploading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                <Camera className="h-4 w-4" />
-                <span className="text-[10px]">Adicionar</span>
+                <Camera className={compact ? 'h-3 w-3' : 'h-4 w-4'} />
+                {!compact && <span className="text-[10px]">Adicionar</span>}
               </>
             )}
             <input
