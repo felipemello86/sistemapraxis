@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Clock, Camera, ChevronRight, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star } from "lucide-react";
+import { CheckCircle2, Clock, Camera, ChevronRight, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import GeoCheckin from "./GeoCheckin";
@@ -30,11 +30,21 @@ type Assignment = {
     fotos: string; // JSON: { [tipo]: string[] }
     steps: { id: string; stepId: string; ordem: number; iniciadoEm: string; finalizadoEm: string | null; step: { titulo: string; descricao: string } }[];
   } | null;
+  // Dados pra etapa obrigatória "Necessidade de Manutenção?" — ver fase
+  // "manutencao" abaixo. manutencaoItens = itens de checklist da Manutenção
+  // aplicáveis a essa UH; manutencaoPendentes = ids dos que já estão
+  // NAO_CONFORME hoje (pra avisar "já registrado" antes da camareira
+  // preencher a descrição à toa).
+  manutencaoItens?: ItemChecklistManutencao[];
+  manutencaoPendentes?: string[];
 };
 
-type Fase = "lista" | "limpeza" | "fotos" | "concluido";
+type ItemChecklistManutencao = { id: string; name: string; category: string };
+
+type Fase = "lista" | "limpeza" | "manutencao" | "fotos" | "concluido";
 
 const FOTO_TIPOS = ["cozinha", "cama", "toalhas", "banheiro"];
+const MAX_FOTOS_MANUTENCAO = 4;
 const FOTO_LABELS: Record<string, string> = {
   cozinha: "🍳 Cozinha",
   cama: "🛏️ Cama",
@@ -73,6 +83,22 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   const [fotoLavanderia, setFotoLavanderia] = useState<string | null>(null);
   const [uploadandoFotoLav, setUploadandoFotoLav] = useState(false);
   const [enviandoLavanderia, setEnviandoLavanderia] = useState(false);
+
+  // Etapa obrigatória "Necessidade de Manutenção?" — entre o checklist e as
+  // fotos de conclusão (ver bloco "TELA DE MANUTENÇÃO" abaixo). Sub-fluxo:
+  // pergunta (Sim/Não) → [seleciona item → descreve + fotos] → resultado
+  // (registrado ou já existia) → pergunta se quer registrar outro.
+  const [manutencaoSubFase, setManutencaoSubFase] = useState<"pergunta" | "selecionar" | "descrever" | "resultado">("pergunta");
+  const [itemManutencaoSelecionado, setItemManutencaoSelecionado] = useState<ItemChecklistManutencao | null>(null);
+  const [descricaoManutencao, setDescricaoManutencao] = useState("");
+  const [fotosManutencao, setFotosManutencao] = useState<string[]>([]);
+  const [uploadandoFotoManutencao, setUploadandoFotoManutencao] = useState(false);
+  const [enviandoManutencao, setEnviandoManutencao] = useState(false);
+  const [resultadoManutencao, setResultadoManutencao] = useState<{ jaRegistrado: boolean; itemNome: string } | null>(null);
+  // Registrados nesta sessão de "manutencao" (antes do próximo carregar()
+  // trazer o /api/sessoes atualizado) — evita deixar selecionar de novo um
+  // item que ela acabou de registrar, no mesmo loop.
+  const [itensManutencaoRegistradosAgora, setItensManutencaoRegistradosAgora] = useState<Set<string>>(new Set());
 
   // Edição de fotos de uma UH já concluída (ver "Editar fotos" em Minhas
   // UHs) — editandoFotosId guarda o id da CleaningSession sendo editada, não
@@ -216,14 +242,143 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
       // Ignora falha na API — a UI avança de qualquer forma
     }
 
-    // Sempre avança para o próximo step ou para a fase de fotos
+    // Sempre avança para o próximo step ou para a etapa obrigatória de
+    // manutenção (que antecede as fotos — ver iniciarEtapaManutencao)
     if (nextIdx >= totalSteps) {
-      setFase("fotos");
+      await iniciarEtapaManutencao();
     } else {
       setStepAtualIdx(nextIdx);
     }
 
     await carregar();
+  }
+
+  // ─── Etapa "Necessidade de Manutenção?" ────────────────────────────────
+  // Entra logo após o checklist, antes das fotos obrigatórias. O tempo
+  // gasto aqui não conta contra a camareira (ver comentário em
+  // CleaningSession.manutencaoSegundosExcluidos no schema): iniciarEtapa
+  // marca a entrada no servidor, finalizarEtapa fecha e soma o delta.
+  async function iniciarEtapaManutencao() {
+    setManutencaoSubFase("pergunta");
+    setItemManutencaoSelecionado(null);
+    setDescricaoManutencao("");
+    setFotosManutencao([]);
+    setResultadoManutencao(null);
+    setItensManutencaoRegistradosAgora(new Set());
+    setFase("manutencao");
+    if (sessaoId) {
+      try {
+        await apiFetch("/api/sessoes", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "iniciar_manutencao", sessaoId }),
+        });
+      } catch {
+        // Não bloqueia a UI — na pior hipótese o tempo desta etapa não é
+        // descontado, mas ela continua conseguindo registrar normalmente.
+      }
+    }
+  }
+
+  async function finalizarEtapaManutencao() {
+    if (sessaoId) {
+      try {
+        await apiFetch("/api/sessoes", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "concluir_manutencao", sessaoId }),
+        });
+      } catch {
+        // idem — não bloqueia o avanço pra tela de fotos
+      }
+    }
+    setFase("fotos");
+    await carregar();
+  }
+
+  function responderPerguntaManutencao(necessario: boolean) {
+    if (necessario) {
+      setManutencaoSubFase("selecionar");
+    } else {
+      finalizarEtapaManutencao();
+    }
+  }
+
+  function selecionarItemManutencao(item: ItemChecklistManutencao, pendentes: Set<string>) {
+    if (pendentes.has(item.id) || itensManutencaoRegistradosAgora.has(item.id)) {
+      setResultadoManutencao({ jaRegistrado: true, itemNome: item.name });
+      setManutencaoSubFase("resultado");
+      return;
+    }
+    setItemManutencaoSelecionado(item);
+    setDescricaoManutencao("");
+    setFotosManutencao([]);
+    setManutencaoSubFase("descrever");
+  }
+
+  async function handleFotoManutencao(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || fotosManutencao.length >= MAX_FOTOS_MANUTENCAO) return;
+    setUploadandoFotoManutencao(true);
+    try {
+      const fileComprimido = await comprimirImagem(file);
+      const fd = new FormData();
+      fd.append("file", fileComprimido);
+      fd.append("tipo", "manutencao");
+      fd.append("pasta", "manutencao-camareira");
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (json.url) setFotosManutencao((prev) => [...prev, json.url]);
+    } catch {
+      // Foto é opcional — falha silenciosa não impede o registro.
+    } finally {
+      setUploadandoFotoManutencao(false);
+    }
+  }
+
+  function removerFotoManutencao(idx: number) {
+    setFotosManutencao((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function enviarManutencao() {
+    if (!itemManutencaoSelecionado || !assignmentAtivo || descricaoManutencao.trim().length < 5) return;
+    setEnviandoManutencao(true);
+    try {
+      const res = await apiFetch("/api/manutencao-reporte", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uhId: assignmentAtivo.uh.id,
+          checklistItemId: itemManutencaoSelecionado.id,
+          descricao: descricaoManutencao.trim(),
+          fotos: fotosManutencao,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Erro ${res.status}`);
+      if (!json.jaRegistrado) {
+        setItensManutencaoRegistradosAgora((prev) => new Set(prev).add(itemManutencaoSelecionado.id));
+      }
+      setResultadoManutencao({ jaRegistrado: !!json.jaRegistrado, itemNome: itemManutencaoSelecionado.name });
+      setManutencaoSubFase("resultado");
+    } catch {
+      // Mantém na tela de descrição — a camareira pode tentar de novo.
+    } finally {
+      setEnviandoManutencao(false);
+    }
+  }
+
+  function continuarAposResultadoManutencao(registrarOutro: boolean) {
+    if (registrarOutro) {
+      setItemManutencaoSelecionado(null);
+      setDescricaoManutencao("");
+      setFotosManutencao([]);
+      setResultadoManutencao(null);
+      setManutencaoSubFase("selecionar");
+    } else {
+      finalizarEtapaManutencao();
+    }
   }
 
   // Antes disso, uma exceção dentro de img.onload (ex.: canvas.getContext("2d")
@@ -486,6 +641,207 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
           </button>
         </div>
       </div>
+    );
+  }
+
+  // ─── TELA DE MANUTENÇÃO (etapa obrigatória, antes das fotos) ────────────
+  // Pergunta Sim/Não → se Sim, loop de selecionar item / descrever + fotos /
+  // resultado / "mais algum item?". O tempo aqui não conta contra a
+  // camareira (ver iniciarEtapaManutencao/finalizarEtapaManutencao acima).
+  if (fase === "manutencao" && assignmentAtivo) {
+    const assignmentFrescoManut = data?.assignments.find((a) => a.id === assignmentAtivo.id) ?? assignmentAtivo;
+    const itensDisponiveis = assignmentFrescoManut.manutencaoItens ?? [];
+    const pendentesSet = new Set(assignmentFrescoManut.manutencaoPendentes ?? []);
+    const itensPorCategoria = itensDisponiveis.reduce<Record<string, ItemChecklistManutencao[]>>((acc, it) => {
+      (acc[it.category] ??= []).push(it);
+      return acc;
+    }, {});
+
+    return (
+      <><GeoCheckin /><div className="min-h-screen bg-gray-50 p-4 max-w-lg mx-auto">
+        <div className="bg-blue-700 text-white rounded-xl p-4 mb-6">
+          <p className="text-sm opacity-80">{assignmentAtivo.uh.numero}</p>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Wrench className="w-5 h-5" /> Necessidade de manutenção
+          </h2>
+          <div className="flex items-center gap-1.5 mt-2 text-xs bg-white/15 rounded-lg px-2 py-1 w-fit">
+            <Clock className="w-3.5 h-3.5" /> Tempo pausado nesta etapa
+          </div>
+        </div>
+
+        {manutencaoSubFase === "pergunta" && (
+          <div className="card text-center py-8">
+            <HelpCircle className="w-10 h-10 text-blue-500 mx-auto mb-3" />
+            <p className="text-lg font-semibold text-gray-800 mb-1">
+              Foi detectada necessidade de manutenção nesta UH?
+            </p>
+            <p className="text-sm text-gray-500 mb-6">
+              Ar-condicionado, chuveiro, tomadas, móveis danificados, etc.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => responderPerguntaManutencao(false)}
+                className="flex-1 py-4 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50"
+              >
+                Não
+              </button>
+              <button
+                onClick={() => responderPerguntaManutencao(true)}
+                className="flex-1 py-4 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600"
+              >
+                Sim
+              </button>
+            </div>
+          </div>
+        )}
+
+        {manutencaoSubFase === "selecionar" && (
+          <>
+            <p className="text-sm text-gray-600 mb-3">Selecione o item com necessidade de manutenção:</p>
+            {Object.keys(itensPorCategoria).length === 0 ? (
+              <div className="card text-center py-6">
+                <p className="text-gray-500 mb-4">Nenhum item de checklist de manutenção cadastrado.</p>
+                <button onClick={() => continuarAposResultadoManutencao(false)} className="btn-primary w-full py-3">
+                  Continuar
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {Object.entries(itensPorCategoria).map(([categoria, itens]) => (
+                  <div key={categoria}>
+                    <p className="text-xs text-gray-400 mb-1.5 font-medium uppercase tracking-wide">{categoria}</p>
+                    <div className="space-y-2">
+                      {itens.map((it) => {
+                        const jaRegistrado = pendentesSet.has(it.id) || itensManutencaoRegistradosAgora.has(it.id);
+                        return (
+                          <button
+                            key={it.id}
+                            onClick={() => selecionarItemManutencao(it, pendentesSet)}
+                            className={`w-full text-left card flex items-center justify-between gap-2 ${jaRegistrado ? "opacity-60" : ""}`}
+                          >
+                            <span className="font-medium text-gray-800">{it.name}</span>
+                            {jaRegistrado ? (
+                              <span className="text-xs text-amber-600 font-medium flex items-center gap-1 flex-shrink-0">
+                                <Info className="w-3.5 h-3.5" /> Já registrado
+                              </span>
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {manutencaoSubFase === "descrever" && itemManutencaoSelecionado && (
+          <>
+            <div className="card mb-3">
+              <p className="text-xs text-gray-500">Item selecionado</p>
+              <p className="font-bold text-gray-800">{itemManutencaoSelecionado.name}</p>
+            </div>
+            <div className="card">
+              <label className="block text-xs text-gray-500 font-medium mb-1.5">Descreva a falha detectada *</label>
+              <textarea
+                rows={4}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 resize-none"
+                style={{ fontSize: "16px" }}
+                placeholder="Ex.: Ar-condicionado não gela, chuveiro sem água quente..."
+                value={descricaoManutencao}
+                onChange={(e) => setDescricaoManutencao(e.target.value)}
+              />
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 font-medium mb-1.5">Fotos (opcional)</p>
+                {fotosManutencao.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mb-2">
+                    {fotosManutencao.map((url, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={url} alt={`foto-${idx}`} className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          onClick={() => removerFotoManutencao(idx)}
+                          className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs leading-none"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {fotosManutencao.length < MAX_FOTOS_MANUTENCAO && (
+                  <label className={`flex items-center gap-2 cursor-pointer text-sm rounded-lg px-3 py-2.5 border ${uploadandoFotoManutencao ? "opacity-50 border-gray-200 bg-gray-50 text-gray-400" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
+                    <Camera className="w-4 h-4 flex-shrink-0" />
+                    <span>{uploadandoFotoManutencao ? "Enviando foto..." : "Adicionar foto"}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={handleFotoManutencao}
+                      disabled={uploadandoFotoManutencao}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setManutencaoSubFase("selecionar")}
+                disabled={enviandoManutencao}
+                className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-600 font-medium disabled:opacity-50"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={enviarManutencao}
+                disabled={descricaoManutencao.trim().length < 5 || enviandoManutencao || uploadandoFotoManutencao}
+                className="flex-[2] py-3 rounded-xl bg-orange-500 text-white font-bold disabled:opacity-50"
+              >
+                {enviandoManutencao ? "Registrando..." : "Registrar falha"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {manutencaoSubFase === "resultado" && resultadoManutencao && (
+          <div className="card text-center py-8">
+            {resultadoManutencao.jaRegistrado ? (
+              <>
+                <Info className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                <p className="text-lg font-semibold text-gray-800 mb-1">Não é necessário registrar</p>
+                <p className="text-sm text-gray-500 mb-6">
+                  A não-conformidade do item &ldquo;{resultadoManutencao.itemNome}&rdquo; já está registrada no sistema de Manutenção.
+                </p>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto mb-3" />
+                <p className="text-lg font-semibold text-gray-800 mb-1">Falha registrada</p>
+                <p className="text-sm text-gray-500 mb-6">
+                  &ldquo;{resultadoManutencao.itemNome}&rdquo; já consta como não conforme na Manutenção.
+                </p>
+              </>
+            )}
+            <p className="text-sm text-gray-700 font-medium mb-3">Deseja registrar falha em mais algum item?</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => continuarAposResultadoManutencao(false)}
+                className="flex-1 py-4 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-50"
+              >
+                Não, ir para fotos
+              </button>
+              <button
+                onClick={() => continuarAposResultadoManutencao(true)}
+                className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700"
+              >
+                Sim
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      </>
     );
   }
 
@@ -825,10 +1181,10 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
             <div className="card text-center py-8">
               <p className="text-gray-500 mb-4">Nenhuma etapa configurada para este programa.</p>
               <button
-                onClick={() => setFase("fotos")}
+                onClick={iniciarEtapaManutencao}
                 className="btn-success w-full py-4 text-base font-bold"
               >
-                Registrar fotos e finalizar
+                Continuar
               </button>
             </div>
           </div>
@@ -938,7 +1294,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                 className="btn-success w-full py-4 text-base font-bold flex items-center justify-center gap-2"
               >
                 <CheckCircle2 className="w-5 h-5" />
-                {safeStepIdx === totalSteps - 1 ? "Concluir e tirar fotos" : "Feito! Próxima etapa"}
+                {safeStepIdx === totalSteps - 1 ? "Concluir etapas" : "Feito! Próxima etapa"}
               </button>
             </div>
 

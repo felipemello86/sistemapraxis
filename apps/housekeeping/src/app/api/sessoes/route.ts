@@ -45,10 +45,62 @@ export async function GET(req: NextRequest) {
   ]);
 
   const reservaSet = new Set(selecoes.filter((s) => s.temReserva).map((s) => s.uhId));
-  const assignmentsComReserva = assignments.map((a) => ({
-    ...a,
-    temReserva: reservaSet.has(a.uhId),
-  }));
+
+  // Dados pra etapa obrigatória "Necessidade de Manutenção?" (ver
+  // CamareiraView, fase "manutencao") — quais itens de checklist da
+  // Manutenção se aplicam a cada UH, e quais já estão NAO_CONFORME hoje
+  // (pra avisar a camareira "já registrado" antes dela preencher a
+  // descrição à toa). Mesma lógica de itensParaUnidade/
+  // ultimaInspecaoPorUnidade de apps/maintenance/src/lib/domain.ts,
+  // reimplementada aqui porque os apps não compartilham código de UI —
+  // só o schema Prisma (packages/core).
+  const uhIds = [...new Set(assignments.map((a) => a.uhId))];
+  const [catalogo, atribuicoesCustom, inspecoes] = await Promise.all([
+    prisma.maintenanceChecklistItem.findMany({
+      where: { tenantId: session.tenantId },
+      select: { id: true, name: true, category: true },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+    }),
+    prisma.maintenanceUnitChecklistItem.findMany({
+      where: { tenantId: session.tenantId, uhId: { in: uhIds } },
+      select: { uhId: true, checklistItemId: true },
+    }),
+    prisma.maintenanceInspection.findMany({
+      where: { tenantId: session.tenantId, uhId: { in: uhIds } },
+      select: { uhId: true, date: true, items: { select: { checklistItemId: true, status: true } } },
+    }),
+  ]);
+
+  const atribuicaoPorUh = new Map<string, Set<string>>();
+  for (const a of atribuicoesCustom) {
+    if (!atribuicaoPorUh.has(a.uhId)) atribuicaoPorUh.set(a.uhId, new Set());
+    atribuicaoPorUh.get(a.uhId)!.add(a.checklistItemId);
+  }
+
+  const ultimaInspecaoPorUh = new Map<string, (typeof inspecoes)[number]>();
+  for (const insp of inspecoes) {
+    const atual = ultimaInspecaoPorUh.get(insp.uhId);
+    if (!atual || insp.date > atual.date) ultimaInspecaoPorUh.set(insp.uhId, insp);
+  }
+
+  const pendentesPorUh = new Map<string, string[]>();
+  for (const [uhId, insp] of ultimaInspecaoPorUh) {
+    pendentesPorUh.set(
+      uhId,
+      insp.items.filter((it) => it.status === "NAO_CONFORME" && it.checklistItemId).map((it) => it.checklistItemId!),
+    );
+  }
+
+  const assignmentsComReserva = assignments.map((a) => {
+    const permitidos = atribuicaoPorUh.get(a.uhId);
+    const manutencaoItens = !permitidos || permitidos.size === 0 ? catalogo : catalogo.filter((it) => permitidos.has(it.id));
+    return {
+      ...a,
+      temReserva: reservaSet.has(a.uhId),
+      manutencaoItens,
+      manutencaoPendentes: pendentesPorUh.get(a.uhId) ?? [],
+    };
+  });
 
   return NextResponse.json({ assignments: assignmentsComReserva, user: { nome: session.nome } });
 }
@@ -140,11 +192,57 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Etapa obrigatória "Necessidade de Manutenção?", entre o checklist e as
+  // fotos de conclusão (ver CamareiraView, fase "manutencao"). O tempo
+  // gasto respondendo/registrando não deve contar contra a camareira — ver
+  // comentário em CleaningSession.manutencaoSegundosExcluidos no schema.
+  if (action === "iniciar_manutencao") {
+    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
+    if (sessao.camareiraId !== session.userId) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
+    }
+    // Idempotente: se já tem um manutencaoAbertaEm em aberto (ex.: o client
+    // disparou duas vezes), não sobrescreve o timestamp original.
+    if (!sessao.manutencaoAbertaEm) {
+      await prisma.cleaningSession.update({ where: { id: sessaoId }, data: { manutencaoAbertaEm: agora } });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "concluir_manutencao") {
+    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
+    if (sessao.camareiraId !== session.userId) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
+    }
+    if (sessao.manutencaoAbertaEm) {
+      const delta = Math.round((agora.getTime() - sessao.manutencaoAbertaEm.getTime()) / 1000);
+      await prisma.cleaningSession.update({
+        where: { id: sessaoId },
+        data: {
+          manutencaoAbertaEm: null,
+          manutencaoSegundosExcluidos: sessao.manutencaoSegundosExcluidos + Math.max(0, delta),
+        },
+      });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "finalizar") {
     const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
     if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
 
-    const duracao = Math.round((agora.getTime() - sessao.iniciadaEm.getTime()) / 1000);
+    const duracaoBruta = Math.round((agora.getTime() - sessao.iniciadaEm.getTime()) / 1000);
+    // Desconta o tempo gasto na etapa "Necessidade de Manutenção?" — ver
+    // comentário no schema (CleaningSession.manutencaoSegundosExcluidos).
+    // Se por algum motivo a etapa nunca foi fechada (ex.: camareira saiu do
+    // app no meio), fecha agora também, pra não vazar tempo não descontado.
+    let segundosExcluidos = sessao.manutencaoSegundosExcluidos;
+    if (sessao.manutencaoAbertaEm) {
+      segundosExcluidos += Math.max(0, Math.round((agora.getTime() - sessao.manutencaoAbertaEm.getTime()) / 1000));
+    }
+    const duracao = Math.max(0, duracaoBruta - segundosExcluidos);
 
     const sessaoAtualizada = await prisma.cleaningSession.update({
       where: { id: sessaoId },
@@ -154,6 +252,8 @@ export async function PATCH(req: NextRequest) {
         fotos: JSON.stringify(fotos || []),
         observacoes,
         comentarioCamareira: comentarioCamareira || null,
+        manutencaoAbertaEm: null,
+        manutencaoSegundosExcluidos: segundosExcluidos,
       },
       include: { assignment: { include: { uh: true } }, camareira: true },
     });

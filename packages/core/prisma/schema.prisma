@@ -535,6 +535,17 @@ model CleaningSession {
   excluidoDoScore       Boolean @default(false)
   justificativaExclusao String?
 
+  // Etapa obrigatória "Necessidade de Manutenção?", inserida entre o
+  // checklist e as fotos de conclusão — ver CamareiraView, fase
+  // "manutencao". O tempo gasto nela (registrar item(ns) não conforme(s)
+  // pra Manutenção) não deve contar contra a camareira: manutencaoAbertaEm
+  // marca quando ela entrou na etapa; ao sair (respondeu "Não" à pergunta,
+  // ou terminou o loop de registrar itens), o delta é somado em
+  // manutencaoSegundosExcluidos e subtraído de duracaoSegundos no
+  // "finalizar" (ver /api/sessoes).
+  manutencaoAbertaEm          DateTime?
+  manutencaoSegundosExcluidos Int       @default(0)
+
   createdAt DateTime @default(now())
 
   steps      SessionStep[]
