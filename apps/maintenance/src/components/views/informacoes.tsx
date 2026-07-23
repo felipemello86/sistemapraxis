@@ -220,6 +220,16 @@ export function Informacoes({
 
   if (unidadeAtiva) {
     const itensDaUnidade = itensParaUnidade(unidadeAtiva.id, itens, atribuicoes)
+    // Itens que hoje constam como NAO_CONFORME (ainda não corrigidos) na
+    // última inspeção dessa UH — usados pra pré-preencher a tela de
+    // execução do wizard com o relato atual em vez de partir de
+    // "Conforme" em branco. Ver comentário em InspecaoWizard.
+    const ultimaInsp = ultimaMap.get(unidadeAtiva.id)
+    const pendenciasAtuais = Object.fromEntries(
+      (ultimaInsp?.items ?? [])
+        .filter((it) => it.status === 'NAO_CONFORME' && it.checklistItemId)
+        .map((it) => [it.checklistItemId as string, { comment: it.comment ?? '', photos: it.photos }]),
+    )
     return (
       // Sem prop podeOperar aqui: o wizard só é alcançável clicando em
       // "Iniciar inspeção", que já fica desabilitado (e ignora o clique,
@@ -228,6 +238,7 @@ export function Informacoes({
       <InspecaoWizard
         unidade={unidadeAtiva}
         itens={itensDaUnidade}
+        pendenciasAtuais={pendenciasAtuais}
         onCancel={encerrarInspecao}
         onSaved={encerrarInspecao}
       />

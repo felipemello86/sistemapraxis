@@ -346,42 +346,21 @@ export function RotaCorrecao({
 
           <Panel className="space-y-4">
             {itemAtual.comment && (
-              <div className="rounded-xl border border-border/70 bg-muted/40 p-3">
-                <p className="text-xs font-medium text-muted-foreground">Problema relatado na inspeção</p>
-                <p className="mt-1 text-sm">{itemAtual.comment}</p>
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                <p className="text-xs font-bold text-red-600">Problema relatado na inspeção</p>
+                <p className="mt-1 text-sm font-medium text-red-700">{itemAtual.comment}</p>
               </div>
             )}
 
-            {itemAtual.checklistItemId && (
-              <ItemInfoField
-                uhId={unidadeAtual.id}
-                checklistItemId={itemAtual.checklistItemId}
-                initialInfo={
-                  itemInfos.find(
-                    (i) => i.uhId === unidadeAtual.id && i.checklistItemId === itemAtual.checklistItemId,
-                  )?.info ?? null
-                }
-                initialPhotos={
-                  itemInfos.find(
-                    (i) => i.uhId === unidadeAtual.id && i.checklistItemId === itemAtual.checklistItemId,
-                  )?.photos ?? []
-                }
-                podeOperar={podeOperar}
-                logs={itemInfoLogs.filter(
-                  (l) => l.uhId === unidadeAtual.id && l.checklistItemId === itemAtual.checklistItemId,
-                )}
-              />
-            )}
-
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              <label className="mb-1.5 block text-sm font-bold text-red-600">
                 O que foi feito para corrigir? *
               </label>
               <Textarea
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
                 placeholder="Descreva o reparo realizado"
-                className="min-h-24 rounded-xl"
+                className="min-h-24 rounded-xl border-red-200 focus-visible:ring-red-400"
               />
             </div>
 
@@ -429,6 +408,30 @@ export function RotaCorrecao({
                 )}
               </div>
             </div>
+
+            {itemAtual.checklistItemId && (
+              <ItemInfoField
+                uhId={unidadeAtual.id}
+                checklistItemId={itemAtual.checklistItemId}
+                initialInfo={
+                  itemInfos.find(
+                    (i) => i.uhId === unidadeAtual.id && i.checklistItemId === itemAtual.checklistItemId,
+                  )?.info ?? null
+                }
+                initialPhotos={
+                  itemInfos.find(
+                    (i) => i.uhId === unidadeAtual.id && i.checklistItemId === itemAtual.checklistItemId,
+                  )?.photos ?? []
+                }
+                podeOperar={podeOperar}
+                logs={itemInfoLogs.filter(
+                  (l) => l.uhId === unidadeAtual.id && l.checklistItemId === itemAtual.checklistItemId,
+                )}
+                label="Cadastro"
+                compact
+                className="border-t border-border/60 pt-3"
+              />
+            )}
           </Panel>
 
           <div className="flex gap-3">

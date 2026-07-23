@@ -11,6 +11,7 @@ import {
   Loader2,
   X,
   ClipboardList,
+  History,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -48,11 +49,17 @@ type Resposta = {
 export function InspecaoWizard({
   unidade,
   itens: itensIniciais,
+  pendenciasAtuais = {},
   onCancel,
   onSaved,
 }: {
   unidade: UnitOption
   itens: ChecklistItem[]
+  // Itens que constam como NAO_CONFORME na inspeção mais recente dessa UH
+  // (não corrigidos ainda) — usado pra pré-preencher a tela de execução com
+  // o relato atual em vez de partir de "Conforme" em branco. Ver comentário
+  // em respostas abaixo.
+  pendenciasAtuais?: Record<string, { comment: string; photos: string[] }>
   onCancel: () => void
   onSaved: () => void
 }) {
@@ -63,9 +70,24 @@ export function InspecaoWizard({
   // dessa lista na hora (ver confirmarItemIncompativel), sem precisar
   // recarregar a página nem esperar o revalidatePath do server action.
   const [itens, setItens] = useState<ChecklistItem[]>(itensIniciais)
+  // Item com não conformidade ainda em aberto (não corrigida) começa já
+  // marcado "Não Conforme", com a descrição e as fotos do relato atual —
+  // pedido do Felipe pra reinspeção não partir de "Conforme" às cegas pra
+  // um problema que ninguém resolveu ainda. Editar a descrição ou trocar a
+  // foto aqui não apaga o relato antigo: ao salvar, esta inspeção vira um
+  // registro novo (MaintenanceInspection própria) — a antiga permanece
+  // intacta no histórico (ver createInspecaoImpl em actions/data.ts).
   const [respostas, setRespostas] = useState<Record<string, Resposta>>(() =>
     Object.fromEntries(
-      itensIniciais.map((it) => [it.id, { status: 'CONFORME', comment: '', photos: [] }]),
+      itensIniciais.map((it) => {
+        const pendencia = pendenciasAtuais[it.id]
+        return [
+          it.id,
+          pendencia
+            ? { status: 'NAO_CONFORME' as const, comment: pendencia.comment, photos: pendencia.photos }
+            : { status: 'CONFORME' as const, comment: '', photos: [] },
+        ]
+      }),
     ),
   )
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null)
@@ -209,6 +231,7 @@ export function InspecaoWizard({
     const resp = respostas[item.id]
     const progresso = ((indice + 1) / itens.length) * 100
     const naoConforme = resp?.status === 'NAO_CONFORME'
+    const pendenciaAtual = pendenciasAtuais[item.id]
 
     return (
       <div className="mx-auto max-w-xl space-y-5">
@@ -305,6 +328,16 @@ export function InspecaoWizard({
 
           {naoConforme && (
             <div className="space-y-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/8 p-4">
+              {pendenciaAtual && (
+                <div className="flex items-start gap-2 rounded-lg border border-[var(--warning)]/40 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                  <History className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--warning)]" />
+                  <span>
+                    Este item já consta como <strong className="text-foreground">não conforme</strong> desde a
+                    última inspeção — a descrição e as fotos abaixo são o relato atual. Altere se necessário; o
+                    registro anterior permanece no histórico.
+                  </span>
+                </div>
+              )}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   Descreva o problema *
