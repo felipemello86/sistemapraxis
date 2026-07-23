@@ -64,6 +64,14 @@ export function Uh3dConfigTab({
 
   const itemPorId = useMemo(() => new Map(itens.map((it) => [it.id, it])), [itens])
 
+  // Lista suspensa em ordem alfabética (numeric:true trata "102-I", "201-V",
+  // "1406-D" etc. numericamente dentro do texto, senão "102" viria depois de
+  // "1406" numa comparação puramente lexicográfica).
+  const unidadesOrdenadas = useMemo(
+    () => [...unidades].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })),
+    [unidades],
+  )
+
   // Um cômodo pode ter mais de uma foto — agrupadas por tipo, na ordem em
   // que foram cadastradas (uhImages já vem createdAt asc do page.tsx).
   const imagensDaUh = useMemo(() => uhImages.filter((i) => i.uhId === uhId), [uhImages, uhId])
@@ -246,7 +254,7 @@ export function Uh3dConfigTab({
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {unidades.map((u) => (
+              {unidadesOrdenadas.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
                   Unidade {u.name}
                 </SelectItem>
