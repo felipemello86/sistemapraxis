@@ -320,6 +320,10 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   // explícita do Felipe) — diferente de somenteLeitura, que também libera
   // GOVERNANTA pras demais ações desta tela.
   const podeComentar = ["MASTER", "GERENTE", "ATENDIMENTO"].includes(role);
+  // Desbloqueio manual da UH — pedido explícito do Felipe: Atendimento,
+  // Governança, Gerente e Master (mesmo conjunto de roles que já tem
+  // permissão pra ação "desbloquear" no PATCH /api/selecao-uhs).
+  const podeDesbloquear = ["MASTER", "GERENTE", "ATENDIMENTO", "GOVERNANTA"].includes(role);
   const hoje = format(new Date(), "yyyy-MM-dd");
   const [data, setData] = useState(hoje);
   const [modo, setModo] = useState<"selecao" | "liberacao">("selecao");
@@ -337,6 +341,7 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   const [salvando, setSalvando] = useState(false);
   const [liberandoId, setLiberandoId] = useState<string | null>(null);
   const [desfazendoId, setDesfazendoId] = useState<string | null>(null);
+  const [desbloqueandoId, setDesbloqueandoId] = useState<string | null>(null);
   const [confirmandoDesfazer, setConfirmandoDesfazer] = useState<string | null>(null);
   const [renovandoId, setRenovandoId] = useState<string | null>(null);
   const [confirmandoRenovar, setConfirmandoRenovar] = useState<string | null>(null);
@@ -598,6 +603,18 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
       body: JSON.stringify({ action: "liberar", data, uhId: uh.uhId, assignmentId: uh.assignmentId }),
     });
     setLiberandoId(null);
+    carregar();
+  }
+
+  async function desbloquearUH(uh: UHSel) {
+    if (!podeOperar || !podeDesbloquear) return;
+    setDesbloqueandoId(uh.uhId);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "desbloquear", data, uhId: uh.uhId }),
+    });
+    setDesbloqueandoId(null);
     carregar();
   }
 
@@ -1186,6 +1203,17 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                       <p className="text-xs text-red-800 bg-red-50 rounded-lg px-2 py-1 mt-1 border border-red-200">
                         {uh.bloqueioDescricao}
                       </p>
+                    )}
+                    {uh.bloqueada && podeDesbloquear && (
+                      <button
+                        onClick={() => desbloquearUH(uh)}
+                        disabled={!podeOperar || desbloqueandoId === uh.uhId}
+                        title={!podeOperar ? tituloSemAcesso : "Remover o bloqueio desta UH"}
+                        className="flex items-center gap-1 text-xs font-semibold text-red-700 hover:text-red-900 mt-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Unlock className="w-3 h-3" />
+                        {desbloqueandoId === uh.uhId ? "Desbloqueando..." : "Desbloquear UH"}
+                      </button>
                     )}
                     {uh.emManutencao && uh.manutencaoDescricao && (
                       <p className="text-xs text-orange-700 bg-orange-50 rounded-lg px-2 py-1 mt-1 border border-orange-100">

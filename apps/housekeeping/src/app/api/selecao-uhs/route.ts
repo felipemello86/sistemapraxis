@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
 }
 
 // PATCH /api/selecao-uhs — ações: confirmar, liberar, desfazer_liberacao, toggle_manutencao,
-// toggle_reserva, renovar, set_observacao, reeditar
+// desbloquear, toggle_reserva, renovar, set_observacao, reeditar
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -202,7 +202,7 @@ export async function PATCH(req: NextRequest) {
 
   const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida } = await req.json();
 
-  const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao"];
+  const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao", "desbloquear"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
@@ -410,6 +410,45 @@ export async function PATCH(req: NextRequest) {
     }
 
     return NextResponse.json({ emManutencao: novoValor });
+  }
+
+  // ── Desbloquear UH manualmente ────────────────────────────────────
+  // Restrito a MASTER/GERENTE/ATENDIMENTO/GOVERNANTA (pedido explícito do
+  // Felipe) — libera a UH pra reservas independente da origem do bloqueio
+  // (manual, ver api/bloqueio/route.ts, ou NC_URGENTE, ver
+  // packages/core/src/maintenanceUrgente.ts). Diferente do
+  // auto-desbloqueio (reavaliarBloqueioUrgencia), que só age sozinho quando
+  // não sobra nenhuma NC urgente aberta, este é decisão humana explícita —
+  // libera mesmo que ainda exista NC urgente aberta pra essa UH.
+  if (action === "desbloquear") {
+    const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true, bloqueada: true } });
+    if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });
+    if (!uh.bloqueada) return NextResponse.json({ ok: true });
+
+    await prisma.uH.update({
+      where: { id: uhId },
+      data: {
+        bloqueada: false,
+        bloqueioDescricao: null,
+        bloqueioSolicitanteNome: null,
+        bloqueioEm: null,
+        bloqueioOrigem: null,
+      },
+    });
+
+    const destinatariosDesbloqueio = await prisma.user.findMany({
+      where: { tenantId, ativo: true, role: { in: ["GOVERNANTA", "GERENTE", "MASTER", "ATENDIMENTO"] } },
+      select: { id: true },
+    });
+    for (const d of destinatariosDesbloqueio) {
+      await sendPushToUser(d.id, {
+        title: "🔓 UH desbloqueada",
+        body: `UH ${uh.numero} foi desbloqueada por ${session.nome}.`,
+        data: { tipo: "desbloqueio", uhId, data },
+      });
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   // ── Toggle reserva ────────────────────────────────────────────────
