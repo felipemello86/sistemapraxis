@@ -27,6 +27,34 @@ function getClient(): Anthropic | null {
   return apiKey ? new Anthropic({ apiKey }) : null;
 }
 
+// Qualquer falha na chamada à API (sem crédito, chave inválida, rate limit,
+// indisponibilidade momentânea) precisa virar uma resposta de chat normal,
+// nunca uma exceção não tratada — isso derrubaria a Server Action inteira
+// e quebraria a página (Application error), não só a resposta do chat.
+function mensagemErroAmigavel(e: unknown): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const err = e as any;
+  const status = err?.status;
+  const mensagemApi = String(err?.error?.error?.message ?? err?.message ?? "");
+
+  if (status === 400 && mensagemApi.toLowerCase().includes("credit balance")) {
+    return (
+      "O chat está indisponível no momento porque a conta da Anthropic está sem crédito. Peça pra quem " +
+      "administra o sistema verificar o billing em console.anthropic.com."
+    );
+  }
+  if (status === 401) {
+    return (
+      "O chat está indisponível: a chave da API (ANTHROPIC_API_KEY) parece inválida ou expirada. Peça pra " +
+      "quem administra o sistema conferir essa configuração na Vercel."
+    );
+  }
+  if (status === 429) {
+    return "O chat está temporariamente sobrecarregado (limite de uso atingido) — tenta de novo em alguns instantes.";
+  }
+  return "Não consegui me conectar à IA agora. Tenta de novo em alguns instantes.";
+}
+
 const SYSTEM_PROMPT =
   "Você é o assistente da Central de Inteligência da Praxis, uma plataforma operacional de hotel. " +
   "Responda SEMPRE em português, de forma direta e objetiva. " +
@@ -71,56 +99,64 @@ export async function runChatTurn(params: {
 
   const toolCallsRealizadas: { name: string; input: Record<string, unknown> }[] = [];
 
-  for (let iteracao = 0; iteracao < MAX_TOOL_ITERATIONS; iteracao++) {
-    const response = await anthropic.messages.create(
-      {
-        model: CHAT_MODEL,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        tools: CHAT_TOOLS,
-        messages,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any,
-    );
+  try {
+    for (let iteracao = 0; iteracao < MAX_TOOL_ITERATIONS; iteracao++) {
+      const response = await anthropic.messages.create(
+        {
+          model: CHAT_MODEL,
+          max_tokens: 1024,
+          system: SYSTEM_PROMPT,
+          tools: CHAT_TOOLS,
+          messages,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      );
 
-    const conteudo: any[] = response.content;
-    const blocosToolUse = conteudo.filter((b) => b.type === "tool_use");
+      const conteudo: any[] = response.content;
+      const blocosToolUse = conteudo.filter((b) => b.type === "tool_use");
 
-    if (blocosToolUse.length === 0) {
-      const texto = conteudo.find((b) => b.type === "text");
-      const respostaFinal = texto ? String(texto.text ?? "").trim() : "";
-      return {
-        resposta: respostaFinal || "Não consegui formular uma resposta — tenta reformular a pergunta?",
-        toolCalls: toolCallsRealizadas,
-      };
-    }
-
-    // Assistente pediu ferramenta(s) — executa cada uma e devolve o
-    // resultado antes de deixar o modelo continuar.
-    messages.push({ role: "assistant", content: response.content });
-
-    const resultadosFerramentas = [];
-    for (const bloco of blocosToolUse) {
-      if (bloco.type !== "tool_use") continue;
-      const input = (bloco.input ?? {}) as Record<string, unknown>;
-      toolCallsRealizadas.push({ name: bloco.name, input });
-      let resultado: unknown;
-      try {
-        resultado = await executeChatTool(ctx, bloco.name, input);
-      } catch (e) {
-        resultado = { erro: e instanceof Error ? e.message : String(e) };
+      if (blocosToolUse.length === 0) {
+        const texto = conteudo.find((b) => b.type === "text");
+        const respostaFinal = texto ? String(texto.text ?? "").trim() : "";
+        return {
+          resposta: respostaFinal || "Não consegui formular uma resposta — tenta reformular a pergunta?",
+          toolCalls: toolCallsRealizadas,
+        };
       }
-      resultadosFerramentas.push({
-        type: "tool_result",
-        tool_use_id: bloco.id,
-        content: JSON.stringify(resultado),
-      });
-    }
-    messages.push({ role: "user", content: resultadosFerramentas });
-  }
 
-  return {
-    resposta: "A conversa ficou complexa demais pra eu resolver numa resposta só — pode tentar de novo, de forma mais direta?",
-    toolCalls: toolCallsRealizadas,
-  };
+      // Assistente pediu ferramenta(s) — executa cada uma e devolve o
+      // resultado antes de deixar o modelo continuar.
+      messages.push({ role: "assistant", content: response.content });
+
+      const resultadosFerramentas = [];
+      for (const bloco of blocosToolUse) {
+        if (bloco.type !== "tool_use") continue;
+        const input = (bloco.input ?? {}) as Record<string, unknown>;
+        toolCallsRealizadas.push({ name: bloco.name, input });
+        let resultado: unknown;
+        try {
+          resultado = await executeChatTool(ctx, bloco.name, input);
+        } catch (e) {
+          resultado = { erro: e instanceof Error ? e.message : String(e) };
+        }
+        resultadosFerramentas.push({
+          type: "tool_result",
+          tool_use_id: bloco.id,
+          content: JSON.stringify(resultado),
+        });
+      }
+      messages.push({ role: "user", content: resultadosFerramentas });
+    }
+
+    return {
+      resposta: "A conversa ficou complexa demais pra eu resolver numa resposta só — pode tentar de novo, de forma mais direta?",
+      toolCalls: toolCallsRealizadas,
+    };
+  } catch (e) {
+    console.error("[ai-engine] chat: falha ao chamar a API da Anthropic", e);
+    return {
+      resposta: mensagemErroAmigavel(e),
+      toolCalls: toolCallsRealizadas,
+    };
+  }
 }
