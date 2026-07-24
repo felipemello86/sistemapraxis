@@ -16,6 +16,7 @@ import {
   ChefHat,
   ShowerHead,
   Siren,
+  ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -34,6 +35,7 @@ import { editarSpotInspecaoAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
 import { ItemInfoField } from '@/components/item-info-field'
+import { DialogCorrigirItem } from '@/components/dialog-corrigir-item'
 import { ROOM_TYPES, ROOM_TYPE_LABELS } from '@/lib/types'
 import type {
   AtribuicoesPorUnidade,
@@ -144,6 +146,27 @@ export function Uh3D({
     return new Set(ids.map((it) => it.id))
   }, [uhId, itens, atribuicoes])
 
+  // Tabela discreta de IVs — pedido explícito do Felipe: canto inferior
+  // direito, com todos os itens da UH atual e botão "Corrigir" nos que
+  // estão NAO_CONFORME. Ordenada por nome (mesmo critério do dropdown de UH).
+  const itensAplicaveisOrdenados = useMemo(
+    () =>
+      itens
+        .filter((it) => idsAplicaveis.has(it.id))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true, sensitivity: 'base' })),
+    [itens, idsAplicaveis],
+  )
+  const ncCountTabela = useMemo(
+    () => itensAplicaveisOrdenados.filter((it) => statusPorItem.get(it.id)?.status === 'NAO_CONFORME').length,
+    [itensAplicaveisOrdenados, statusPorItem],
+  )
+  const [ivTableOpen, setIvTableOpen] = useState(false)
+  const [corrigindoItem, setCorrigindoItem] = useState<{
+    inspectionItemId: string
+    uhName: string
+    itemName: string | null
+  } | null>(null)
+
   const spotsDaImagem = useMemo(
     () =>
       imagemAtual
@@ -162,6 +185,11 @@ export function Uh3D({
     const disponiveis = ROOM_TYPES.filter((t) => imgs.some((i) => i.tipo === t))
     setCurrentRoom(disponiveis.includes('porta') ? 'porta' : (disponiveis[0] ?? 'porta'))
   }, [uhId, uhImages])
+
+  // Colapsa a tabela de IVs ao trocar de UH — sempre começa fechada.
+  useEffect(() => {
+    setIvTableOpen(false)
+  }, [uhId])
 
   // Trocou de UH ou de cômodo — sempre começa pela primeira foto da lista.
   useEffect(() => {
@@ -579,29 +607,99 @@ export function Uh3D({
         </>
       )}
 
-      {/* Balões de navegação entre cômodos — canto inferior direito */}
-      {roomsDisponiveis.length > 1 && (
+      {/* Canto inferior direito: tabela discreta de IVs (pedido explícito do
+          Felipe, ver comentário acima em itensAplicaveisOrdenados) empilhada
+          junto com os balões de navegação entre cômodos — os dois ficam no
+          mesmo canto, a tabela por cima (colapsada por padrão pra não
+          poluir a tela) e os balões sempre por último, mais perto da borda. */}
+      {uhId && (
         <div
           style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
           className="absolute right-4 z-20 flex flex-col items-end gap-2 sm:right-6"
         >
-          {roomsDisponiveis
-            .filter((r) => r !== currentRoom)
-            .map((r) => {
-              const Icon = ROOM_ICONS[r]
-              return (
-                <button
-                  key={r}
-                  onClick={() => setCurrentRoom(r)}
-                  className="flex items-center gap-2 rounded-full bg-black/40 px-3.5 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition-colors hover:bg-black/60"
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {ROOM_TYPE_LABELS[r]}
-                </button>
-              )
-            })}
+          {itensAplicaveisOrdenados.length > 0 && (
+            <div className="relative">
+              {ivTableOpen && (
+                <div className="absolute bottom-full right-0 mb-2 max-h-64 w-72 overflow-y-auto rounded-2xl bg-black/35 p-2 shadow-lg ring-1 ring-white/10 backdrop-blur-md">
+                  <table className="w-full text-xs">
+                    <tbody className="divide-y divide-white/10">
+                      {itensAplicaveisOrdenados.map((it) => {
+                        const insp = statusPorItem.get(it.id)
+                        const status: StatusSpot = insp ? insp.status : 'NAO_AVALIADO'
+                        const urgente = insp?.status === 'NAO_CONFORME' && insp.urgente
+                        return (
+                          <tr key={it.id}>
+                            <td className="py-1 pr-2">
+                              <span
+                                className={cn(
+                                  'inline-block h-2 w-2 rounded-full',
+                                  status === 'CONFORME' && 'bg-emerald-400',
+                                  status === 'NAO_CONFORME' && (urgente ? 'bg-red-500' : 'bg-rose-400'),
+                                  status === 'NAO_AVALIADO' && 'bg-white/30',
+                                )}
+                              />
+                            </td>
+                            <td className="max-w-[130px] truncate py-1 pr-2 text-white/90" title={it.name}>
+                              {it.name}
+                            </td>
+                            <td className="py-1 text-right">
+                              {status === 'NAO_CONFORME' && insp && (
+                                <button
+                                  onClick={() =>
+                                    setCorrigindoItem({
+                                      inspectionItemId: insp.id,
+                                      uhName: unidadeAtual?.name ?? '',
+                                      itemName: it.name,
+                                    })
+                                  }
+                                  className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-white/25"
+                                >
+                                  Corrigir
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <button
+                onClick={() => setIvTableOpen((v) => !v)}
+                className="flex items-center gap-2 rounded-full bg-black/35 px-3.5 py-2 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md transition-colors hover:bg-black/50"
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                IVs ({itensAplicaveisOrdenados.length})
+                {ncCountTabela > 0 && (
+                  <span className="rounded-full bg-red-600/70 px-1.5 text-[10px] font-bold">{ncCountTabela}</span>
+                )}
+                <ChevronDown className={cn('h-3 w-3 transition-transform', ivTableOpen && 'rotate-180')} />
+              </button>
+            </div>
+          )}
+
+          {/* Balões de navegação entre cômodos */}
+          {roomsDisponiveis.length > 1 &&
+            roomsDisponiveis
+              .filter((r) => r !== currentRoom)
+              .map((r) => {
+                const Icon = ROOM_ICONS[r]
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setCurrentRoom(r)}
+                    className="flex items-center gap-2 rounded-full bg-black/40 px-3.5 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition-colors hover:bg-black/60"
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {ROOM_TYPE_LABELS[r]}
+                  </button>
+                )
+              })}
         </div>
       )}
+
+      <DialogCorrigirItem item={corrigindoItem} onClose={() => setCorrigindoItem(null)} />
 
       {detailSpot && uhId && (
         <SpotDetailDialog

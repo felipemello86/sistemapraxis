@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSession, hasModuleAccess, prisma, resolveCorrectionCard } from "@praxis/core";
+import { corrigirItemDireto, getSession, hasModuleAccess, prisma, resolveCorrectionCard } from "@praxis/core";
 import { dataAtualSP } from "@praxis/core";
 import { safeAction } from "@/lib/safeAction";
 import {
@@ -400,3 +400,28 @@ async function adicionarCardUrgenteImpl(input: { cardId: string }) {
   revalidatePath("/");
 }
 export const adicionarCardUrgenteAction = safeAction(adicionarCardUrgenteImpl);
+
+/* --------------------------- Corrigir (atalho) ----------------------------- */
+// Botão "Corrigir" disponível em Visão Gerencial, Inspeções e UH 3D — resolve
+// a NC direto a partir do item de inspeção, sem depender de em que
+// kanban/coluna o card de Correção dela esteja (ou mesmo sem card nenhum,
+// caso de NC legada). Pedido explícito do Felipe: texto descritivo
+// obrigatório, fotos opcionais. Ver corrigirItemDireto em
+// packages/core/src/maintenanceCorrection.ts.
+
+async function corrigirItemImpl(input: { inspectionItemId: string; description: string; photos: string[] }) {
+  const session = await requireModuleSession();
+  const description = input.description.trim();
+  if (description.length < 5) throw new Error("Descreva o que foi feito (mínimo 5 caracteres).");
+
+  await corrigirItemDireto({
+    tenantId: session.tenantId,
+    inspectionItemId: input.inspectionItemId,
+    description,
+    photos: input.photos ?? [],
+    authorId: session.userId,
+  });
+
+  revalidatePath("/");
+}
+export const corrigirItemAction = safeAction(corrigirItemImpl);

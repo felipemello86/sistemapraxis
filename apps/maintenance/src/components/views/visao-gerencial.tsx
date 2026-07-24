@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Siren,
+  Wrench,
   X,
 } from 'lucide-react'
 import {
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/chart'
 import { StatCard, Panel } from '@/components/ui-kit'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   corCategoria,
   contarConformidade,
@@ -33,6 +35,7 @@ import {
   ultimaInspecaoPorUnidade,
 } from '@/lib/domain'
 import { ItemInfoField } from '@/components/item-info-field'
+import { DialogCorrigirItem } from '@/components/dialog-corrigir-item'
 import type {
   InspecaoComUnidade,
   ChecklistItem,
@@ -52,6 +55,9 @@ type NcRow = {
   unitId: string
   unitName: string
   checklistItemId: string
+  // id do MaintenanceInspectionItem — necessário pro botão "Corrigir"
+  // (corrigirItemAction resolve a NC a partir dele, não do checklistItemId).
+  inspectionItemId: string
   itemName: string
   category: string
   comment: string | null
@@ -81,6 +87,9 @@ export function VisaoGerencial({
 }) {
   const [uhSelecionada, setUhSelecionada] = useState<string | null>(null)
   const [ncSelecionado, setNcSelecionado] = useState<NcRow | null>(null)
+  // Botão "Corrigir" — pedido explícito do Felipe, disponível direto no
+  // painel de detalhamento da NC (ver DialogCorrigirItem).
+  const [corrigindo, setCorrigindo] = useState<NcRow | null>(null)
 
   const totalUnidades = unidades.length
   const totalInspecoes = inspecoes.length
@@ -152,6 +161,7 @@ export function VisaoGerencial({
           unitId: insp.unitId,
           unitName: insp.unit.name,
           checklistItemId: it.checklistItemId,
+          inspectionItemId: it.id,
           itemName: catalogo?.name ?? 'Item removido do catálogo',
           category: catalogo?.category ?? '—',
           comment: it.comment,
@@ -389,13 +399,25 @@ export function VisaoGerencial({
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setNcSelecionado(null)}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                  aria-label="Fechar"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  {podeOperar && (
+                    <Button
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={() => setCorrigindo(ncSelecionado)}
+                    >
+                      <Wrench className="h-3.5 w-3.5" />
+                      Corrigir
+                    </Button>
+                  )}
+                  <button
+                    onClick={() => setNcSelecionado(null)}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label="Fechar"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               <ItemInfoField
@@ -552,6 +574,15 @@ export function VisaoGerencial({
           </ul>
         )}
       </Panel>
+
+      <DialogCorrigirItem
+        item={
+          corrigindo
+            ? { inspectionItemId: corrigindo.inspectionItemId, uhName: corrigindo.unitName, itemName: corrigindo.itemName }
+            : null
+        }
+        onClose={() => setCorrigindo(null)}
+      />
     </div>
   )
 }

@@ -112,6 +112,86 @@ export async function resolveCorrectionCard(params: {
 }
 
 /**
+ * "Corrigir" — atalho pra resolver uma NC diretamente a partir do item de
+ * inspeção, usado pelos botões "Corrigir" em Visão Gerencial, Inspeções e
+ * UH 3D (pedido explícito do Felipe). Diferente de resolveCorrectionCard
+ * (que exige um card já existente e é chamado só pelos passos formais dos
+ * kanbans — "Executado"/"Executadas"), esta função funciona independente de
+ * em que kanban/coluna o card esteja, ou mesmo sem card nenhum (caso de NC
+ * legada, registrada antes do fluxo de Correção existir).
+ *
+ * Quando existe um card, ele é encerrado em TODAS as frentes ainda em
+ * aberto (Aquisição/Serviços Externos/Execução) — não faz sentido o
+ * problema já estar resolvido e o card continuar pendente em algum kanban.
+ */
+export async function corrigirItemDireto(params: {
+  tenantId: string;
+  inspectionItemId: string;
+  description: string;
+  photos: string[];
+  authorId: string | null;
+}) {
+  const item = await prisma.maintenanceInspectionItem.findUniqueOrThrow({
+    where: { id: params.inspectionItemId },
+    include: { inspection: { select: { uhId: true, tenantId: true } } },
+  });
+  if (item.inspection.tenantId !== params.tenantId) throw new Error("Item não encontrado.");
+  if (item.status !== "NAO_CONFORME") throw new Error("Este item já está conforme.");
+
+  const card = await prisma.maintenanceCorrectionCard.findUnique({
+    where: { inspectionItemId: params.inspectionItemId },
+  });
+
+  if (card) {
+    await resolveCorrectionCard({
+      cardId: card.id,
+      tenantId: params.tenantId,
+      description: params.description,
+      photos: params.photos,
+      authorId: params.authorId,
+    });
+
+    const now = new Date();
+    await prisma.maintenanceCorrectionCard.update({
+      where: { id: card.id },
+      data: {
+        executionStatus: "EXECUTADA",
+        ...(card.needsExternalService ? { externalServiceStatus: "EXECUTADO" } : {}),
+        ...(card.needsMaterial && card.materialStatus !== "COMPRADO"
+          ? { materialStatus: "COMPRADO", materialCompradoEm: now, materialCompradoPorId: params.authorId }
+          : {}),
+      },
+    });
+    return;
+  }
+
+  // NC legada, sem card — só o item + o histórico (mesma tabela
+  // MaintenanceCorrection que a Rota de Correção original usava).
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.maintenanceInspectionItem.update({
+      where: { id: item.id },
+      data: { status: "CONFORME", corrigidoEm: now, urgente: false },
+    }),
+    prisma.maintenanceCorrection.create({
+      data: {
+        tenantId: params.tenantId,
+        inspectionItemId: item.id,
+        uhId: item.inspection.uhId,
+        checklistItemId: item.checklistItemId,
+        authorId: params.authorId,
+        description: params.description,
+        photos: JSON.stringify(params.photos),
+      },
+    }),
+  ]);
+
+  if (item.urgente) {
+    await reavaliarBloqueioUrgencia({ tenantId: params.tenantId, uhId: item.inspection.uhId });
+  }
+}
+
+/**
  * Kanbans em que um card aparece — pode ser MAIS DE UM ao mesmo tempo
  * (pedido explícito: card com material E serviço externo aparece em
  * "aquisicao" E em "servicos" simultaneamente, cada frente avançando

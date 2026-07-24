@@ -15,6 +15,7 @@ import {
   ClipboardList,
   MapPin,
   Siren,
+  Wrench,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +50,7 @@ import { deleteInspecaoAction, triarCorrecaoCardAction } from '@/app/actions/dat
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { InspecaoWizard } from '@/components/inspecao-wizard'
 import { ItemInfoField } from '@/components/item-info-field'
+import { DialogCorrigirItem } from '@/components/dialog-corrigir-item'
 import type {
   AtribuicoesPorUnidade,
   ChecklistItem,
@@ -132,6 +134,13 @@ export function Informacoes({
   const [inspecaoExpandida, setInspecaoExpandida] = useState<string | null>(null)
   const [historico, setHistorico] = useState<{ unidade: UnitOption; item: ChecklistItem } | null>(null)
   const [unidadeAtiva, setUnidadeAtiva] = useState<UnitOption | null>(null)
+  // Botão "Corrigir" — pedido explícito do Felipe, disponível direto na
+  // linha do item não conforme (ver DialogCorrigirItem).
+  const [corrigindoItem, setCorrigindoItem] = useState<{
+    inspectionItemId: string
+    uhName: string
+    itemName: string | null
+  } | null>(null)
 
   const ultimaMap = useMemo(() => ultimaInspecaoPorUnidade(inspecoes), [inspecoes])
 
@@ -411,6 +420,21 @@ export function Informacoes({
                           >
                             <ClipboardList className="h-3.5 w-3.5" />
                             Registrar material/serviço
+                          </button>
+                        )}
+                        {it.status === 'NAO_CONFORME' && podeOperar && (
+                          <button
+                            onClick={() =>
+                              setCorrigindoItem({
+                                inspectionItemId: it.id,
+                                uhName: unidade.name,
+                                itemName: catalogo?.name ?? null,
+                              })
+                            }
+                            className="flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                          >
+                            <Wrench className="h-3.5 w-3.5" />
+                            Corrigir
                           </button>
                         )}
                         {catalogo && (
@@ -836,6 +860,8 @@ export function Informacoes({
           </div>
         </DialogContent>
       </Dialog>
+
+      <DialogCorrigirItem item={corrigindoItem} onClose={() => setCorrigindoItem(null)} />
     </div>
   )
 }
