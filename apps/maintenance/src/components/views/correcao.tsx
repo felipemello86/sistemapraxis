@@ -17,7 +17,7 @@ import type { CorrectionCardView, CorrectionSummary, DailyCommitmentView, Suppli
 // independente; só entra no Kanban de Execução quem não precisa de serviço
 // externo). Ver comentário completo em cada arquivo de kanban.
 
-type Aba = 'aquisicao' | 'servicos' | 'execucao'
+type Aba = 'execucao' | 'aquisicao' | 'servicos'
 
 export function Correcao({
   podeOperar,
@@ -36,7 +36,7 @@ export function Correcao({
   hojeSP: string
   correcoesRecentes: CorrectionSummary[]
 }) {
-  const [aba, setAba] = useState<Aba>('aquisicao')
+  const [aba, setAba] = useState<Aba>('execucao')
 
   // Cards sem triagem (needsMaterial/needsExternalService null) — nascem
   // assim quando o módulo Governança registra a necessidade de manutenção
@@ -65,9 +65,9 @@ export function Correcao({
   const commitmentHoje = useMemo(() => commitments.find((cm) => cm.data === hojeSP) ?? null, [commitments, hojeSP])
 
   const abas: { id: Aba; label: string; icon: typeof Package; total: number }[] = [
+    { id: 'execucao', label: 'Execução', icon: ListChecks, total: cardsExecucao.length + cardsAProcessar.length },
     { id: 'aquisicao', label: 'Aquisição', icon: Package, total: cardsAquisicao.length },
     { id: 'servicos', label: 'Serviços Externos', icon: HardHat, total: cardsServicos.length },
-    { id: 'execucao', label: 'Execução', icon: ListChecks, total: cardsExecucao.length + cardsAProcessar.length },
   ]
 
   return (
