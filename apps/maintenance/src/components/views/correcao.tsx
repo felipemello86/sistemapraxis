@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { KanbanAquisicao } from '@/components/views/kanban-aquisicao'
 import { KanbanServicos } from '@/components/views/kanban-servicos'
 import { KanbanExecucao } from '@/components/views/kanban-execucao'
+import { DialogDetalheCard } from '@/components/views/dialog-detalhe-card'
 import type { CorrectionCardView, CorrectionSummary, DailyCommitmentView, SupplierView } from '@/lib/types'
 
 // "Correção" — substitui por completo a antiga Rota de Correção de passo
@@ -24,6 +25,7 @@ export function Correcao({
   cards,
   suppliers,
   uhIdsSelecionadasHoje,
+  uhIdsComReservaHoje,
   commitments,
   hojeSP,
   correcoesRecentes,
@@ -32,11 +34,16 @@ export function Correcao({
   cards: CorrectionCardView[]
   suppliers: SupplierView[]
   uhIdsSelecionadasHoje: string[]
+  uhIdsComReservaHoje: string[]
   commitments: DailyCommitmentView[]
   hojeSP: string
   correcoesRecentes: CorrectionSummary[]
 }) {
   const [aba, setAba] = useState<Aba>('execucao')
+  // Popup de detalhamento da NC — compartilhado pelos 3 kanbans (pedido
+  // explícito: clicar em qualquer card abre o detalhe completo). Ver
+  // dialog-detalhe-card.tsx.
+  const [cardDetalhe, setCardDetalhe] = useState<CorrectionCardView | null>(null)
 
   // Cards sem triagem (needsMaterial/needsExternalService null) — nascem
   // assim quando o módulo Governança registra a necessidade de manutenção
@@ -100,9 +107,22 @@ export function Correcao({
         ))}
       </div>
 
-      {aba === 'aquisicao' && <KanbanAquisicao podeOperar={podeOperar} cards={cardsAquisicao} />}
+      {aba === 'aquisicao' && (
+        <KanbanAquisicao
+          podeOperar={podeOperar}
+          cards={cardsAquisicao}
+          uhIdsComReservaHoje={uhIdsComReservaHoje}
+          onVerDetalhe={setCardDetalhe}
+        />
+      )}
       {aba === 'servicos' && (
-        <KanbanServicos podeOperar={podeOperar} cards={cardsServicos} suppliers={suppliers} />
+        <KanbanServicos
+          podeOperar={podeOperar}
+          cards={cardsServicos}
+          suppliers={suppliers}
+          uhIdsComReservaHoje={uhIdsComReservaHoje}
+          onVerDetalhe={setCardDetalhe}
+        />
       )}
       {aba === 'execucao' && (
         <KanbanExecucao
@@ -110,9 +130,17 @@ export function Correcao({
           cards={cardsExecucao}
           cardsAProcessar={cardsAProcessar}
           uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
+          uhIdsComReservaHoje={uhIdsComReservaHoje}
           commitmentHoje={commitmentHoje}
+          onVerDetalhe={setCardDetalhe}
         />
       )}
+
+      <DialogDetalheCard
+        card={cardDetalhe}
+        temReserva={cardDetalhe ? uhIdsComReservaHoje.includes(cardDetalhe.uhId) : false}
+        onClose={() => setCardDetalhe(null)}
+      />
 
       {correcoesRecentes.length > 0 && (
         <div className="rounded-2xl border border-border/70 bg-card p-5">

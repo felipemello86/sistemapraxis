@@ -102,6 +102,7 @@ export function Dashboard({
   correctionCards,
   suppliers,
   uhIdsSelecionadasHoje,
+  uhIdsComReservaHoje,
   commitments,
   hojeSP,
 }: {
@@ -124,6 +125,7 @@ export function Dashboard({
   correctionCards: CorrectionCardView[]
   suppliers: SupplierView[]
   uhIdsSelecionadasHoje: string[]
+  uhIdsComReservaHoje: string[]
   commitments: DailyCommitmentView[]
   hojeSP: string
 }) {
@@ -349,6 +351,7 @@ export function Dashboard({
               cards={correctionCards}
               suppliers={suppliers}
               uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
+              uhIdsComReservaHoje={uhIdsComReservaHoje}
               commitments={commitments}
               hojeSP={hojeSP}
               correcoesRecentes={correcoes}

@@ -165,9 +165,11 @@ export default async function Home() {
     // PRECEDE a liberação (uma UH pode estar selecionada e ainda não
     // liberada) — o técnico deve ver o card assim que a UH entra na
     // programação do dia, sem esperar a governança liberar de fato.
+    // temReserva vem junto (mesma linha) — mesma flag "Com Reserva" da tela
+    // Seleção e Liberação, exibida nos cards de Correção (pedido explícito).
     prisma.dailyUHSelection.findMany({
       where: { tenantId: session.tenantId, data: hoje },
-      select: { uhId: true },
+      select: { uhId: true, temReserva: true },
     }),
     // Compromissos diários já fechados — histórico completo pra tela
     // Performance, e o de hoje (se existir) pra saber se o Kanban de
@@ -386,6 +388,7 @@ export default async function Home() {
       correctionCards={correctionCardsView}
       suppliers={suppliersView}
       uhIdsSelecionadasHoje={uhsSelecionadasHoje.map((u) => u.uhId)}
+      uhIdsComReservaHoje={uhsSelecionadasHoje.filter((u) => u.temReserva).map((u) => u.uhId)}
       commitments={commitmentsView}
       hojeSP={hoje}
     />

@@ -9,11 +9,9 @@ import {
   Loader2,
   Phone,
   Plus,
-  Siren,
   Truck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -25,10 +23,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { corCategoria, formatarData } from '@/lib/domain'
+import { formatarData } from '@/lib/domain'
 import { agendarServicoAction, executarServicoAction, registrarCotacaoAction } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
+import { CorrectionCardHeader } from '@/components/views/correction-card-header'
 import type { CorrectionCardView, SupplierView } from '@/lib/types'
 
 const MAX_FOTOS_EXECUCAO = 4
@@ -39,37 +38,23 @@ const MAX_FOTOS_EXECUCAO = 4
 // chegar em "Executado", o IV volta a Conforme automaticamente
 // (resolveCorrectionCard, chamado pela Server Action).
 
-function CardHeader({ card }: { card: CorrectionCardView }) {
+function CardHeader({
+  card,
+  temReserva,
+  onVerDetalhe,
+}: {
+  card: CorrectionCardView
+  temReserva: boolean
+  onVerDetalhe: (card: CorrectionCardView) => void
+}) {
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-medium">
-          Unidade {card.uhName}
-          {card.urgente && (
-            <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-              <Siren className="h-2.5 w-2.5" />
-              Urgente
-            </span>
-          )}
-        </p>
-        {card.checklistItemCategory && (
-          <Badge
-            variant="outline"
-            className="text-[10px]"
-            style={{ borderColor: corCategoria(card.checklistItemCategory), color: corCategoria(card.checklistItemCategory) }}
-          >
-            {card.checklistItemCategory}
-          </Badge>
-        )}
-      </div>
-      <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
-      {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
+    <CorrectionCardHeader card={card} temReserva={temReserva} onVerDetalhe={onVerDetalhe}>
       {card.needsMaterial && (
         <p className="text-xs text-muted-foreground">
           Material: {card.materialStatus === 'COMPRADO' ? 'já comprado' : 'ainda não comprado'}
         </p>
       )}
-    </div>
+    </CorrectionCardHeader>
   )
 }
 
@@ -77,10 +62,14 @@ export function KanbanServicos({
   podeOperar,
   cards,
   suppliers,
+  uhIdsComReservaHoje,
+  onVerDetalhe,
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
   suppliers: SupplierView[]
+  uhIdsComReservaHoje: string[]
+  onVerDetalhe: (card: CorrectionCardView) => void
 }) {
   const aContratar = cards.filter((c) => c.externalServiceStatus === 'A_CONTRATAR')
   const emNegociacao = cards.filter((c) => c.externalServiceStatus === 'EM_NEGOCIACAO')
@@ -97,7 +86,7 @@ export function KanbanServicos({
         <Coluna titulo="A contratar" total={aContratar.length}>
           {aContratar.map((card) => (
             <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-              <CardHeader card={card} />
+              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
               <Button
                 size="sm"
                 className="mt-3 w-full rounded-xl"
@@ -115,7 +104,7 @@ export function KanbanServicos({
         <Coluna titulo="Em negociação" total={emNegociacao.length}>
           {emNegociacao.map((card) => (
             <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-              <CardHeader card={card} />
+              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
               {card.quotes.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {card.quotes.map((q) => (
@@ -160,7 +149,7 @@ export function KanbanServicos({
         <Coluna titulo="Agendado" total={agendado.length}>
           {agendado.map((card) => (
             <div key={card.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-              <CardHeader card={card} />
+              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
               <div className="mt-2 rounded-lg bg-background/70 p-2 text-xs">
                 <p className="font-medium">{card.hiredSupplierNome}</p>
                 {card.scheduledDate && <p className="text-muted-foreground">{formatarData(card.scheduledDate)}</p>}
@@ -199,7 +188,7 @@ export function KanbanServicos({
         <Coluna titulo="Executado" total={executado.length}>
           {executado.map((card) => (
             <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
-              <CardHeader card={card} />
+              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
               {card.executedDescription && <p className="mt-2 text-xs">{card.executedDescription}</p>}
             </div>
           ))}

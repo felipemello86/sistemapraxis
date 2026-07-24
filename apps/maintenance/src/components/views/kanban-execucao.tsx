@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Camera, CheckCircle2, ClipboardList, Inbox, Lock, Loader2, ListChecks, Plus, Siren } from 'lucide-react'
+import { Camera, CheckCircle2, ClipboardList, Inbox, Lock, Loader2, ListChecks, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -14,7 +14,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { corCategoria } from '@/lib/domain'
 import {
   adicionarCardUrgenteAction,
   executarCardExecucaoAction,
@@ -23,6 +22,7 @@ import {
 } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
+import { CorrectionCardHeader } from '@/components/views/correction-card-header'
 import type { CorrectionCardView, DailyCommitmentView } from '@/lib/types'
 
 const MAX_FOTOS_EXECUCAO = 4
@@ -54,25 +54,35 @@ export function KanbanExecucao({
   cards,
   cardsAProcessar,
   uhIdsSelecionadasHoje,
+  uhIdsComReservaHoje,
   commitmentHoje,
+  onVerDetalhe,
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
   cardsAProcessar: CorrectionCardView[]
   uhIdsSelecionadasHoje: string[]
+  uhIdsComReservaHoje: string[]
   commitmentHoje: DailyCommitmentView | null
+  onVerDetalhe: (card: CorrectionCardView) => void
 }) {
   const aFazer = useMemo(
     () => cards.filter((c) => c.executionStatus === 'A_FAZER' && uhIdsSelecionadasHoje.includes(c.uhId)),
     [cards, uhIdsSelecionadasHoje],
   )
+  // Filtra os cards completos (CorrectionCardView, com categoria/comentário/
+  // fotos etc.) pelo commitment de hoje, em vez de usar o "cards" resumido
+  // de DailyCommitmentView (que só tem uhName/checklistItemName/urgente/
+  // previsto — não dá pra mostrar o popup de detalhamento nem o badge de
+  // Reserva com esse resumo). dailyCommitmentId identifica sem ambiguidade
+  // a qual fechamento de dia o card pertence.
   const planejadas = useMemo(
-    () => (commitmentHoje?.cards ?? []).filter((c) => c.executionStatus === 'PLANEJADA'),
-    [commitmentHoje],
+    () => cards.filter((c) => c.executionStatus === 'PLANEJADA' && c.dailyCommitmentId === commitmentHoje?.id),
+    [cards, commitmentHoje],
   )
   const executadas = useMemo(
-    () => (commitmentHoje?.cards ?? []).filter((c) => c.executionStatus === 'EXECUTADA'),
-    [commitmentHoje],
+    () => cards.filter((c) => c.executionStatus === 'EXECUTADA' && c.dailyCommitmentId === commitmentHoje?.id),
+    [cards, commitmentHoje],
   )
 
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
@@ -141,28 +151,11 @@ export function KanbanExecucao({
             ) : (
               cardsAProcessar.map((card) => (
                 <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="flex items-center gap-1.5 text-sm font-medium">
-                      Unidade {card.uhName}
-                      {card.urgente && (
-                        <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-                          <Siren className="h-2.5 w-2.5" />
-                          Urgente
-                        </span>
-                      )}
-                    </p>
-                    {card.checklistItemCategory && (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px]"
-                        style={{ borderColor: corCategoria(card.checklistItemCategory), color: corCategoria(card.checklistItemCategory) }}
-                      >
-                        {card.checklistItemCategory}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
-                  {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
+                  <CorrectionCardHeader
+                    card={card}
+                    temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    onVerDetalhe={onVerDetalhe}
+                  />
                   <Button
                     size="sm"
                     className="mt-3 w-full rounded-xl"
@@ -198,17 +191,11 @@ export function KanbanExecucao({
                 </p>
                 {aFazer.map((card) => (
                   <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-                    <p className="flex items-center gap-1.5 text-sm font-medium">
-                      Unidade {card.uhName}
-                      {card.urgente && (
-                        <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-                          <Siren className="h-2.5 w-2.5" />
-                          Urgente
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
-                    {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
+                    <CorrectionCardHeader
+                      card={card}
+                      temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                      onVerDetalhe={onVerDetalhe}
+                    />
                     <Button
                       size="sm"
                       variant="outline"
@@ -241,29 +228,12 @@ export function KanbanExecucao({
                       disabled={!podeOperar}
                       onChange={() => alternarSelecao(card.id)}
                     />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="flex items-center gap-1.5 text-sm font-medium">
-                          Unidade {card.uhName}
-                          {card.urgente && (
-                            <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-                              <Siren className="h-2.5 w-2.5" />
-                              Urgente
-                            </span>
-                          )}
-                        </p>
-                        {card.checklistItemCategory && (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px]"
-                            style={{ borderColor: corCategoria(card.checklistItemCategory), color: corCategoria(card.checklistItemCategory) }}
-                          >
-                            {card.checklistItemCategory}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
-                      {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
+                    <div className="flex-1">
+                      <CorrectionCardHeader
+                        card={card}
+                        temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                        onVerDetalhe={onVerDetalhe}
+                      />
                     </div>
                   </label>
                   {selecionados.has(card.id) && (
@@ -322,22 +292,19 @@ export function KanbanExecucao({
             ) : (
               planejadas.map((card) => (
                 <div key={card.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <p className="flex items-center gap-1.5 text-sm font-medium">
-                    Unidade {card.uhName}
-                    {card.urgente && (
-                      <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-                        <Siren className="h-2.5 w-2.5" />
-                        Urgente
-                      </span>
-                    )}
-                    {!card.previsto && (
-                      <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
-                        <Plus className="h-2.5 w-2.5" />
-                        Não previsto
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
+                  <CorrectionCardHeader
+                    card={card}
+                    temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    onVerDetalhe={onVerDetalhe}
+                    extraBadge={
+                      !card.previsto && (
+                        <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                          <Plus className="h-2.5 w-2.5" />
+                          Não previsto
+                        </span>
+                      )
+                    }
+                  />
                   <Button
                     size="sm"
                     className="mt-3 w-full rounded-xl"
@@ -366,22 +333,19 @@ export function KanbanExecucao({
             ) : (
               executadas.map((card) => (
                 <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
-                  <p className="flex items-center gap-1.5 text-sm font-medium">
-                    Unidade {card.uhName}
-                    {card.urgente && (
-                      <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-                        <Siren className="h-2.5 w-2.5" />
-                        Urgente
-                      </span>
-                    )}
-                    {!card.previsto && (
-                      <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
-                        <Plus className="h-2.5 w-2.5" />
-                        Não previsto
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
+                  <CorrectionCardHeader
+                    card={card}
+                    temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    onVerDetalhe={onVerDetalhe}
+                    extraBadge={
+                      !card.previsto && (
+                        <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
+                          <Plus className="h-2.5 w-2.5" />
+                          Não previsto
+                        </span>
+                      )
+                    }
+                  />
                   {card.executedAt && (
                     <p className="mt-1 text-xs text-muted-foreground">Executado às {formatarHoraExecucao(card.executedAt)}</p>
                   )}

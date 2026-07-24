@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Camera, Loader2, Package, ShoppingCart, Siren } from 'lucide-react'
+import { Camera, Loader2, Package, ShoppingCart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
@@ -13,10 +12,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { corCategoria, formatarData } from '@/lib/domain'
+import { formatarData } from '@/lib/domain'
 import { comprarMaterialAction } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
+import { CorrectionCardHeader } from '@/components/views/correction-card-header'
 import type { CorrectionCardView } from '@/lib/types'
 
 // Kanban "Aquisição" — só cards com needsMaterial=true (podem também
@@ -24,36 +24,17 @@ import type { CorrectionCardView } from '@/lib/types'
 // Externos, ver comentário em correcao.tsx). Colunas: A Adquirir / Comprado
 // — mover pra Comprado exige o cupom fiscal (obrigatório, pedido explícito).
 
-function CardResumo({ card }: { card: CorrectionCardView }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-medium">
-          Unidade {card.uhName}
-          {card.urgente && (
-            <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
-              <Siren className="h-2.5 w-2.5" />
-              Urgente
-            </span>
-          )}
-        </p>
-        {card.checklistItemCategory && (
-          <Badge
-            variant="outline"
-            className="text-[10px]"
-            style={{ borderColor: corCategoria(card.checklistItemCategory), color: corCategoria(card.checklistItemCategory) }}
-          >
-            {card.checklistItemCategory}
-          </Badge>
-        )}
-      </div>
-      <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
-      {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
-    </div>
-  )
-}
-
-export function KanbanAquisicao({ podeOperar, cards }: { podeOperar: boolean; cards: CorrectionCardView[] }) {
+export function KanbanAquisicao({
+  podeOperar,
+  cards,
+  uhIdsComReservaHoje,
+  onVerDetalhe,
+}: {
+  podeOperar: boolean
+  cards: CorrectionCardView[]
+  uhIdsComReservaHoje: string[]
+  onVerDetalhe: (card: CorrectionCardView) => void
+}) {
   const aAdquirir = cards.filter((c) => c.materialStatus === 'A_ADQUIRIR')
   const comprados = cards.filter((c) => c.materialStatus === 'COMPRADO')
 
@@ -113,7 +94,11 @@ export function KanbanAquisicao({ podeOperar, cards }: { podeOperar: boolean; ca
             ) : (
               aAdquirir.map((card) => (
                 <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-                  <CardResumo card={card} />
+                  <CorrectionCardHeader
+                    card={card}
+                    temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    onVerDetalhe={onVerDetalhe}
+                  />
                   <Button
                     size="sm"
                     className="mt-3 w-full rounded-xl"
@@ -145,7 +130,11 @@ export function KanbanAquisicao({ podeOperar, cards }: { podeOperar: boolean; ca
             ) : (
               comprados.map((card) => (
                 <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
-                  <CardResumo card={card} />
+                  <CorrectionCardHeader
+                    card={card}
+                    temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    onVerDetalhe={onVerDetalhe}
+                  />
                   {card.materialCompradoEm && (
                     <p className="mt-2 text-xs text-muted-foreground">
                       Comprado em {formatarData(card.materialCompradoEm)}
