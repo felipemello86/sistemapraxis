@@ -36,12 +36,30 @@
 //      quer dizer "cron frequente" — a hospedagem é 100% serverless
 //      (Vercel), não há processo long-running pra rodar um stream real.
 //
-//   7. UI (fora deste pacote): apps/gateway/src/app/[cliente]/inteligencia
-//      — feed da Central de Inteligência, lendo AiInsight direto.
+//   7. Métricas (metrics.ts): catálogo fixo de métricas por UH + o cálculo
+//      delas (computeCoreMetrics, chamado no início de
+//      runDetectorsForTenant) — a base sobre a qual regras customizadas e
+//      o chat operam, sem depender de reimplementar consultas.
+//
+//   8. Regras customizadas (detectors/custom-rules.ts): AiCustomRule
+//      criada por chat (ver item 9), avaliada pelo mesmo pipeline de
+//      qualquer detector — não é um sistema paralelo.
+//
+//   9. Chat (chat/*): loop de tool-use sobre ferramentas de LEITURA
+//      tenant-escopadas (métricas, insights, NCs, falhas pendentes) + uma
+//      única ferramenta de escrita (propor_regra) que só cria rascunhos
+//      inativos — confirmação de regra é sempre uma ação humana explícita
+//      pela UI, nunca automática.
+//
+//   10. UI (fora deste pacote): apps/gateway/src/app/[cliente]/inteligencia
+//       — feed da Central de Inteligência, chat e gestão de regras.
 
 export * from "./types";
 export * from "./memory";
 export * from "./insights";
 export * from "./narrator";
 export * from "./registry";
+export * from "./metrics";
 export { detectors } from "./detectors";
+export * from "./chat/tools";
+export * from "./chat/runChat";

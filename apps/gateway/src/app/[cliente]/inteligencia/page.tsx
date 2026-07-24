@@ -125,9 +125,18 @@ export default async function CentralInteligencia({
         </a>
 
         <h1 style={{ fontSize: 24, fontWeight: 700, margin: "12px 0 4px" }}>Central de Inteligência</h1>
-        <p style={{ color: "#6e6e73", fontSize: 14, margin: "0 0 20px" }}>
+        <p style={{ color: "#6e6e73", fontSize: 14, margin: "0 0 16px" }}>
           Alertas e oportunidades detectados automaticamente a partir dos módulos — sem precisar perguntar.
         </p>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+          <a href={`/${tenant.slug}/inteligencia/chat`} style={navLinkStyle}>
+            Chat com a IA
+          </a>
+          <a href={`/${tenant.slug}/inteligencia/regras`} style={navLinkStyle}>
+            Minhas regras
+          </a>
+        </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
           {FILTROS.map((f) => (
@@ -295,6 +304,17 @@ const linkStyle: CSSProperties = {
   textDecoration: "none",
   display: "inline-block",
   marginTop: 8,
+};
+
+const navLinkStyle: CSSProperties = {
+  padding: "8px 16px",
+  borderRadius: 999,
+  fontSize: 13,
+  fontWeight: 600,
+  textDecoration: "none",
+  background: "#fff",
+  color: "#0071e3",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
 };
 
 const primaryButtonStyle: CSSProperties = {

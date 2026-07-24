@@ -99,6 +99,8 @@ model Tenant {
   aiEvents          AiEvent[]
   aiEntitySnapshots AiEntitySnapshot[]
   aiInsights        AiInsight[]
+  aiConversations   AiConversation[]
+  aiCustomRules     AiCustomRule[]
 }
 
 enum SuiteModule {
@@ -220,8 +222,11 @@ model User {
   stockMovements StockMovement[]
 
   // AI Engine — quem resolveu/descartou manualmente um insight na Central
-  // de Inteligência (ver bloco de models no fim do arquivo).
-  aiInsightsResolved AiInsight[] @relation("AiInsightResolvedBy")
+  // de Inteligência, conversas do chat e regras customizadas que criou
+  // (ver bloco de models no fim do arquivo).
+  aiInsightsResolved AiInsight[]      @relation("AiInsightResolvedBy")
+  aiConversations    AiConversation[] @relation("AiConversationOwner")
+  aiCustomRulesCreated AiCustomRule[] @relation("AiCustomRuleCreatedBy")
 
   // Constraint real — a v1 declarava isso no schema mas uma checagem
   // direta no Postgres de produção mostrou que ela nunca foi de fato
@@ -1944,4 +1949,105 @@ enum AiInsightStatus {
   LIDO
   RESOLVIDO
   DESCARTADO
+}
+
+// ----------------------------------------------------------------------
+// Chat da Central de Inteligência + regras customizadas criadas por
+// conversa. O chat tem acesso de LEITURA ao que já existe (AiEvent,
+// AiEntitySnapshot, AiInsight) via ferramentas tenant-escopadas (ver
+// packages/ai-engine/src/chat/*) — nunca lê/escreve nada fora do tenant de
+// quem está conversando. A única escrita que o modelo pode disparar é
+// propor uma AiCustomRule, e mesmo essa nasce SEMPRE com active=false: só
+// vira uma regra de verdade quando um humano confirma explicitamente pela
+// UI (ver AiCustomRule.active abaixo) — o modelo nunca ativa uma regra
+// sozinho.
+// ----------------------------------------------------------------------
+
+model AiConversation {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("AiConversationOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Gerado a partir da primeira mensagem do usuário — só pra listar as
+  // conversas de forma legível, sem precisar abrir cada uma.
+  title String @default("Nova conversa")
+
+  messages AiMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, userId, updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role    AiMessageRole
+  content String        @db.Text
+
+  // JSON — nome + input de cada ferramenta chamada nessa mensagem
+  // (transparência: dá pra auditar de onde veio cada afirmação do
+  // assistente, mesmo princípio de evidence[] em AiInsight).
+  toolCalls String @db.Text @default("[]")
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+}
+
+// Regra criada por conversa (ver ferramenta "propor_regra" em
+// packages/ai-engine/src/chat/tools.ts). Deliberadamente declarativa, não
+// código: metricKey só pode ser uma chave do catálogo fixo em
+// packages/ai-engine/src/metrics.ts (validado na ferramenta, não aqui) —
+// isso impede o modelo de "inventar" uma métrica que não existe ou de
+// escrever lógica arbitrária. Avaliada pelo customRulesDetector genérico,
+// que entra no mesmo pipeline de qualquer outro detector (dedup, narrador,
+// Central de Inteligência) — regra por chat não é um sistema paralelo.
+model AiCustomRule {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdById String
+  createdBy   User   @relation("AiCustomRuleCreatedBy", fields: [createdById], references: [id])
+
+  // Nasce false sempre — só um humano confirmando pela UI (ver
+  // ativarRegraAction) liga a regra de verdade. Ver comentário no topo do
+  // bloco.
+  active Boolean @default(false)
+
+  label      String // descrição curta legível, ex.: "UH sem inspeção há muito tempo"
+  module     String // livre — só rotula o insight gerado, não afeta a avaliação
+  entityType String @default("UH")
+  metricKey  String // uma chave de packages/ai-engine/src/metrics.ts::METRIC_CATALOG
+  operator   AiRuleOperator
+  threshold  Float
+
+  priority          AiInsightPriority @default(MEDIA)
+  explanation       String            @db.Text // pode usar {{uh}} e {{valor}} como placeholders
+  recommendedAction String            @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, active])
+}
+
+enum AiRuleOperator {
+  GT
+  GTE
+  LT
+  LTE
+  EQ
 }

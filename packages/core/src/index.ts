@@ -24,4 +24,9 @@ export type {
   AiInsight,
   AiInsightPriority,
   AiInsightStatus,
+  AiConversation,
+  AiMessage,
+  AiMessageRole,
+  AiCustomRule,
+  AiRuleOperator,
 } from "../generated";

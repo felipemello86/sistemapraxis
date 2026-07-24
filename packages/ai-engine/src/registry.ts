@@ -2,6 +2,7 @@ import type { DetectorContext } from "./types";
 import { upsertInsight } from "./insights";
 import { narrarInsight } from "./narrator";
 import { detectors } from "./detectors";
+import { computeCoreMetrics } from "./metrics";
 
 export interface DetectorRunResult {
   detectorId: string;
@@ -20,6 +21,16 @@ export interface DetectorRunResult {
  * nunca propaga.
  */
 export async function runDetectorsForTenant(tenantId: string): Promise<DetectorRunResult[]> {
+  // Sempre recalcula o snapshot CORE antes de rodar os detectores — o
+  // customRulesDetector (e as ferramentas do chat) dependem de dado fresco
+  // aqui. Best-effort: uma falha no cálculo de métricas não pode impedir os
+  // outros detectores (que não dependem dele) de rodar.
+  try {
+    await computeCoreMetrics(tenantId);
+  } catch (e) {
+    console.error("[ai-engine] falha ao computar métricas CORE", e);
+  }
+
   const ctx: DetectorContext = { tenantId, now: new Date() };
   const resultados: DetectorRunResult[] = [];
 
