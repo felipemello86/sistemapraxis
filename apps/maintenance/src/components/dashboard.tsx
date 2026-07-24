@@ -101,7 +101,7 @@ export function Dashboard({
   inspectionItemIdsComCard,
   correctionCards,
   suppliers,
-  uhIdsLiberadasHoje,
+  uhIdsSelecionadasHoje,
   commitments,
   hojeSP,
 }: {
@@ -123,7 +123,7 @@ export function Dashboard({
   inspectionItemIdsComCard: string[]
   correctionCards: CorrectionCardView[]
   suppliers: SupplierView[]
-  uhIdsLiberadasHoje: string[]
+  uhIdsSelecionadasHoje: string[]
   commitments: DailyCommitmentView[]
   hojeSP: string
 }) {
@@ -348,7 +348,7 @@ export function Dashboard({
               podeOperar={podeOperar}
               cards={correctionCards}
               suppliers={suppliers}
-              uhIdsLiberadasHoje={uhIdsLiberadasHoje}
+              uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
               commitments={commitments}
               hojeSP={hojeSP}
               correcoesRecentes={correcoes}

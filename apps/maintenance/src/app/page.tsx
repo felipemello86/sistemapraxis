@@ -55,7 +55,7 @@ export default async function Home() {
     itemInfoLogs,
     correctionCards,
     suppliers,
-    uhsLiberadasHoje,
+    uhsSelecionadasHoje,
     commitments,
   ] = await Promise.all([
     prisma.uH.findMany({
@@ -158,12 +158,15 @@ export default async function Home() {
       include: { checklistItems: { select: { checklistItemId: true } } },
       orderBy: { nome: "asc" },
     }),
-    // UHs liberadas pra limpeza HOJE no módulo Governança (Seleção e
-    // Liberação) — leitura direta entre apps, mesmo banco (ver
-    // DailyUHSelection no schema). Só essas UHs alimentam o Kanban de
-    // Execução (pedido explícito).
+    // UHs SELECIONADAS pra hoje no módulo Governança (Seleção e Liberação)
+    // — leitura direta entre apps, mesmo banco (ver DailyUHSelection no
+    // schema). Alimenta o "A Fazer" do Kanban de Execução (pedido
+    // explícito). Antes filtrava por liberada:true, mas a seleção do dia
+    // PRECEDE a liberação (uma UH pode estar selecionada e ainda não
+    // liberada) — o técnico deve ver o card assim que a UH entra na
+    // programação do dia, sem esperar a governança liberar de fato.
     prisma.dailyUHSelection.findMany({
-      where: { tenantId: session.tenantId, data: hoje, liberada: true },
+      where: { tenantId: session.tenantId, data: hoje },
       select: { uhId: true },
     }),
     // Compromissos diários já fechados — histórico completo pra tela
@@ -382,7 +385,7 @@ export default async function Home() {
       inspectionItemIdsComCard={correctionCards.map((c) => c.inspectionItemId)}
       correctionCards={correctionCardsView}
       suppliers={suppliersView}
-      uhIdsLiberadasHoje={uhsLiberadasHoje.map((u) => u.uhId)}
+      uhIdsSelecionadasHoje={uhsSelecionadasHoje.map((u) => u.uhId)}
       commitments={commitmentsView}
       hojeSP={hoje}
     />

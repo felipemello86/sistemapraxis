@@ -37,8 +37,10 @@ function formatarHoraExecucao(iso: string) {
 // daqui (ver triarCardAProcessarAction). Depois de triado, o card sai desta
 // coluna e entra no filtro normal (Aquisição/Serviços/"A Fazer" aqui mesmo,
 // ver correcao.tsx). "A Fazer" só mostra cards sem serviço externo (e, se
-// precisar material, já comprado) de UHs liberadas pra limpeza hoje na
-// Governança (Seleção e Liberação). Selecionar cards aqui + "Fechar
+// precisar material, já comprado) de UHs SELECIONADAS pra hoje na
+// Governança (Seleção e Liberação) — não precisa estar liberada ainda, a
+// seleção do dia precede a liberação (pedido explícito: o técnico deve ver
+// o card assim que a UH entra na programação do dia). Selecionar cards aqui + "Fechar
 // programação do dia" cria o MaintenanceDailyCommitment de hoje (um por
 // dia, não pode reabrir) — só a partir daí os cards viram "Planejadas". Com
 // o dia já fechado, cards intempestivos/urgentes que ainda apareceriam em
@@ -51,18 +53,18 @@ export function KanbanExecucao({
   podeOperar,
   cards,
   cardsAProcessar,
-  uhIdsLiberadasHoje,
+  uhIdsSelecionadasHoje,
   commitmentHoje,
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
   cardsAProcessar: CorrectionCardView[]
-  uhIdsLiberadasHoje: string[]
+  uhIdsSelecionadasHoje: string[]
   commitmentHoje: DailyCommitmentView | null
 }) {
   const aFazer = useMemo(
-    () => cards.filter((c) => c.executionStatus === 'A_FAZER' && uhIdsLiberadasHoje.includes(c.uhId)),
-    [cards, uhIdsLiberadasHoje],
+    () => cards.filter((c) => c.executionStatus === 'A_FAZER' && uhIdsSelecionadasHoje.includes(c.uhId)),
+    [cards, uhIdsSelecionadasHoje],
   )
   const planejadas = useMemo(
     () => (commitmentHoje?.cards ?? []).filter((c) => c.executionStatus === 'PLANEJADA'),
@@ -224,7 +226,7 @@ export function KanbanExecucao({
             )
           ) : aFazer.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Nenhum item pendente de UH liberada pra limpeza hoje.
+              Nenhum item pendente de UH selecionada pra hoje.
             </p>
           ) : (
             <>

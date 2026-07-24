@@ -23,7 +23,7 @@ export function Correcao({
   podeOperar,
   cards,
   suppliers,
-  uhIdsLiberadasHoje,
+  uhIdsSelecionadasHoje,
   commitments,
   hojeSP,
   correcoesRecentes,
@@ -31,7 +31,7 @@ export function Correcao({
   podeOperar: boolean
   cards: CorrectionCardView[]
   suppliers: SupplierView[]
-  uhIdsLiberadasHoje: string[]
+  uhIdsSelecionadasHoje: string[]
   commitments: DailyCommitmentView[]
   hojeSP: string
   correcoesRecentes: CorrectionSummary[]
@@ -109,7 +109,7 @@ export function Correcao({
           podeOperar={podeOperar}
           cards={cardsExecucao}
           cardsAProcessar={cardsAProcessar}
-          uhIdsLiberadasHoje={uhIdsLiberadasHoje}
+          uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
           commitmentHoje={commitmentHoje}
         />
       )}
