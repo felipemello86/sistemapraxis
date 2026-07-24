@@ -1,6 +1,6 @@
 'use client'
 
-import { BedDouble, Siren } from 'lucide-react'
+import { BedDouble, Siren, Unlock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { corCategoria } from '@/lib/domain'
 import type { CorrectionCardView } from '@/lib/types'
@@ -21,12 +21,18 @@ import type { CorrectionCardView } from '@/lib/types'
 export function CorrectionCardHeader({
   card,
   temReserva,
+  liberada,
   onVerDetalhe,
   extraBadge,
   children,
 }: {
   card: CorrectionCardView
   temReserva?: boolean
+  // UH já liberada pra limpeza hoje (Seleção e Liberação) — diferente de
+  // "selecionada pra hoje" (ver uhIdsSelecionadasHoje em kanban-execucao.tsx):
+  // uma UH pode estar selecionada e ainda não liberada. Pedido explícito do
+  // Felipe pra dar essa visibilidade também nos cards de Correção.
+  liberada?: boolean
   onVerDetalhe?: (card: CorrectionCardView) => void
   // Badge extra específico de um kanban (ex.: "Não previsto" só existe na
   // Execução) — evita ter que reimplementar a linha inteira de badges só
@@ -66,6 +72,12 @@ export function CorrectionCardHeader({
             <span className="flex items-center gap-0.5 rounded-full bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
               <BedDouble className="h-2.5 w-2.5" />
               Reserva
+            </span>
+          )}
+          {liberada && (
+            <span className="flex items-center gap-0.5 rounded-full bg-[var(--success)]/10 border border-[var(--success)]/30 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--success)]">
+              <Unlock className="h-2.5 w-2.5" />
+              Liberada
             </span>
           )}
           {extraBadge}

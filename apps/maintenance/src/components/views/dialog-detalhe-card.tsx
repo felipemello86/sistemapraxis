@@ -1,6 +1,6 @@
 'use client'
 
-import { BedDouble, CheckCircle2, Clock, History, Lock, Phone, Siren } from 'lucide-react'
+import { BedDouble, CheckCircle2, Clock, History, Lock, Phone, Siren, Unlock } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -43,10 +43,12 @@ const EXECUCAO_LABEL: Record<string, string> = {
 export function DialogDetalheCard({
   card,
   temReserva,
+  liberada,
   onClose,
 }: {
   card: CorrectionCardView | null
   temReserva: boolean
+  liberada: boolean
   onClose: () => void
 }) {
   return (
@@ -67,6 +69,12 @@ export function DialogDetalheCard({
                   <span className="flex items-center gap-0.5 rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
                     <BedDouble className="h-2.5 w-2.5" />
                     Reserva
+                  </span>
+                )}
+                {liberada && (
+                  <span className="flex items-center gap-0.5 rounded-full border border-[var(--success)]/30 bg-[var(--success)]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--success)]">
+                    <Unlock className="h-2.5 w-2.5" />
+                    Liberada
                   </span>
                 )}
               </DialogTitle>

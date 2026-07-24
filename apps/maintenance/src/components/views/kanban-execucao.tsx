@@ -55,6 +55,7 @@ export function KanbanExecucao({
   cardsAProcessar,
   uhIdsSelecionadasHoje,
   uhIdsComReservaHoje,
+  uhIdsLiberadasHoje,
   commitmentHoje,
   onVerDetalhe,
 }: {
@@ -63,6 +64,7 @@ export function KanbanExecucao({
   cardsAProcessar: CorrectionCardView[]
   uhIdsSelecionadasHoje: string[]
   uhIdsComReservaHoje: string[]
+  uhIdsLiberadasHoje: string[]
   commitmentHoje: DailyCommitmentView | null
   onVerDetalhe: (card: CorrectionCardView) => void
 }) {
@@ -154,6 +156,7 @@ export function KanbanExecucao({
                   <CorrectionCardHeader
                     card={card}
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
                   />
                   <Button
@@ -194,6 +197,7 @@ export function KanbanExecucao({
                     <CorrectionCardHeader
                       card={card}
                       temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                      liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                       onVerDetalhe={onVerDetalhe}
                     />
                     <Button
@@ -232,6 +236,7 @@ export function KanbanExecucao({
                       <CorrectionCardHeader
                         card={card}
                         temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                        liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                         onVerDetalhe={onVerDetalhe}
                       />
                     </div>
@@ -295,6 +300,7 @@ export function KanbanExecucao({
                   <CorrectionCardHeader
                     card={card}
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
                     extraBadge={
                       !card.previsto && (
@@ -336,6 +342,7 @@ export function KanbanExecucao({
                   <CorrectionCardHeader
                     card={card}
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
                     extraBadge={
                       !card.previsto && (

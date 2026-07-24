@@ -28,11 +28,13 @@ export function KanbanAquisicao({
   podeOperar,
   cards,
   uhIdsComReservaHoje,
+  uhIdsLiberadasHoje,
   onVerDetalhe,
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
   uhIdsComReservaHoje: string[]
+  uhIdsLiberadasHoje: string[]
   onVerDetalhe: (card: CorrectionCardView) => void
 }) {
   const aAdquirir = cards.filter((c) => c.materialStatus === 'A_ADQUIRIR')
@@ -97,6 +99,7 @@ export function KanbanAquisicao({
                   <CorrectionCardHeader
                     card={card}
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
                   />
                   <Button
@@ -133,6 +136,7 @@ export function KanbanAquisicao({
                   <CorrectionCardHeader
                     card={card}
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                    liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
                   />
                   {card.materialCompradoEm && (

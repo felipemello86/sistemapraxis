@@ -26,6 +26,7 @@ export function Correcao({
   suppliers,
   uhIdsSelecionadasHoje,
   uhIdsComReservaHoje,
+  uhIdsLiberadasHoje,
   commitments,
   hojeSP,
   correcoesRecentes,
@@ -35,6 +36,7 @@ export function Correcao({
   suppliers: SupplierView[]
   uhIdsSelecionadasHoje: string[]
   uhIdsComReservaHoje: string[]
+  uhIdsLiberadasHoje: string[]
   commitments: DailyCommitmentView[]
   hojeSP: string
   correcoesRecentes: CorrectionSummary[]
@@ -112,6 +114,7 @@ export function Correcao({
           podeOperar={podeOperar}
           cards={cardsAquisicao}
           uhIdsComReservaHoje={uhIdsComReservaHoje}
+          uhIdsLiberadasHoje={uhIdsLiberadasHoje}
           onVerDetalhe={setCardDetalhe}
         />
       )}
@@ -121,6 +124,7 @@ export function Correcao({
           cards={cardsServicos}
           suppliers={suppliers}
           uhIdsComReservaHoje={uhIdsComReservaHoje}
+          uhIdsLiberadasHoje={uhIdsLiberadasHoje}
           onVerDetalhe={setCardDetalhe}
         />
       )}
@@ -131,6 +135,7 @@ export function Correcao({
           cardsAProcessar={cardsAProcessar}
           uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
           uhIdsComReservaHoje={uhIdsComReservaHoje}
+          uhIdsLiberadasHoje={uhIdsLiberadasHoje}
           commitmentHoje={commitmentHoje}
           onVerDetalhe={setCardDetalhe}
         />
@@ -139,6 +144,7 @@ export function Correcao({
       <DialogDetalheCard
         card={cardDetalhe}
         temReserva={cardDetalhe ? uhIdsComReservaHoje.includes(cardDetalhe.uhId) : false}
+        liberada={cardDetalhe ? uhIdsLiberadasHoje.includes(cardDetalhe.uhId) : false}
         onClose={() => setCardDetalhe(null)}
       />
 

@@ -103,6 +103,7 @@ export function Dashboard({
   suppliers,
   uhIdsSelecionadasHoje,
   uhIdsComReservaHoje,
+  uhIdsLiberadasHoje,
   commitments,
   hojeSP,
 }: {
@@ -126,6 +127,7 @@ export function Dashboard({
   suppliers: SupplierView[]
   uhIdsSelecionadasHoje: string[]
   uhIdsComReservaHoje: string[]
+  uhIdsLiberadasHoje: string[]
   commitments: DailyCommitmentView[]
   hojeSP: string
 }) {
@@ -352,6 +354,7 @@ export function Dashboard({
               suppliers={suppliers}
               uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
               uhIdsComReservaHoje={uhIdsComReservaHoje}
+              uhIdsLiberadasHoje={uhIdsLiberadasHoje}
               commitments={commitments}
               hojeSP={hojeSP}
               correcoesRecentes={correcoes}

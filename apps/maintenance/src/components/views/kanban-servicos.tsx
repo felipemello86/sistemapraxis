@@ -41,14 +41,16 @@ const MAX_FOTOS_EXECUCAO = 4
 function CardHeader({
   card,
   temReserva,
+  liberada,
   onVerDetalhe,
 }: {
   card: CorrectionCardView
   temReserva: boolean
+  liberada: boolean
   onVerDetalhe: (card: CorrectionCardView) => void
 }) {
   return (
-    <CorrectionCardHeader card={card} temReserva={temReserva} onVerDetalhe={onVerDetalhe}>
+    <CorrectionCardHeader card={card} temReserva={temReserva} liberada={liberada} onVerDetalhe={onVerDetalhe}>
       {card.needsMaterial && (
         <p className="text-xs text-muted-foreground">
           Material: {card.materialStatus === 'COMPRADO' ? 'já comprado' : 'ainda não comprado'}
@@ -63,12 +65,14 @@ export function KanbanServicos({
   cards,
   suppliers,
   uhIdsComReservaHoje,
+  uhIdsLiberadasHoje,
   onVerDetalhe,
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
   suppliers: SupplierView[]
   uhIdsComReservaHoje: string[]
+  uhIdsLiberadasHoje: string[]
   onVerDetalhe: (card: CorrectionCardView) => void
 }) {
   const aContratar = cards.filter((c) => c.externalServiceStatus === 'A_CONTRATAR')
@@ -86,7 +90,12 @@ export function KanbanServicos({
         <Coluna titulo="A contratar" total={aContratar.length}>
           {aContratar.map((card) => (
             <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
+              <CardHeader
+                card={card}
+                temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                liberada={uhIdsLiberadasHoje.includes(card.uhId)}
+                onVerDetalhe={onVerDetalhe}
+              />
               <Button
                 size="sm"
                 className="mt-3 w-full rounded-xl"
@@ -104,7 +113,12 @@ export function KanbanServicos({
         <Coluna titulo="Em negociação" total={emNegociacao.length}>
           {emNegociacao.map((card) => (
             <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
+              <CardHeader
+                card={card}
+                temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                liberada={uhIdsLiberadasHoje.includes(card.uhId)}
+                onVerDetalhe={onVerDetalhe}
+              />
               {card.quotes.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {card.quotes.map((q) => (
@@ -149,7 +163,12 @@ export function KanbanServicos({
         <Coluna titulo="Agendado" total={agendado.length}>
           {agendado.map((card) => (
             <div key={card.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
+              <CardHeader
+                card={card}
+                temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                liberada={uhIdsLiberadasHoje.includes(card.uhId)}
+                onVerDetalhe={onVerDetalhe}
+              />
               <div className="mt-2 rounded-lg bg-background/70 p-2 text-xs">
                 <p className="font-medium">{card.hiredSupplierNome}</p>
                 {card.scheduledDate && <p className="text-muted-foreground">{formatarData(card.scheduledDate)}</p>}
@@ -188,7 +207,12 @@ export function KanbanServicos({
         <Coluna titulo="Executado" total={executado.length}>
           {executado.map((card) => (
             <div key={card.id} className="rounded-xl border border-[var(--success)]/30 bg-[var(--success)]/8 p-3">
-              <CardHeader card={card} temReserva={uhIdsComReservaHoje.includes(card.uhId)} onVerDetalhe={onVerDetalhe} />
+              <CardHeader
+                card={card}
+                temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                liberada={uhIdsLiberadasHoje.includes(card.uhId)}
+                onVerDetalhe={onVerDetalhe}
+              />
               {card.executedDescription && <p className="mt-2 text-xs">{card.executedDescription}</p>}
             </div>
           ))}
