@@ -13,12 +13,13 @@ import type { InsightDraft } from "./types";
 //     de encerrada, então é tratada como um alerta novo de verdade: reabre
 //     como ABERTO.
 
-export async function upsertInsight(tenantId: string, draft: InsightDraft): Promise<void> {
+export async function upsertInsight(tenantId: string, detectorId: string, draft: InsightDraft): Promise<void> {
   const existente = await prisma.aiInsight.findUnique({
     where: { tenantId_dedupeKey: { tenantId, dedupeKey: draft.dedupeKey } },
   });
 
   const dadosAtuais = {
+    detectorId,
     module: draft.module,
     entityType: draft.entityType ?? null,
     entityId: draft.entityId ?? null,

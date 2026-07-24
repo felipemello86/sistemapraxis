@@ -28,7 +28,7 @@ export async function runDetectorsForTenant(tenantId: string): Promise<DetectorR
       const drafts = await detector.run(ctx);
       for (const draft of drafts) {
         const narrado = await narrarInsight(draft);
-        await upsertInsight(tenantId, narrado);
+        await upsertInsight(tenantId, detector.id, narrado);
       }
       resultados.push({ detectorId: detector.id, count: drafts.length });
     } catch (e) {
