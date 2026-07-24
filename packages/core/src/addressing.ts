@@ -8,6 +8,10 @@ export const MODULE_SLUGS: Record<SuiteModule, string> = {
   BOOKING_REVIEWS: "reviews",
   STOCK: "estoque",
   RESTAURANT: "restaurante",
+  // Sem app/deploy próprio — vive dentro do gateway (ver
+  // apps/gateway/src/app/[cliente]/inteligencia), por isso o slug não tem
+  // uma regra de rewrite correspondente em nenhum next.config.js.
+  INTELLIGENCE: "inteligencia",
 };
 
 export const MODULE_LABELS: Record<SuiteModule, string> = {
@@ -16,6 +20,7 @@ export const MODULE_LABELS: Record<SuiteModule, string> = {
   BOOKING_REVIEWS: "Avaliações",
   STOCK: "Estoque",
   RESTAURANT: "Restaurante",
+  INTELLIGENCE: "Central de Inteligência",
 };
 
 const SLUG_TO_MODULE: Record<string, SuiteModule> = Object.fromEntries(

@@ -1,0 +1,19 @@
+{
+  "name": "@praxis/ai-engine",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI Engine da suíte Praxis: memória derivada (snapshots por entidade), detectores plugáveis, narrador (LLM só reescreve texto já apurado) e geração de insights pra Central de Inteligência. Consome o log de eventos escrito por @praxis/core (aiEvents.ts) e o estado dos módulos direto do banco. Sem UI própria — importado pelo cron de análise e pelo feed no gateway.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@praxis/core": "workspace:*",
+    "@anthropic-ai/sdk": "^0.32.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "@types/node": "^20.14.0"
+  }
+}

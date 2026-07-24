@@ -1,4 +1,4 @@
-import { prisma, sendPushToUser } from "@praxis/core";
+import { prisma, sendPushToUser, emitEvent } from "@praxis/core";
 import { dataAtualSP, horaAtualSP } from "./timezone";
 
 // Late Check-out — Atendimento marca uma UH pra ser liberada mais tarde (com
@@ -39,6 +39,15 @@ export async function liberarLateCheckoutsVencidos(tenantId: string): Promise<vo
     await prisma.dailyUHSelection.update({
       where: { data_uhId: { data, uhId } },
       data: { liberada: true, liberadaEm: new Date(), liberadoPorNome: "Sistema (Late Check-out)" },
+    });
+
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.late_checkout.forced_release",
+      entityType: "UH",
+      entityId: uhId,
+      payload: { data },
     });
 
     // Pode haver mais de uma DailyAssignment na mesma UH/dia (mutirão) —

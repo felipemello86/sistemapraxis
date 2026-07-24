@@ -15,7 +15,8 @@
     "import:bnbflex-users": "tsx scripts/import-bnbflex-users.ts",
     "import:housekeeping-data": "tsx scripts/import-housekeeping-data.ts",
     "seed:housekeeping-test": "tsx scripts/seed-housekeeping-test.ts",
-    "grant:housekeeping-access": "tsx scripts/grant-housekeeping-access.ts"
+    "grant:housekeeping-access": "tsx scripts/grant-housekeeping-access.ts",
+    "grant:intelligence-access": "tsx scripts/grant-intelligence-access.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

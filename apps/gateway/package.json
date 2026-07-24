@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@praxis/core": "workspace:*",
+    "@praxis/ai-engine": "workspace:*",
     "@capacitor/core": "^6.2.1",
     "@capacitor/push-notifications": "^6.0.3",
     "bcryptjs": "^2.4.3",

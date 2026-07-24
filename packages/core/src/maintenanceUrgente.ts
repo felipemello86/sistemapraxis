@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { notificarTodosDoTenant } from "./notify";
+import { emitEvent } from "./aiEvents";
 
 // NC (não conformidade) "impeditiva ao uso" / urgente — pedido explícito do
 // Felipe: registrar como urgente deve (1) bloquear a UH pra reservas
@@ -55,6 +56,15 @@ export async function aplicarBloqueioPorUrgencia(params: {
     body: `UH ${uh.numero}${checklistItem ? ` — ${checklistItem.name}` : ""}: ${params.comment}`,
     data: { view: "uh3d", uhId: params.uhId },
   });
+
+  await emitEvent({
+    tenantId: params.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.uh.bloqueio_urgente",
+    entityType: "UH",
+    entityId: params.uhId,
+    payload: { checklistItemId: params.checklistItemId, comment: params.comment },
+  });
 }
 
 // Chamado sempre que uma NC urgente é resolvida ou deixa de ser urgente —
@@ -87,5 +97,13 @@ export async function reavaliarBloqueioUrgencia(params: { tenantId: string; uhId
       bloqueioEm: null,
       bloqueioOrigem: null,
     },
+  });
+
+  await emitEvent({
+    tenantId: params.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.uh.desbloqueio_urgente",
+    entityType: "UH",
+    entityId: params.uhId,
   });
 }

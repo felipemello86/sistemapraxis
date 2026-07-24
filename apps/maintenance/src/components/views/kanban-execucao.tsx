@@ -94,12 +94,18 @@ export function KanbanExecucao({
   const [cardExecutando, setCardExecutando] = useState<{ id: string; uhName: string; checklistItemName: string | null } | null>(null)
   const [cardTriando, setCardTriando] = useState<CorrectionCardView | null>(null)
   const [adicionandoUrgente, setAdicionandoUrgente] = useState<string | null>(null)
+  // Igual ao blockMap do fechamento normal (abaixo) — só que aqui é por
+  // card individual, já que "Adicionar à programação de hoje" não passa
+  // pela seleção múltipla. Ver comentário no botão.
+  const [selecionandoUrgente, setSelecionandoUrgente] = useState<string | null>(null)
+  const [blockUrgente, setBlockUrgente] = useState<Record<string, boolean>>({})
 
   async function adicionarUrgente(cardId: string) {
     setAdicionandoUrgente(cardId)
     try {
-      unwrapSafeAction(await adicionarCardUrgenteAction({ cardId }))
+      unwrapSafeAction(await adicionarCardUrgenteAction({ cardId, block: blockUrgente[cardId] ?? false }))
       toast.success('Card adicionado à programação de hoje.')
+      setSelecionandoUrgente(null)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao adicionar o card.')
     } finally {
@@ -192,27 +198,83 @@ export function KanbanExecucao({
                   A programação de hoje já foi fechada. Estes cards surgiram depois — adicione à programação se for
                   urgente, ou deixe pra amanhã.
                 </p>
-                {aFazer.map((card) => (
-                  <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
-                    <CorrectionCardHeader
-                      card={card}
-                      temReserva={uhIdsComReservaHoje.includes(card.uhId)}
-                      liberada={uhIdsLiberadasHoje.includes(card.uhId)}
-                      onVerDetalhe={onVerDetalhe}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="mt-3 w-full rounded-xl"
-                      disabled={!podeOperar || adicionandoUrgente === card.id}
-                      title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
-                      onClick={() => adicionarUrgente(card.id)}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      {adicionandoUrgente === card.id ? 'Adicionando...' : 'Adicionar à programação de hoje'}
-                    </Button>
-                  </div>
-                ))}
+                {aFazer.map((card) => {
+                  const expandido = selecionandoUrgente === card.id
+                  return (
+                    <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
+                      <CorrectionCardHeader
+                        card={card}
+                        temReserva={uhIdsComReservaHoje.includes(card.uhId)}
+                        liberada={uhIdsLiberadasHoje.includes(card.uhId)}
+                        onVerDetalhe={onVerDetalhe}
+                      />
+                      {expandido ? (
+                        <div className="mt-2 space-y-2">
+                          <div className="flex items-center justify-between rounded-lg bg-muted/60 px-2.5 py-1.5">
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Lock className="h-3 w-3" />
+                              Bloquear UH pra reservas?
+                            </span>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={blockUrgente[card.id] ? 'default' : 'outline'}
+                                className="h-6 rounded-lg px-2 text-xs"
+                                onClick={() => setBlockUrgente((m) => ({ ...m, [card.id]: true }))}
+                              >
+                                Sim
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={!blockUrgente[card.id] ? 'default' : 'outline'}
+                                className="h-6 rounded-lg px-2 text-xs"
+                                onClick={() => setBlockUrgente((m) => ({ ...m, [card.id]: false }))}
+                              >
+                                Não
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1 rounded-xl"
+                              disabled={adicionandoUrgente === card.id}
+                              onClick={() => setSelecionandoUrgente(null)}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="flex-1 rounded-xl"
+                              disabled={adicionandoUrgente === card.id}
+                              onClick={() => adicionarUrgente(card.id)}
+                            >
+                              {adicionandoUrgente === card.id ? 'Adicionando...' : 'Confirmar'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-3 w-full rounded-xl"
+                          disabled={!podeOperar}
+                          title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                          onClick={() => {
+                            setSelecionandoUrgente(card.id)
+                            setBlockUrgente((m) => ({ ...m, [card.id]: false }))
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Adicionar à programação de hoje
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )
           ) : aFazer.length === 0 ? (

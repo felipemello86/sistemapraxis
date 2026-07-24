@@ -94,6 +94,11 @@ model Tenant {
   menuSections    MenuSection[]
   menuItems       MenuItem[]
   breakfastOrders BreakfastOrder[]
+
+  // AI Engine — ver bloco de models no fim do arquivo.
+  aiEvents          AiEvent[]
+  aiEntitySnapshots AiEntitySnapshot[]
+  aiInsights        AiInsight[]
 }
 
 enum SuiteModule {
@@ -102,6 +107,11 @@ enum SuiteModule {
   BOOKING_REVIEWS
   RESTAURANT
   STOCK
+  // Central de Inteligência (AI Engine) — feed de insights gerados pelos
+  // detectores em @praxis/ai-engine. Gateado como qualquer outro módulo
+  // (TenantModule + UserModuleAccess), mesmo não tendo um app próprio: vive
+  // dentro do gateway (ver apps/gateway/src/app/[cliente]/inteligencia).
+  INTELLIGENCE
 }
 
 // Licenciamento por módulo: um tenant só enxerga um módulo se houver uma
@@ -208,6 +218,10 @@ model User {
   // Estoque — usuário que registrou a movimentação (opcional: dado migrado
   // do sistema antigo não tem FK real, ver comentário em StockMovement).
   stockMovements StockMovement[]
+
+  // AI Engine — quem resolveu/descartou manualmente um insight na Central
+  // de Inteligência (ver bloco de models no fim do arquivo).
+  aiInsightsResolved AiInsight[] @relation("AiInsightResolvedBy")
 
   // Constraint real — a v1 declarava isso no schema mas uma checagem
   // direta no Postgres de produção mostrou que ela nunca foi de fato
@@ -1803,4 +1817,131 @@ model BreakfastOrderItem {
   quantidade Int @default(1)
 
   @@unique([orderId, menuItemId])
+}
+
+// ----------------------------------------------------------------------
+// AI Engine — infraestrutura de observabilidade + inteligência da suíte.
+// Arquitetura AI-first: a IA não é um app de negócio, é uma camada
+// transversal que consome o que os módulos já fazem. Três tabelas, cada
+// uma com um papel bem separado (ver packages/core/src/aiEvents.ts e
+// packages/ai-engine/src/*):
+//
+//   AiEvent            — log bruto, append-only. Fonte única de verdade;
+//                         todo módulo escreve aqui no exato ponto onde já
+//                         notifica por push hoje (ver emitEvent). Nunca é
+//                         reescrito, só lido.
+//   AiEntitySnapshot   — memória derivada: métricas agregadas por entidade
+//                         (ex.: por UH), recalculadas periodicamente, pra
+//                         detectores não terem que reprocessar o histórico
+//                         inteiro a cada rodada.
+//   AiInsight          — o que a Central de Inteligência exibe. Sempre
+//                         gerado por um detector determinístico a partir de
+//                         dado real (evidence[] rastreável) — um eventual
+//                         passo de LLM (ver narrator.ts) só reescreve o
+//                         texto de `explanation`, nunca prioridade,
+//                         confiança ou evidência.
+// ----------------------------------------------------------------------
+
+model AiEvent {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // String solta (não SuiteModule) de propósito — o log de eventos precisa
+  // sobreviver a módulos que nem existem no enum ainda (ex.: um evento de
+  // sistema, não amarrado a nenhum módulo de negócio).
+  module    String
+  eventType String // ex.: "maintenance.correction.resolved"
+
+  entityType String? // ex.: "UH", "MaintenanceCorrectionCard"
+  entityId   String?
+
+  payload String @default("{}") // JSON livre — específico de cada eventType
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, module, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, eventType, createdAt])
+}
+
+model AiEntitySnapshot {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  module     String
+  entityType String
+  entityId   String
+
+  metrics String @default("{}") // JSON — números já calculados, sem prosa
+
+  computedAt DateTime @updatedAt
+
+  @@unique([tenantId, module, entityType, entityId])
+}
+
+model AiInsight {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  module     String
+  detectorId String
+
+  // Chave estável da condição detectada (ex.: "nc-urgente-parada:<cardId>")
+  // — mesma condição persistindo atualiza o insight existente em vez de
+  // duplicar; só vira insight novo se o anterior já tinha sido
+  // RESOLVIDO/DESCARTADO e a condição reapareceu depois. Ver upsertInsight
+  // em packages/ai-engine/src/insights.ts.
+  dedupeKey String
+
+  entityType String?
+  entityId   String?
+
+  priority AiInsightPriority
+  status   AiInsightStatus   @default(ABERTO)
+
+  title             String
+  explanation       String @db.Text
+  // JSON: AiEvidenceItem[] — cada item rastreável a um dado real (label,
+  // value, eventId opcional). Nunca texto solto sem origem.
+  evidence          String @db.Text @default("[]")
+  // 0..1, calculado deterministicamente pelo detector (tamanho de amostra,
+  // recência, força do sinal) — nunca "achado" por um LLM.
+  confidence        Float
+  recommendedAction String @db.Text
+  // JSON string[] — ids de AiEvent que embasaram este insight, quando
+  // aplicável (nem todo detector parte do log de eventos, alguns leem
+  // estado/histórico já durável do próprio módulo).
+  eventIds          String @db.Text @default("[]")
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("AiInsightResolvedBy", fields: [resolvedById], references: [id])
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  // Bumpado toda vez que o detector roda e a condição ainda existe — permite
+  // distinguir "insight antigo, condição já sumiu" (lastSeenAt parado) de
+  // "condição ainda ativa" sem precisar de mais uma tabela.
+  lastSeenAt DateTime @default(now())
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, module, status, priority])
+  @@index([tenantId, status, lastSeenAt])
+}
+
+enum AiInsightPriority {
+  BAIXA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+enum AiInsightStatus {
+  ABERTO
+  LIDO
+  RESOLVIDO
+  DESCARTADO
 }

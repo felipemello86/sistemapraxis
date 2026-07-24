@@ -368,7 +368,7 @@ export const triarCardAProcessarAction = safeAction(triarCardAProcessarImpl);
 // sem recriar o commitment — só anexa a ele, marcado previsto=false pra não
 // inflar o denominador do % de realização (ver MaintenanceDailyCommitment.
 // totalPrevisto).
-async function adicionarCardUrgenteImpl(input: { cardId: string }) {
+async function adicionarCardUrgenteImpl(input: { cardId: string; block?: boolean }) {
   const session = await requireModuleSession();
   const data = dataAtualSP();
 
@@ -394,8 +394,20 @@ async function adicionarCardUrgenteImpl(input: { cardId: string }) {
       dailyCommitmentId: commitment.id,
       executionStatus: "PLANEJADA",
       previsto: false,
+      blockForReservation: input.block ?? false,
     },
   });
+
+  // Mesmo aviso que o fechamento normal da programação dispara pra UH
+  // marcada — pedido implícito: essa opção precisa existir aqui também, não
+  // só antes do fechamento (ver comentário acima do bug corrigido).
+  if (input.block) {
+    await notificarPorRoles(session.tenantId, ["ATENDIMENTO", "GERENTE", "MASTER"], {
+      title: "🚫 Bloqueio de UH pra reservas",
+      body: "Um card intempestivo adicionado à programação de hoje precisa que a UH seja bloqueada pra reservas.",
+      data: { view: "correcao" },
+    });
+  }
 
   revalidatePath("/");
 }

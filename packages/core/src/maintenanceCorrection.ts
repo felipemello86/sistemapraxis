@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { reavaliarBloqueioUrgencia } from "./maintenanceUrgente";
+import { emitEvent } from "./aiEvents";
 
 // Fluxo de Correção (Aquisição / Serviços Externos / Execução) — substitui a
 // antiga Rota de Correção de passo único. Compartilhado em @praxis/core (em
@@ -34,7 +35,7 @@ export async function createCorrectionCardForItem(params: {
   triagedById: string | null;
 }) {
   const jaTriado = params.needsMaterial !== null && params.needsExternalService !== null;
-  return prisma.maintenanceCorrectionCard.create({
+  const card = await prisma.maintenanceCorrectionCard.create({
     data: {
       tenantId: params.tenantId,
       inspectionItemId: params.inspectionItemId,
@@ -46,6 +47,26 @@ export async function createCorrectionCardForItem(params: {
       triagedById: jaTriado ? params.triagedById : null,
     },
   });
+
+  // Choke point único: qualquer um dos 4 pontos de entrada de NC (inspeção,
+  // UH 3D, camareira, governanta) passa por aqui — instrumentar só este
+  // lugar torna todo o fluxo observável pela IA, sem precisar espalhar
+  // emitEvent() por cada ponto de entrada.
+  await emitEvent({
+    tenantId: params.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.nc.created",
+    entityType: "UH",
+    entityId: params.uhId,
+    payload: {
+      cardId: card.id,
+      inspectionItemId: params.inspectionItemId,
+      checklistItemId: params.checklistItemId,
+      triado: jaTriado,
+    },
+  });
+
+  return card;
 }
 
 /**
@@ -109,6 +130,23 @@ export async function resolveCorrectionCard(params: {
   if (card.inspectionItem.urgente) {
     await reavaliarBloqueioUrgencia({ tenantId: params.tenantId, uhId: card.uhId });
   }
+
+  // Choke point único: cobre os 3 caminhos que levam até aqui (Serviços
+  // Externos "Executado", Execução "Executadas", e o atalho "Corrigir" via
+  // corrigirItemDireto) — nenhum deles precisa saber que a IA existe.
+  await emitEvent({
+    tenantId: params.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.correction.resolved",
+    entityType: "UH",
+    entityId: card.uhId,
+    payload: {
+      cardId: card.id,
+      inspectionItemId: card.inspectionItemId,
+      checklistItemId: card.checklistItemId,
+      eraUrgente: card.inspectionItem.urgente,
+    },
+  });
 }
 
 /**

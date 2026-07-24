@@ -1,3 +1,9 @@
 {
-  "regions": ["gru1"]
+  "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/cron/ai-engine",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }

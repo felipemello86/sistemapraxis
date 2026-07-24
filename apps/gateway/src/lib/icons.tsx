@@ -59,6 +59,18 @@ export function IconCloche({ size = 28 }: IconProps) {
   );
 }
 
+// Novo — módulo Central de Inteligência (AI Engine). Estrela de 4 pontas
+// ("sparkle") em vez de estrela de 5 (já usada pelo módulo Avaliações) —
+// mesmo estilo (stroke, sem preenchimento) dos demais ícones desta suíte.
+export function IconSparkle({ size = 28 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" />
+      <path d="M19 15l0.7 2 2 0.7-2 0.7-0.7 2-0.7-2-2-0.7 2-0.7 0.7-2z" />
+    </svg>
+  );
+}
+
 export function IconGear({ size = 28 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

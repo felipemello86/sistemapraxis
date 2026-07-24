@@ -8,6 +8,7 @@ export * from "./maintenanceCorrection";
 export * from "./timezone";
 export * from "./notify";
 export * from "./maintenanceUrgente";
+export * from "./aiEvents";
 export type {
   SuiteModule,
   User,
@@ -18,4 +19,9 @@ export type {
   ReviewStage,
   ReviewAlertChannel,
   ReviewAlertType,
+  AiEvent,
+  AiEntitySnapshot,
+  AiInsight,
+  AiInsightPriority,
+  AiInsightStatus,
 } from "../generated";
