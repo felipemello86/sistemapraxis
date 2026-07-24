@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { notFound } from "next/navigation";
-import { prisma, getSession, hasModuleAccess } from "@praxis/core";
+import { prisma, getSession, hasModuleAccess, type AiInsightStatus } from "@praxis/core";
 import { marcarLidoAction, resolverInsightAction, descartarInsightAction } from "./actions";
 
 // Central de Inteligência — feed contínuo dos insights gerados pelos
@@ -95,12 +95,13 @@ export default async function CentralInteligencia({
 
   const filtroBruto = searchParams.status?.toUpperCase();
   const filtro: FiltroStatus = FILTROS.some((f) => f.id === filtroBruto) ? (filtroBruto as FiltroStatus) : "ATIVOS";
+  const ATIVOS_STATUSES: AiInsightStatus[] = ["ABERTO", "LIDO"];
   const where =
     filtro === "TODOS"
       ? { tenantId: tenant.id }
       : filtro === "ATIVOS"
-        ? { tenantId: tenant.id, status: { in: ["ABERTO", "LIDO"] as const } }
-        : { tenantId: tenant.id, status: filtro };
+        ? { tenantId: tenant.id, status: { in: ATIVOS_STATUSES } }
+        : { tenantId: tenant.id, status: filtro as AiInsightStatus };
 
   const insightsBrutos = await prisma.aiInsight.findMany({
     where,
