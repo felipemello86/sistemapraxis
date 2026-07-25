@@ -55,11 +55,19 @@ function hubUrl(tenantSlug: string) {
   return tenantSlug ? `${base}/${tenantSlug}` : base;
 }
 
-// Preferência de sidebar recolhida persistida por navegador (localStorage) —
-// como todos os módulos ficam no mesmo domínio via rewrite do gateway
-// (basePaths diferentes, mesma origem), a chave leva o nome do módulo pra
-// não colidir com a mesma preferência de housekeeping/estoque/restaurante/
-// upkeep. Mesmo padrão introduzido em apps/maintenance/src/components/dashboard.tsx.
+// Preferência de sidebar recolhida persistida em cookie (não localStorage) —
+// cada rota deste módulo tem seu próprio layout.tsx (Server Component), e
+// trocar de rota troca de layout, o que desmonta e remonta a Sidebar do
+// zero. Com localStorage, o valor só era lido DEPOIS do mount (pra não
+// divergir do HTML renderizado no servidor), então toda navegação
+// renderizava expandida por um instante e só depois "recolhia sozinha" — é
+// exatamente o bug relatado pelo Felipe. Com cookie, o layout.tsx de cada
+// rota já lê o valor no servidor (ver `cookies()` em cada layout.tsx) e
+// passa como prop `initialCollapsed`, então a Sidebar já nasce no estado
+// certo, sem flash. Como todos os módulos ficam no mesmo domínio via
+// rewrite do gateway (basePaths diferentes, mesma origem), a chave leva o
+// nome do módulo pra não colidir com a mesma preferência de
+// housekeeping/estoque/restaurante/upkeep.
 const SIDEBAR_COLLAPSED_KEY = "praxis-housekeeping-sidebar-collapsed";
 
 function NavContent({
@@ -124,24 +132,23 @@ function NavContent({
   );
 }
 
-export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string; tenantSlug: string }) {
+export function Sidebar({
+  nome, role, tenantSlug, initialCollapsed,
+}: { nome: string; role: string; tenantSlug: string; initialCollapsed?: boolean }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // Default real é "estendido" (pedido explícito do Felipe) — só nasce
+  // recolhida se o layout.tsx da rota leu "1" do cookie no servidor (ver
+  // comentário em SIDEBAR_COLLAPSED_KEY acima), ou seja, se a última escolha
+  // da pessoa foi recolher.
+  const [collapsed, setCollapsed] = useState(initialCollapsed ?? false);
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
-  // Lido depois do mount (não no useState inicial) pra não divergir do HTML
-  // renderizado no servidor — evita mismatch de hidratação.
-  useEffect(() => {
-    if (window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1") {
-      setCollapsed(true);
-    }
-  }, []);
-
   function setCollapsedPersist(next: boolean) {
     setCollapsed(next);
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+    // path=/ pra valer em todas as rotas deste módulo; 1 ano de validade.
+    document.cookie = `${SIDEBAR_COLLAPSED_KEY}=${next ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax`;
   }
 
   const navProps = { nome, role, tenantSlug, pathname };
