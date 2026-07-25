@@ -15,6 +15,7 @@ import {
   ChevronRight,
   RotateCcw,
   Box,
+  ArrowDownAZ,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -85,6 +86,15 @@ export function Configuracoes({
   // ── Atribuição de itens por UH ──────────────────────────────────────────
   const [uhExpandida, setUhExpandida] = useState<string | null>(null)
   const [selecaoAtual, setSelecaoAtual] = useState<Record<string, boolean>>({})
+  // Ordem alfabética A→Z é o default (pedido explícito do Felipe) — antes a
+  // lista vinha na ordem crua do array `unidades` (ordem de cadastro no
+  // hub), sem nenhum critério visível. O botão permite voltar pra ordem
+  // original se precisar achar uma UH pela ordem de cadastro.
+  const [ordemAlfabetica, setOrdemAlfabetica] = useState(true)
+  const unidadesOrdenadas = useMemo(() => {
+    if (!ordemAlfabetica) return unidades
+    return [...unidades].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }))
+  }, [unidades, ordemAlfabetica])
 
   function abrirAtribuicao(uhId: string) {
     if (uhExpandida === uhId) {
@@ -445,6 +455,18 @@ export function Configuracoes({
                 ? 'Nenhuma UH customizada — hoje todos os itens do catálogo se aplicam a todas as unidades.'
                 : `${totalCustomizadas} de ${unidades.length} unidades com lista customizada.`
             }
+            action={
+              unidades.length > 0 ? (
+                <button
+                  onClick={() => setOrdemAlfabetica((v) => !v)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border/70 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  title={ordemAlfabetica ? 'Voltar pra ordem de cadastro' : 'Organizar em ordem alfabética (A→Z)'}
+                >
+                  <ArrowDownAZ className="h-3.5 w-3.5" />
+                  {ordemAlfabetica ? 'A → Z' : 'Ordem de cadastro'}
+                </button>
+              ) : undefined
+            }
           >
             {unidades.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
@@ -456,7 +478,7 @@ export function Configuracoes({
               </p>
             ) : (
               <ul className="divide-y divide-border/70">
-                {unidades.map((u) => {
+                {unidadesOrdenadas.map((u) => {
                   const customizado = atribuicoes[u.id] && atribuicoes[u.id].length > 0
                   const aberta = uhExpandida === u.id
                   return (

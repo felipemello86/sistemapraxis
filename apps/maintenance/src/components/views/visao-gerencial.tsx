@@ -155,12 +155,20 @@ export function VisaoGerencial({
     const rows: NcRow[] = []
     for (const [, insp] of fontes) {
       for (const it of insp.items) {
-        if (it.status !== 'NAO_CONFORME' || !it.checklistItemId) continue
-        const catalogo = itensPorId.get(it.checklistItemId)
+        // BUG CORRIGIDO: antes exigia `it.checklistItemId` truthy pra entrar
+        // na lista — mas checklistItemId vira null quando o item do
+        // catálogo é apagado depois da inspeção (onDelete: SetNull no
+        // schema). O item continua contando contra a % de conformidade no
+        // gráfico acima (contarConformidade usa insp.items.length, sem
+        // filtrar por checklistItemId), então sumir daqui deixava a % e a
+        // tabela dessincronizadas — UH aparecia com conformidade baixa mas
+        // "Tudo conforme" na tabela. Mantém o fallback abaixo pro nome.
+        if (it.status !== 'NAO_CONFORME') continue
+        const catalogo = it.checklistItemId ? itensPorId.get(it.checklistItemId) : undefined
         rows.push({
           unitId: insp.unitId,
           unitName: insp.unit.name,
-          checklistItemId: it.checklistItemId,
+          checklistItemId: it.checklistItemId ?? '',
           inspectionItemId: it.id,
           itemName: catalogo?.name ?? 'Item removido do catálogo',
           category: catalogo?.category ?? '—',
