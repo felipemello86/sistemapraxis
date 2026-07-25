@@ -646,6 +646,125 @@ async function editarSpotInspecaoImpl(input: {
 }
 export const editarSpotInspecaoAction = safeAction(editarSpotInspecaoImpl);
 
+// Reportar não conformidade pontual num item que NUNCA foi avaliado nesta UH
+// (nem sequer existe um MaintenanceInspectionItem pra editar) — pedido
+// explícito do Felipe: "faça com que isso seja possível mesmo antes da
+// primeira inspeção". Usado pela tabela de IVs da UH 3D quando o item está
+// NAO_AVALIADO (sem InspectionItem) ou já estava CONFORME numa UH sem
+// nenhuma inspeção completa registrada ainda.
+//
+// Não cria uma MaintenanceInspection NOVA se já existir uma pra essa UH —
+// isso "esconderia" os demais itens já avaliados de ultimaInspecaoPorUnidade
+// (que só olha a inspeção mais recente inteira, não uma por item). Em vez
+// disso, anexa uma linha nova de item à inspeção mais recente já existente.
+// Só cria uma inspeção do zero (com só este item) se a UH nunca foi
+// inspecionada nenhuma vez.
+async function registrarNcAvulsaImpl(input: {
+  uhId: string;
+  checklistItemId: string;
+  comment: string;
+  photos?: string[];
+  needsMaterial: boolean;
+  needsExternalService: boolean;
+  urgente: boolean;
+}) {
+  const session = await requireModuleSession();
+
+  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
+  if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
+
+  const comment = input.comment.trim();
+  if (comment.length < 5) throw new Error("Descreva a não conformidade (mínimo 5 caracteres).");
+  if (typeof input.needsMaterial !== "boolean" || typeof input.needsExternalService !== "boolean") {
+    throw new Error("Informe se essa não conformidade precisa de material e/ou de serviço externo.");
+  }
+  if (typeof input.urgente !== "boolean") {
+    throw new Error("Informe se essa não conformidade é impeditiva ao uso (urgente).");
+  }
+
+  const ultimaInspecao = await prisma.maintenanceInspection.findFirst({
+    where: { tenantId: session.tenantId, uhId: input.uhId },
+    orderBy: { date: "desc" },
+    select: {
+      id: true,
+      items: { where: { checklistItemId: input.checklistItemId }, select: { id: true } },
+    },
+  });
+
+  let inspectionItemId: string;
+
+  if (!ultimaInspecao) {
+    // UH nunca foi inspecionada — primeira inspeção dela, só com este item.
+    const insp = await prisma.maintenanceInspection.create({
+      data: {
+        tenantId: session.tenantId,
+        uhId: input.uhId,
+        inspectorId: session.userId,
+        date: new Date(),
+        items: {
+          create: [
+            {
+              checklistItemId: input.checklistItemId,
+              status: "NAO_CONFORME",
+              comment,
+              photos: JSON.stringify(input.photos ?? []),
+              urgente: input.urgente,
+            },
+          ],
+        },
+      },
+      include: { items: true },
+    });
+    inspectionItemId = insp.items[0].id;
+  } else if (ultimaInspecao.items.length === 0) {
+    // Já existe inspeção pra essa UH, mas este item nunca entrou nela —
+    // anexa uma linha nova, sem tocar nos outros itens já avaliados.
+    const novoItem = await prisma.maintenanceInspectionItem.create({
+      data: {
+        inspectionId: ultimaInspecao.id,
+        checklistItemId: input.checklistItemId,
+        status: "NAO_CONFORME",
+        comment,
+        photos: JSON.stringify(input.photos ?? []),
+        urgente: input.urgente,
+      },
+    });
+    inspectionItemId = novoItem.id;
+  } else {
+    // Defensivo — já existe uma linha pra esse item (não deveria acontecer,
+    // o botão só aparece pra item sem InspectionItem na última inspeção).
+    const existente = ultimaInspecao.items[0];
+    await prisma.maintenanceInspectionItem.update({
+      where: { id: existente.id },
+      data: { status: "NAO_CONFORME", comment, photos: JSON.stringify(input.photos ?? []), urgente: input.urgente },
+    });
+    inspectionItemId = existente.id;
+  }
+
+  await createCorrectionCardForItem({
+    tenantId: session.tenantId,
+    inspectionItemId,
+    uhId: input.uhId,
+    checklistItemId: input.checklistItemId,
+    needsMaterial: input.needsMaterial,
+    needsExternalService: input.needsExternalService,
+    triagedById: session.userId,
+  });
+
+  if (input.urgente) {
+    await aplicarBloqueioPorUrgencia({
+      tenantId: session.tenantId,
+      uhId: input.uhId,
+      checklistItemId: input.checklistItemId,
+      comment,
+      solicitanteNome: session.nome,
+    });
+  }
+
+  revalidatePath("/");
+}
+export const registrarNcAvulsaAction = safeAction(registrarNcAvulsaImpl);
+
 /* ------------------------ Informações do item (IV-UH) -------------------- */
 // Dado cadastral livre por UH x item de checklist (ex.: ar-condicionado →
 // potência, fabricante, serial). Editável em UH 3D e nas telas de item não

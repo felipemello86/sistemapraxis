@@ -31,7 +31,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
-import { editarSpotInspecaoAction } from '@/app/actions/data'
+import { editarSpotInspecaoAction, registrarNcAvulsaAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { apiFetch } from '@/lib/apiFetch'
 import { ItemInfoField } from '@/components/item-info-field'
@@ -663,14 +663,14 @@ export function Uh3D({
                                 </button>
                               )}
                               {/* Pedido explícito do Felipe: poder reportar
-                                  um item CONFORME como não conforme direto
-                                  daqui, sem precisar de spot/foto cadastrada
-                                  — abre o mesmo popup de sempre (texto
-                                  obrigatório, foto opcional), só que exige
-                                  que o item já tenha sido avaliado alguma
-                                  vez (senão não existe InspectionItem pra
-                                  editar — ver aviso dentro do próprio popup). */}
-                              {status === 'CONFORME' && insp && podeOperar && (
+                                  um item como não conforme direto daqui, sem
+                                  precisar de spot/foto cadastrada — e mesmo
+                                  antes da primeira inspeção da UH (item
+                                  NAO_AVALIADO, sem InspectionItem ainda). O
+                                  popup decide sozinho se edita o item
+                                  existente ou registra um novo (ver
+                                  registrarNcAvulsaAction). */}
+                              {status !== 'NAO_CONFORME' && podeOperar && (
                                 <button
                                   onClick={() => setDetailChecklistItemId(it.id)}
                                   className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-white/25"
@@ -760,7 +760,14 @@ function SpotDetailDialog({
   unidadeNome: string
   onClose: () => void
 }) {
-  const [status, setStatus] = useState<'CONFORME' | 'NAO_CONFORME'>(inspectionItem?.status ?? 'CONFORME')
+  // Sem inspectionItem (item nunca avaliado nesta UH — nem sequer existe
+  // inspeção registrada ainda) só faz sentido reportar NÃO conforme; não há
+  // nada pra "marcar como conforme" sem antes existir um registro. Pedido
+  // explícito do Felipe: isso precisa funcionar mesmo antes da primeira
+  // inspeção (ver registrarNcAvulsaAction).
+  const [status, setStatus] = useState<'CONFORME' | 'NAO_CONFORME'>(
+    inspectionItem?.status ?? 'NAO_CONFORME',
+  )
   const [comentario, setComentario] = useState(inspectionItem?.comment ?? '')
   const [fotos, setFotos] = useState<string[]>(inspectionItem?.photos ?? [])
   const [uploading, setUploading] = useState(false)
@@ -782,7 +789,7 @@ function SpotDetailDialog({
   const eraNovoRegistro = status === 'NAO_CONFORME' && inspectionItem?.status !== 'NAO_CONFORME'
 
   useEffect(() => {
-    setStatus(inspectionItem?.status ?? 'CONFORME')
+    setStatus(inspectionItem?.status ?? 'NAO_CONFORME')
     setComentario(inspectionItem?.comment ?? '')
     setFotos(inspectionItem?.photos ?? [])
     setNeedsMaterial(null)
@@ -833,7 +840,6 @@ function SpotDetailDialog({
   }
 
   async function salvar() {
-    if (!inspectionItem) return
     const comentarioLimpo = comentario.trim()
     if (status === 'NAO_CONFORME' && comentarioLimpo.length < 5) {
       toast.error('Descreva a não conformidade (mínimo 5 caracteres).')
@@ -849,18 +855,35 @@ function SpotDetailDialog({
     }
     setSalvando(true)
     try {
-      unwrapSafeAction(
-        await editarSpotInspecaoAction({
-          inspectionItemId: inspectionItem.id,
-          status,
-          comment: comentarioLimpo,
-          photos: fotos,
-          needsMaterial: eraNovoRegistro ? needsMaterial ?? undefined : undefined,
-          needsExternalService: eraNovoRegistro ? needsExternalService ?? undefined : undefined,
-          urgente: status === 'NAO_CONFORME' ? urgente ?? undefined : undefined,
-        }),
-      )
-      toast.success('Item atualizado.')
+      if (inspectionItem) {
+        unwrapSafeAction(
+          await editarSpotInspecaoAction({
+            inspectionItemId: inspectionItem.id,
+            status,
+            comment: comentarioLimpo,
+            photos: fotos,
+            needsMaterial: eraNovoRegistro ? needsMaterial ?? undefined : undefined,
+            needsExternalService: eraNovoRegistro ? needsExternalService ?? undefined : undefined,
+            urgente: status === 'NAO_CONFORME' ? urgente ?? undefined : undefined,
+          }),
+        )
+      } else {
+        // Item nunca avaliado nesta UH (nem existe inspeção ainda) — pedido
+        // explícito do Felipe: reportar NC precisa funcionar mesmo antes da
+        // primeira inspeção. Ver registrarNcAvulsaAction.
+        unwrapSafeAction(
+          await registrarNcAvulsaAction({
+            uhId,
+            checklistItemId,
+            comment: comentarioLimpo,
+            photos: fotos,
+            needsMaterial: needsMaterial as boolean,
+            needsExternalService: needsExternalService as boolean,
+            urgente: urgente as boolean,
+          }),
+        )
+      }
+      toast.success(inspectionItem ? 'Item atualizado.' : 'Não conformidade registrada.')
       onClose()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Não foi possível salvar.')
@@ -880,13 +903,15 @@ function SpotDetailDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!inspectionItem ? (
-          <p className="text-sm text-muted-foreground">
-            Este item ainda não foi avaliado nesta UH. Inicie uma inspeção completa na tela Inspeções para
-            registrar o status.
-          </p>
-        ) : (
-          <div className="space-y-4">
+        <div className="space-y-4">
+          {!inspectionItem && (
+            <p className="text-xs text-muted-foreground">
+              Este item ainda não foi avaliado nesta UH — reportar aqui registra a primeira não conformidade
+              dele, sem precisar esperar uma inspeção completa.
+            </p>
+          )}
+
+          {inspectionItem && (
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -911,8 +936,9 @@ function SpotDetailDialog({
                 Não conforme
               </Button>
             </div>
+          )}
 
-            {status === 'NAO_CONFORME' && (
+          {status === 'NAO_CONFORME' && (
               <>
                 <div>
                   <label className="mb-1.5 block text-sm font-bold text-red-600">
@@ -1063,8 +1089,7 @@ function SpotDetailDialog({
                 )}
               </>
             )}
-          </div>
-        )}
+        </div>
 
         {/* Cadastro do item — dado técnico/construtivo (ex.: potência,
             fabricante, serial), independe do status de conformidade e por
@@ -1084,26 +1109,24 @@ function SpotDetailDialog({
           className="border-t border-border/60 pt-3"
         />
 
-        {inspectionItem && (
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose} disabled={salvando} className="rounded-xl">
-              Cancelar
-            </Button>
-            <Button
-              onClick={salvar}
-              disabled={
-                !podeOperar ||
-                salvando ||
-                (status === 'NAO_CONFORME' && comentario.trim().length < 5) ||
-                (status === 'NAO_CONFORME' && urgente === null) ||
-                (eraNovoRegistro && (needsMaterial === null || needsExternalService === null))
-              }
-              className="rounded-xl"
-            >
-              {salvando ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </DialogFooter>
-        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={salvando} className="rounded-xl">
+            Cancelar
+          </Button>
+          <Button
+            onClick={salvar}
+            disabled={
+              !podeOperar ||
+              salvando ||
+              (status === 'NAO_CONFORME' && comentario.trim().length < 5) ||
+              (status === 'NAO_CONFORME' && urgente === null) ||
+              (eraNovoRegistro && (needsMaterial === null || needsExternalService === null))
+            }
+            className="rounded-xl"
+          >
+            {salvando ? 'Salvando...' : 'Salvar'}
+          </Button>
+        </DialogFooter>
         </DialogContent>
       </Dialog>
 
