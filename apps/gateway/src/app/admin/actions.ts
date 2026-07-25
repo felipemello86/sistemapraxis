@@ -184,6 +184,13 @@ export async function criarPlanoAction(
     return { ok: false, error: "Valor inválido." };
   }
 
+  if (!stripePriceId.startsWith("price_")) {
+    return {
+      ok: false,
+      error: "Isso parece um Product ID (prod_...). Cole o Price ID (price_...) — dentro do produto no Stripe, na seção de preços.",
+    };
+  }
+
   const jaExiste = await prisma.subscriptionPlan.findUnique({ where: { stripePriceId } });
   if (jaExiste) return { ok: false, error: "Já existe um plano com esse Price ID." };
 
@@ -191,5 +198,57 @@ export async function criarPlanoAction(
     data: { nome, stripePriceId, valorCentavos, intervalo },
   });
 
+  redirect("/admin");
+}
+
+export async function atualizarPlanoAction(
+  planId: string,
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  const admin = await getAdminSession();
+  if (!admin) return { ok: false, error: "Sessão de admin expirada. Entre de novo." };
+
+  const nome = String(formData.get("nome") ?? "").trim();
+  const stripePriceId = String(formData.get("stripePriceId") ?? "").trim();
+  const valorReais = String(formData.get("valorReais") ?? "").trim();
+  const intervalo = String(formData.get("intervalo") ?? "MONTH");
+
+  if (!nome || !stripePriceId || !valorReais) {
+    return { ok: false, error: "Preencha nome, Price ID do Stripe e valor." };
+  }
+  if (!stripePriceId.startsWith("price_")) {
+    return {
+      ok: false,
+      error: "Isso parece um Product ID (prod_...). Cole o Price ID (price_...) — dentro do produto no Stripe, na seção de preços.",
+    };
+  }
+
+  const valorCentavos = Math.round(parseFloat(valorReais.replace(",", ".")) * 100);
+  if (!Number.isFinite(valorCentavos) || valorCentavos <= 0) {
+    return { ok: false, error: "Valor inválido." };
+  }
+
+  const conflito = await prisma.subscriptionPlan.findUnique({ where: { stripePriceId } });
+  if (conflito && conflito.id !== planId) {
+    return { ok: false, error: "Já existe outro plano com esse Price ID." };
+  }
+
+  await prisma.subscriptionPlan.update({
+    where: { id: planId },
+    data: { nome, stripePriceId, valorCentavos, intervalo },
+  });
+
+  redirect("/admin");
+}
+
+// "Excluir" é soft-delete (ativo: false) em vez de apagar a linha — planos já
+// referenciados por uma TenantSubscription (planId) não podem ser apagados de
+// verdade sem quebrar a FK, e mesmo os que não têm assinatura nenhuma ainda
+// ficam mais seguros assim: histórico preservado, só sai da lista de planos
+// ativos/selecionáveis.
+export async function excluirPlanoAction(planId: string) {
+  await requireAdminSession();
+  await prisma.subscriptionPlan.update({ where: { id: planId }, data: { ativo: false } });
   redirect("/admin");
 }

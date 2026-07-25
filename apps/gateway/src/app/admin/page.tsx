@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getAdminSession, prisma, MODULE_LABELS } from "@praxis/core";
-import { logoutAdminAction, criarPlanoAction, impersonarAction } from "./actions";
+import { logoutAdminAction, criarPlanoAction, impersonarAction, atualizarPlanoAction, excluirPlanoAction } from "./actions";
 import { NovoPlanoForm } from "./NovoPlanoForm";
+import { EditarPlanoForm } from "./EditarPlanoForm";
 
 const STATUS_LABEL: Record<string, string> = {
   SEM_ASSINATURA: "Sem assinatura",
@@ -164,24 +165,12 @@ export default async function AdminDashboard() {
             </p>
           )}
           {planos.map((p) => (
-            <div
+            <EditarPlanoForm
               key={p.id}
-              style={{
-                background: "#fff",
-                borderRadius: 12,
-                padding: 14,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 13,
-              }}
-            >
-              <span style={{ fontWeight: 600 }}>{p.nome}</span>
-              <span style={{ color: "#6e6e73" }}>
-                R$ {(p.valorCentavos / 100).toFixed(2)} / {p.intervalo === "YEAR" ? "ano" : "mês"} ·{" "}
-                {p.stripePriceId}
-              </span>
-            </div>
+              plano={p}
+              atualizarAction={atualizarPlanoAction}
+              excluirAction={excluirPlanoAction}
+            />
           ))}
         </div>
 
