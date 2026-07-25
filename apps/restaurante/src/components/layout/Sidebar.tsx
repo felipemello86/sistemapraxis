@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Menu, X, Home, KanbanSquare, Link2, Settings } from "lucide-react";
+import { Menu, X, KanbanSquare, Link2, Settings, LayoutGrid, BedDouble, Wrench, Star, Package, UtensilsCrossed, Sparkles } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 // Estilo alinhado ao módulo Manutenção (pedido do Felipe): sidebar CLARA e
 // neutra (branca, bordas sutis), item ativo como pill escuro — em vez do
@@ -23,6 +24,85 @@ function hubUrl(tenantSlug: string) {
   return tenantSlug ? `${base}/${tenantSlug}` : base;
 }
 
+// Pedido explícito do Felipe: o botão "Home" (que levava pro hub) vira a
+// própria marca Praxis (ver <a href={hubUrl(...)}> em volta do MARK_SRC
+// abaixo); no lugar dele entra um dropdown "trocar de módulo", que leva
+// direto pra outro módulo sem passar pelo hub. Lista vem de /api/modulos
+// (client-side, ver ModuleSwitcher) — depende de acesso por usuário, não só
+// por tenant (getAccessibleModules em @praxis/core). Mesmo padrão de
+// apps/housekeeping/src/components/layout/Sidebar.tsx.
+type ModuloDisponivel = { module: string; slug: string; label: string };
+
+const MODULE_ICONS: Record<string, typeof BedDouble> = {
+  HOUSEKEEPING: BedDouble,
+  MAINTENANCE: Wrench,
+  BOOKING_REVIEWS: Star,
+  STOCK: Package,
+  RESTAURANT: UtensilsCrossed,
+  INTELLIGENCE: Sparkles,
+};
+
+// Slug deste próprio app — pra não listar "Restaurante" entre as opções de
+// troca (a pessoa já está aqui). Mesmo valor do BASE_PATH de lib/apiFetch.ts.
+const MODULO_ATUAL_SLUG = "restaurante";
+
+function ModuleSwitcher({
+  tenantSlug, variant, panelPosition = "up", align = "left",
+}: { tenantSlug: string; variant: "full" | "icon"; panelPosition?: "up" | "down"; align?: "left" | "right" }) {
+  const [modulos, setModulos] = useState<ModuloDisponivel[]>([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    apiFetch("/api/modulos")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const lista = Array.isArray(data) ? (data as ModuloDisponivel[]) : [];
+        setModulos(lista.filter((m) => m.slug !== MODULO_ATUAL_SLUG));
+      })
+      .catch(() => {});
+  }, []);
+
+  if (modulos.length === 0) return null;
+
+  const painelClasse = `${panelPosition === "up" ? "bottom-full mb-2" : "top-full mt-2"} ${align === "left" ? "left-0" : "right-0"}`;
+
+  return (
+    <div className="relative">
+      {open && <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} aria-hidden />}
+      {variant === "full" ? (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="mb-1 flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors w-full"
+        >
+          <LayoutGrid className="w-[18px] h-[18px]" />
+          Trocar de módulo
+        </button>
+      ) : (
+        <button onClick={() => setOpen((v) => !v)} title="Trocar de módulo" className="text-gray-400 hover:text-gray-700 p-2 rounded">
+          <LayoutGrid className="w-4 h-4" />
+        </button>
+      )}
+      {open && (
+        <div className={`absolute z-50 ${painelClasse} w-56 rounded-xl bg-white p-1.5 shadow-xl ring-1 ring-gray-200`}>
+          {modulos.map(({ module, slug, label }) => {
+            const Icon = MODULE_ICONS[module] ?? LayoutGrid;
+            return (
+              <a
+                key={module}
+                href={`${hubUrl(tenantSlug)}/${slug}`}
+                className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                {label}
+              </a>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Preferência de sidebar recolhida persistida por navegador (localStorage) —
 // como todos os módulos ficam no mesmo domínio via rewrite do gateway
 // (basePaths diferentes, mesma origem), a chave leva o nome do módulo pra
@@ -40,8 +120,12 @@ function NavContent({
     <>
       <div className="p-5 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5 min-w-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARK_SRC} alt="Praxis" className="w-8 h-8 object-contain rounded-md flex-shrink-0" />
+          {/* Marca vira o botão Home (pedido explícito do Felipe) — leva pro
+              hub, onde a pessoa vê todos os módulos e pode sair. */}
+          <a href={hubUrl(tenantSlug)} title="Ir pro hub" className="flex-shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={MARK_SRC} alt="Praxis" className="w-8 h-8 object-contain rounded-md" />
+          </a>
           <div className="min-w-0">
             <p className="font-semibold text-sm leading-tight truncate text-gray-900">{tenantSlug}</p>
             <p className="text-gray-400 text-xs">Restaurante</p>
@@ -74,10 +158,7 @@ function NavContent({
       </nav>
 
       <div className="p-3 border-t border-gray-100">
-        <a href={hubUrl(tenantSlug)} className="mb-1 flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors">
-          <Home className="w-[18px] h-[18px]" />
-          Home
-        </a>
+        <ModuleSwitcher tenantSlug={tenantSlug} variant="full" />
         <div className="flex items-center gap-3 rounded-xl px-3 py-2">
           <div className="w-9 h-9 bg-gray-100 text-gray-700 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
             {nome?.[0]?.toUpperCase()}
@@ -136,9 +217,7 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
               })}
             </nav>
             <div className="p-2 border-t border-gray-100 flex flex-col items-center gap-1">
-              <a href={hubUrl(tenantSlug)} title="Home" className="text-gray-400 hover:text-gray-700 p-2 rounded">
-                <Home className="w-4 h-4" />
-              </a>
+              <ModuleSwitcher tenantSlug={tenantSlug} variant="icon" panelPosition="up" />
             </div>
           </div>
         ) : (
@@ -153,14 +232,14 @@ export function Sidebar({ nome, role, tenantSlug }: { nome: string; role: string
         style={{ height: "calc(3.5rem + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)" }}
       >
         <div className="flex items-center gap-2 min-w-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARK_SRC} alt="Praxis" className="w-7 h-7 object-contain rounded flex-shrink-0" />
+          <a href={hubUrl(tenantSlug)} title="Ir pro hub" className="flex-shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={MARK_SRC} alt="Praxis" className="w-7 h-7 object-contain rounded" />
+          </a>
           <span className="font-semibold text-sm truncate">{tenantSlug}</span>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          <a href={hubUrl(tenantSlug)} className="text-gray-500 hover:text-gray-900 p-1" aria-label="Home">
-            <Home className="w-5 h-5" />
-          </a>
+          <ModuleSwitcher tenantSlug={tenantSlug} variant="icon" panelPosition="down" align="right" />
           <button onClick={() => setMobileOpen(true)} className="text-gray-500 hover:text-gray-900 p-1" aria-label="Abrir menu">
             <Menu className="w-6 h-6" />
           </button>

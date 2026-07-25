@@ -28,3 +28,26 @@ export async function hasModuleAccess(session: SessionPayload, module: SuiteModu
 
   return Boolean(tenantModule?.enabled && userAccess?.enabled);
 }
+
+/**
+ * Lista todos os módulos que a pessoa pode acessar agora (mesma regra de
+ * ouro de hasModuleAccess — tenant habilitado E acesso individual — só que
+ * em lote, pra montar o dropdown "trocar de módulo" da sidebar sem uma
+ * query por módulo). Também consulta o banco na hora, pelo mesmo motivo de
+ * hasModuleAccess: session.modules (JWT) pode estar desatualizado.
+ */
+export async function getAccessibleModules(session: SessionPayload): Promise<SuiteModule[]> {
+  const [tenantModules, userAccess] = await Promise.all([
+    prisma.tenantModule.findMany({
+      where: { tenantId: session.tenantId, enabled: true },
+      select: { module: true },
+    }),
+    prisma.userModuleAccess.findMany({
+      where: { userId: session.userId, enabled: true },
+      select: { module: true },
+    }),
+  ]);
+
+  const liberadosParaUsuario = new Set(userAccess.map((u) => u.module));
+  return tenantModules.map((t) => t.module).filter((m) => liberadosParaUsuario.has(m));
+}

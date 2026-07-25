@@ -9,13 +9,19 @@ import {
   Settings,
   Menu,
   X,
-  Home,
   ChevronLeft,
   ChevronRight,
   Box,
   BarChart3,
+  LayoutGrid,
+  BedDouble,
+  Star,
+  Package,
+  UtensilsCrossed,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { apiFetch } from '@/lib/apiFetch'
 import {
   Avatar,
   AvatarFallback,
@@ -69,6 +75,90 @@ function hubUrl(tenantSlug?: string) {
 // (só faz isso pra assets gerados pelo próprio build), mesma razão do
 // apiFetch.ts hardcodar BASE_PATH nos outros módulos.
 const MARK_SRC = '/upkeep/praxis-mark.png'
+
+// Pedido explícito do Felipe: o botão "Home" (que levava pro hub) vira a
+// própria marca Praxis (ver <a href={hubUrl(...)}> em volta do MARK_SRC no
+// header da sidebar); no lugar dele entra um dropdown "trocar de módulo",
+// que leva direto pra outro módulo sem passar pelo hub. Lista vem de
+// /api/modulos (client-side, ver ModuleSwitcher) — depende de acesso por
+// usuário, não só por tenant (getAccessibleModules em @praxis/core). Mesmo
+// padrão de apps/housekeeping/src/components/layout/Sidebar.tsx.
+type ModuloDisponivel = { module: string; slug: string; label: string }
+
+const MODULE_ICONS: Record<string, typeof BedDouble> = {
+  HOUSEKEEPING: BedDouble,
+  MAINTENANCE: Wrench,
+  BOOKING_REVIEWS: Star,
+  STOCK: Package,
+  RESTAURANT: UtensilsCrossed,
+  INTELLIGENCE: Sparkles,
+}
+
+// Slug deste próprio app — pra não listar "Manutenção" entre as opções de
+// troca (a pessoa já está aqui). Mesmo valor do BASE_PATH de lib/apiFetch.ts.
+const MODULO_ATUAL_SLUG = 'upkeep'
+
+function ModuleSwitcher({
+  tenantSlug, variant, panelPosition = 'up', align = 'left',
+}: { tenantSlug?: string; variant: 'full' | 'icon'; panelPosition?: 'up' | 'down'; align?: 'left' | 'right' }) {
+  const [modulos, setModulos] = useState<ModuloDisponivel[]>([])
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    apiFetch('/api/modulos')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const lista = Array.isArray(data) ? (data as ModuloDisponivel[]) : []
+        setModulos(lista.filter((m) => m.slug !== MODULO_ATUAL_SLUG))
+      })
+      .catch(() => {})
+  }, [])
+
+  if (modulos.length === 0) return null
+
+  const painelClasse = `${panelPosition === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'} ${align === 'left' ? 'left-0' : 'right-0'}`
+
+  return (
+    <div className="relative">
+      {open && <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} aria-hidden />}
+      {variant === 'full' ? (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="mb-1 flex w-full items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <LayoutGrid className="h-[18px] w-[18px] shrink-0" />
+          Trocar de módulo
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          title="Trocar de módulo"
+          aria-label="Trocar de módulo"
+          className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <LayoutGrid className="h-[18px] w-[18px]" />
+        </button>
+      )}
+      {open && (
+        <div className={cn('absolute z-50 w-56 rounded-xl border border-border/70 bg-card p-1.5 shadow-xl', painelClasse)}>
+          {modulos.map(({ module, slug, label }) => {
+            const Icon = MODULE_ICONS[module] ?? LayoutGrid
+            return (
+              <a
+                key={module}
+                href={`${hubUrl(tenantSlug)}/${slug}`}
+                className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </a>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Só afeta o rail no desktop (md+) — no mobile a sidebar continua sendo o
 // overlay de tela cheia controlado por `mobileOpen`, colapsar não faz
@@ -191,8 +281,12 @@ export function Dashboard({
         </button>
 
         <div className={cn('flex h-16 items-center gap-3', collapsed ? 'justify-center px-2' : 'px-5')}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={MARK_SRC} alt="Praxis" className="h-8 w-8 shrink-0 object-contain rounded-md" />
+          {/* Marca vira o botão Home (pedido explícito do Felipe) — leva pro
+              hub, onde a pessoa vê todos os módulos e pode sair. */}
+          <a href={hubUrl(user.tenantSlug)} title="Ir pro hub" className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={MARK_SRC} alt="Praxis" className="h-8 w-8 object-contain rounded-md" />
+          </a>
           {!collapsed && (
             <div className="leading-tight min-w-0">
               <p className="truncate text-sm font-semibold tracking-tight">{user.tenantSlug || 'Praxis'}</p>
@@ -226,17 +320,9 @@ export function Dashboard({
         </nav>
 
         <div className="border-t border-border/70 p-3">
-          <a
-            href={hubUrl(user.tenantSlug)}
-            title={collapsed ? 'Home' : undefined}
-            className={cn(
-              'mb-1 flex w-full items-center rounded-xl py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-              collapsed ? 'justify-center px-0' : 'gap-3 px-2',
-            )}
-          >
-            <Home className="h-[18px] w-[18px] shrink-0" />
-            {!collapsed && 'Home'}
-          </a>
+          <div className={cn('mb-1 flex', collapsed && 'justify-center')}>
+            <ModuleSwitcher tenantSlug={user.tenantSlug} variant={collapsed ? 'icon' : 'full'} panelPosition="up" />
+          </div>
           <div className={cn('flex items-center rounded-xl py-2', collapsed ? 'justify-center px-0' : 'gap-3 px-2')}>
             <Avatar className="h-9 w-9">
               <AvatarFallback className="bg-accent text-xs font-semibold text-foreground">
@@ -301,14 +387,7 @@ export function Dashboard({
                 </span>
               )}
             </div>
-            <a
-              href={hubUrl(user.tenantSlug)}
-              aria-label="Home"
-              title="Home"
-              className="rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <Home className="h-5 w-5" />
-            </a>
+            <ModuleSwitcher tenantSlug={user.tenantSlug} variant="icon" panelPosition="down" align="right" />
           </header>
         )}
 
