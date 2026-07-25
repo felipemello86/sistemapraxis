@@ -106,7 +106,12 @@ export function Uh3D({
   const [uhDropdownOpen, setUhDropdownOpen] = useState(false)
   const [currentRoom, setCurrentRoom] = useState<RoomType>('porta')
   const [imageIndex, setImageIndex] = useState(0)
-  const [detailSpot, setDetailSpot] = useState<UhSpot | null>(null)
+  // Guarda só o checklistItemId (não o UhSpot inteiro) — abre o mesmo
+  // popup de detalhe tanto ao clicar num spot na foto quanto ao clicar num
+  // item CONFORME na tabela de IVs (pedido explícito do Felipe: poder
+  // reportar não conformidade pontualmente mesmo em UH sem fotos/spots
+  // cadastrados ainda, ver tabela discreta abaixo).
+  const [detailChecklistItemId, setDetailChecklistItemId] = useState<string | null>(null)
 
   const itemPorId = useMemo(() => new Map(itens.map((it) => [it.id, it])), [itens])
   const ultimaMap = useMemo(() => ultimaInspecaoPorUnidade(inspecoes), [inspecoes])
@@ -322,7 +327,7 @@ export function Uh3D({
       // não chega mais até o botão depois do setPointerCapture acima.
       if (!draggedRef.current && pressedSpotIdRef.current) {
         const spot = spotsDaImagem.find((s) => s.id === pressedSpotIdRef.current)
-        if (spot) setDetailSpot(spot)
+        if (spot) setDetailChecklistItemId(spot.checklistItemId)
       }
       pressedSpotIdRef.current = null
     }
@@ -436,7 +441,7 @@ export function Uh3D({
                     // teclado, que não passa pelo pointer capture.
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      setDetailSpot(spot)
+                      setDetailChecklistItemId(spot.checklistItemId)
                     }
                   }}
                   style={{
@@ -657,6 +662,22 @@ export function Uh3D({
                                   Corrigir
                                 </button>
                               )}
+                              {/* Pedido explícito do Felipe: poder reportar
+                                  um item CONFORME como não conforme direto
+                                  daqui, sem precisar de spot/foto cadastrada
+                                  — abre o mesmo popup de sempre (texto
+                                  obrigatório, foto opcional), só que exige
+                                  que o item já tenha sido avaliado alguma
+                                  vez (senão não existe InspectionItem pra
+                                  editar — ver aviso dentro do próprio popup). */}
+                              {status === 'CONFORME' && insp && podeOperar && (
+                                <button
+                                  onClick={() => setDetailChecklistItemId(it.id)}
+                                  className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-white/25"
+                                >
+                                  Reportar NC
+                                </button>
+                              )}
                             </td>
                           </tr>
                         )
@@ -701,17 +722,17 @@ export function Uh3D({
 
       <DialogCorrigirItem item={corrigindoItem} onClose={() => setCorrigindoItem(null)} />
 
-      {detailSpot && uhId && (
+      {detailChecklistItemId && uhId && (
         <SpotDetailDialog
           podeOperar={podeOperar}
-          spot={detailSpot}
+          checklistItemId={detailChecklistItemId}
           uhId={uhId}
-          item={itemPorId.get(detailSpot.checklistItemId) ?? null}
-          inspectionItem={statusPorItem.get(detailSpot.checklistItemId) ?? null}
-          infoAtual={itemInfos.find((i) => i.uhId === uhId && i.checklistItemId === detailSpot.checklistItemId) ?? null}
-          infoLogs={itemInfoLogs.filter((l) => l.uhId === uhId && l.checklistItemId === detailSpot.checklistItemId)}
+          item={itemPorId.get(detailChecklistItemId) ?? null}
+          inspectionItem={statusPorItem.get(detailChecklistItemId) ?? null}
+          infoAtual={itemInfos.find((i) => i.uhId === uhId && i.checklistItemId === detailChecklistItemId) ?? null}
+          infoLogs={itemInfoLogs.filter((l) => l.uhId === uhId && l.checklistItemId === detailChecklistItemId)}
           unidadeNome={unidadeAtual?.name ?? ''}
-          onClose={() => setDetailSpot(null)}
+          onClose={() => setDetailChecklistItemId(null)}
         />
       )}
     </div>
@@ -720,7 +741,7 @@ export function Uh3D({
 
 function SpotDetailDialog({
   podeOperar,
-  spot,
+  checklistItemId,
   uhId,
   item,
   inspectionItem,
@@ -730,7 +751,7 @@ function SpotDetailDialog({
   onClose,
 }: {
   podeOperar: boolean
-  spot: UhSpot
+  checklistItemId: string
   uhId: string
   item: ChecklistItem | null
   inspectionItem: InspectionItem | null
@@ -1053,7 +1074,7 @@ function SpotDetailDialog({
             pedido do Felipe sobre os dois campos serem confundidos. */}
         <ItemInfoField
           uhId={uhId}
-          checklistItemId={spot.checklistItemId}
+          checklistItemId={checklistItemId}
           initialInfo={infoAtual?.info ?? null}
           initialPhotos={infoAtual?.photos ?? []}
           podeOperar={podeOperar}
