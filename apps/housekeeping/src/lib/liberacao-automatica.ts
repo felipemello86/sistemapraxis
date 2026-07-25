@@ -1,5 +1,5 @@
 import { prisma, sendPushToUser, notificarPorRoles, emitEvent } from "@praxis/core";
-import { dataAtualSP } from "./timezone";
+import { dataAtualSP, horaAtualSP } from "./timezone";
 
 // Liberação automática ao meio-dia — pedido explícito do Felipe: toda UH
 // SELECIONADA pra hoje (tem linha em DailyUHSelection, mesmo critério de
@@ -17,7 +17,19 @@ import { dataAtualSP } from "./timezone";
 // GET de /api/selecao-uhs (roda sempre que a tela é aberta depois do
 // meio-dia, mesmo que o cron ainda não tenha passado). Nunca deve derrubar
 // quem chamou; erros ficam só no log.
+//
+// BUG CORRIGIDO: diferente de liberarLateCheckoutsVencidos (onde o próprio
+// filtro do banco já compara lateCheckoutHora <= horaAtual, então chamar a
+// função cedo é inofensivo — simplesmente não acha nada vencido ainda),
+// esta função não tinha nenhum campo de horário por UH pra comparar — só
+// filtrava "ainda não liberada". Sem o guard abaixo, o "melhor esforço" no
+// GET de /api/selecao-uhs liberava tudo na primeira vez que a tela fosse
+// aberta no dia, não importa a hora (foi o que aconteceu: liberou às 9h42
+// em vez de meio-dia). Agora a função só age de fato a partir das 12h,
+// então é seguro chamar de qualquer lugar, a qualquer hora.
 export async function liberarSelecionadasAoMeioDia(tenantId: string): Promise<void> {
+  if (horaAtualSP() < "12:00") return;
+
   const data = dataAtualSP();
 
   const pendentes = await prisma.dailyUHSelection.findMany({
