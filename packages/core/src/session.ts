@@ -40,6 +40,13 @@ export interface SessionPayload {
   email: string;
   role: string;
   modules: SuiteModule[]; // módulos habilitados pra essa pessoa neste tenant
+  // true só quando esta sessão foi emitida pelo painel admin da Praxis (ver
+  // apps/gateway/src/app/admin/actions.ts, impersonarAction) — nunca setado
+  // em login normal. Usado só pra mostrar o aviso de "modo admin" no hub do
+  // tenant (ver [cliente]/page.tsx); não concede nenhum privilégio extra em
+  // si (a sessão já tem role MASTER de verdade do tenant, herdado de quem
+  // ela impersona).
+  viaAdmin?: boolean;
 }
 
 export async function signSession(payload: SessionPayload): Promise<string> {

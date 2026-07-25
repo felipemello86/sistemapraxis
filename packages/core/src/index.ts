@@ -1,4 +1,5 @@
 export * from "./session";
+export * from "./adminSession";
 export * from "./addressing";
 export * from "./tenant";
 export * from "./moduleAccess";
@@ -9,6 +10,7 @@ export * from "./timezone";
 export * from "./notify";
 export * from "./maintenanceUrgente";
 export * from "./aiEvents";
+export * from "./stripe";
 export type {
   SuiteModule,
   User,
@@ -29,4 +31,8 @@ export type {
   AiMessageRole,
   AiCustomRule,
   AiRuleOperator,
+  PlatformAdmin,
+  SubscriptionPlan,
+  TenantSubscription,
+  PaymentEvent,
 } from "../generated";

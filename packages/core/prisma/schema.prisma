@@ -102,6 +102,11 @@ model Tenant {
   aiInsights        AiInsight[]
   aiConversations   AiConversation[]
   aiCustomRules     AiCustomRule[]
+
+  // Admin/Billing — painel interno da Praxis (ver bloco de models no fim do
+  // arquivo). Nada aqui é visível pro tenant nem pelos módulos de negócio.
+  subscription  TenantSubscription?
+  paymentEvents PaymentEvent[]
 }
 
 enum SuiteModule {
@@ -2091,4 +2096,103 @@ enum AiRuleOperator {
   LT
   LTE
   EQ
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADMIN / BILLING — painel interno da Praxis (staff da própria Praxis, não
+// dos clientes). Deliberadamente separado de tudo acima: PlatformAdmin não
+// tem tenantId (não é um usuário de nenhum cliente — é quem opera a
+// plataforma), autenticado por uma sessão própria (cookie diferente, ver
+// adminSession.ts), nunca pelo praxis_v2_session usado pelos tenants.
+//
+// Fluxo de cobrança: assinatura recorrente via Stripe Billing. O admin gera
+// um link de Checkout hospedado pelo Stripe pro cliente cadastrar o cartão;
+// dali pra frente o Stripe cobra sozinho a cada período e avisa a gente por
+// webhook (POST /api/stripe/webhook) — TenantSubscription.status e
+// PaymentEvent são atualizados a partir desses eventos, nunca otimisticamente
+// no momento do clique (só o que o Stripe confirmar é fonte de verdade).
+// ═══════════════════════════════════════════════════════════════════════════
+
+model PlatformAdmin {
+  id           String   @id @default(cuid())
+  nome         String
+  email        String   @unique
+  passwordHash String
+  ativo        Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Catálogo de planos vendáveis — cadastrado no admin, espelhando um Price
+// já criado no dashboard do Stripe (stripePriceId). Não criamos Price via
+// API pra manter o valor/nome sempre visíveis e editáveis direto no Stripe
+// sem precisar sincronizar de volta pro nosso banco.
+model SubscriptionPlan {
+  id            String   @id @default(cuid())
+  nome          String
+  stripePriceId String   @unique
+  valorCentavos Int
+  intervalo     String // MONTH | YEAR (mesmo vocabulário do Stripe Price.recurring.interval)
+  ativo         Boolean  @default(true)
+
+  subscriptions TenantSubscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TenantSubscription {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  planId String?
+  plan   SubscriptionPlan? @relation(fields: [planId], references: [id])
+
+  // Nulos até o cliente completar o primeiro Checkout — a partir daí,
+  // stripeSubscriptionId é a fonte de verdade pro status (sincronizado só
+  // por webhook, nunca escrito otimisticamente no clique do admin).
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+
+  // SEM_ASSINATURA (nunca fez checkout) | INCOMPLETA (checkout aberto, sem
+  // confirmação ainda) | ATIVA | INADIMPLENTE | CANCELADA — mesmo vocabulário
+  // (traduzido) dos status de Subscription do Stripe.
+  status             String    @default("SEM_ASSINATURA")
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+
+  // Link de Checkout gerado mais recentemente pelo admin (pra reexibir/
+  // reenviar sem precisar gerar outro toda vez que a tela recarrega —
+  // expira sozinho do lado do Stripe depois de 24h).
+  lastCheckoutUrl       String?
+  lastCheckoutCreatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Histórico bruto de eventos de cobrança (todo webhook relevante do Stripe
+// gera uma linha aqui, mesmo os que não mudam o status) — é o que alimenta
+// o extrato de pagamentos por cliente na tela do admin. stripeEventId
+// garante idempotência: o Stripe pode reenviar o mesmo webhook mais de uma
+// vez (documentado no próprio produto), então todo handler faz upsert por
+// esse campo em vez de create direto.
+model PaymentEvent {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  stripeEventId   String  @unique
+  stripeInvoiceId String?
+
+  tipo          String // CHECKOUT_CONCLUIDO | FATURA_PAGA | FATURA_FALHOU | ASSINATURA_ATUALIZADA | ASSINATURA_CANCELADA
+  valorCentavos Int?
+  status        String?
+  payload       String  @db.Text // JSON bruto do evento Stripe, pra investigar sem depender só dos campos acima
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
 }

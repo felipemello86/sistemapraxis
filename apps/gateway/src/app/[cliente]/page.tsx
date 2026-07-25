@@ -77,6 +77,24 @@ export default async function ClienteHub({
 
   return (
     <main className={styles.main}>
+      {session?.viaAdmin && (
+        <div
+          style={{
+            background: "#1d1d1f",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 600,
+            textAlign: "center",
+            padding: "6px 12px",
+          }}
+        >
+          Modo admin — acessando como {tenant.name}.{" "}
+          <a href="/admin" style={{ color: "#fff", textDecoration: "underline" }}>
+            Voltar ao painel
+          </a>
+        </div>
+      )}
+
       {!hasTiles && header}
 
       {!session ? (

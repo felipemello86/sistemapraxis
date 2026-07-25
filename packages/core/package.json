@@ -11,6 +11,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "typecheck": "tsc --noEmit",
     "tenant:create": "tsx scripts/create-tenant.ts",
+    "admin:create": "tsx scripts/create-admin.ts",
     "seed:test": "tsx scripts/seed-test-tenant.ts",
     "import:bnbflex-users": "tsx scripts/import-bnbflex-users.ts",
     "import:housekeeping-data": "tsx scripts/import-housekeeping-data.ts",
@@ -24,7 +25,8 @@
     "bcryptjs": "^2.4.3",
     "date-fns": "^3.6.0",
     "pg": "^8.13.0",
-    "firebase-admin": "^13.10.0"
+    "firebase-admin": "^13.10.0",
+    "stripe": "^14.25.0"
   },
   "devDependencies": {
     "next": "14.2.35",
