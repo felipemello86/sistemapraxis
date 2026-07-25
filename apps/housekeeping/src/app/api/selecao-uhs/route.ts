@@ -110,6 +110,15 @@ export async function GET(req: NextRequest) {
     confirmado: status?.confirmado ?? false,
     uhs: selecoes.map((s) => {
       const a = assignmentByUH[s.uhId];
+      // Reconcilia status "fantasma": DailyUHSelection.liberada e
+      // DailyAssignment.status são gravados por caminhos separados (ex.: a
+      // liberação automática do meio-dia atualiza a atribuição só se ela já
+      // existia no exato instante em que rodou — se a atribuição surgir bem
+      // nesse meio-tempo, fica com liberada=true mas status ainda PENDENTE,
+      // um "cadeado aberto" com texto "Aguardando"). Mesmo patch que
+      // /api/atribuicoes GET já faz — sem isso a tela mostra um estado
+      // impossível pra quem está vendo.
+      const assignmentStatus = a && a.status === "PENDENTE" && s.liberada ? "LIBERADO" : (a?.status ?? null);
       return {
         uhId: s.uhId,
         numero: s.uh.numero,
@@ -123,7 +132,7 @@ export async function GET(req: NextRequest) {
         assignmentId: a?.id ?? null,
         camareiraId: a?.camareiraId ?? null,
         camareiraNome: a?.camareira.nome ?? null,
-        assignmentStatus: a?.status ?? null,
+        assignmentStatus,
         observacoes: a?.observacoes ?? null,
         comentario: s.comentario ?? null,
         comentarioPorNome: s.comentarioPorNome ?? null,
