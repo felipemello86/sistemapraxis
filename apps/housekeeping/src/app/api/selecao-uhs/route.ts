@@ -434,11 +434,11 @@ export async function PATCH(req: NextRequest) {
   // ── Desbloquear UH manualmente ────────────────────────────────────
   // Restrito a MASTER/GERENTE/ATENDIMENTO/GOVERNANTA (pedido explícito do
   // Felipe) — libera a UH pra reservas independente da origem do bloqueio
-  // (manual, ver api/bloqueio/route.ts, ou NC_URGENTE, ver
-  // packages/core/src/maintenanceUrgente.ts). Diferente do
-  // auto-desbloqueio (reavaliarBloqueioUrgencia), que só age sozinho quando
-  // não sobra nenhuma NC urgente aberta, este é decisão humana explícita —
-  // libera mesmo que ainda exista NC urgente aberta pra essa UH.
+  // (manual, ver api/bloqueio/route.ts, ou DECISAO_ATENDIMENTO, ver
+  // packages/core/src/maintenanceUrgente.ts e
+  // api/decisao-bloqueio/route.ts). O sistema não desbloqueia mais sozinho
+  // em nenhum caso — toda liberação de bloqueio passa por aqui, decisão
+  // humana explícita.
   if (action === "desbloquear") {
     const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true, bloqueada: true } });
     if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });

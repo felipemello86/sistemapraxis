@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { reavaliarBloqueioUrgencia } from "./maintenanceUrgente";
+import { cancelarSolicitacaoBloqueioSeNecessario } from "./maintenanceUrgente";
 import { emitEvent } from "./aiEvents";
 
 // Fluxo de Correção (Aquisição / Serviços Externos / Execução) — substitui a
@@ -124,11 +124,11 @@ export async function resolveCorrectionCard(params: {
 
   // Resolvido pelos kanbans (Serviços Externos "Executado" ou Execução
   // "Executadas") — se essa NC era urgente, reavalia se dá pra desbloquear
-  // a UH automaticamente (só desbloqueia se não sobrar outra NC urgente
-  // aberta e o bloqueio foi originado por NC urgente, ver
-  // reavaliarBloqueioUrgencia).
+  // cancela o pedido de bloqueio pendente pra essa UH, se houver — não há
+  // mais decisão a tomar já que o problema foi resolvido (ver
+  // cancelarSolicitacaoBloqueioSeNecessario).
   if (card.inspectionItem.urgente) {
-    await reavaliarBloqueioUrgencia({ tenantId: params.tenantId, uhId: card.uhId });
+    await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: params.tenantId, uhId: card.uhId });
   }
 
   // Choke point único: cobre os 3 caminhos que levam até aqui (Serviços
@@ -225,7 +225,7 @@ export async function corrigirItemDireto(params: {
   ]);
 
   if (item.urgente) {
-    await reavaliarBloqueioUrgencia({ tenantId: params.tenantId, uhId: item.inspection.uhId });
+    await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: params.tenantId, uhId: item.inspection.uhId });
   }
 }
 

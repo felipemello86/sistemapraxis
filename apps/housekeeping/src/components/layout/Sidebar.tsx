@@ -21,6 +21,7 @@ import {
   Package,
   UtensilsCrossed,
   Sparkles,
+  Lock,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -40,9 +41,12 @@ import { apiFetch } from "@/lib/apiFetch";
 // apiFetch.ts hardcodar BASE_PATH.
 const MARK_SRC = "/governance/praxis-mark.png";
 
-// `roles` ausente = visível pra todo mundo (comportamento de sempre). Só
-// "Falhas Gerenciais" é restrito por papel até agora — pedido explícito do
-// Felipe (Gerente/Master + Governanta, que é quem registra a falha).
+// `roles` ausente = visível pra todo mundo (comportamento de sempre).
+// "Falhas Gerenciais" é restrito a Gerente/Master + Governanta (que é quem
+// registra a falha). "Decisão de Bloqueio" é restrito às 4 roles notificadas
+// quando uma NC urgente é registrada (Atendimento/Gerente/Governanta/Master
+// — ver packages/core/src/maintenanceUrgente.ts); só Atendimento/Gerente/
+// Master decidem de fato (gate de podeOperar dentro da própria tela).
 const navItems: { href: string; icon: typeof LayoutDashboard; label: string; roles?: string[] }[] = [
   { href: "/dashboard",  icon: LayoutDashboard, label: "Tempo Real" },
   { href: "/camareira",  icon: ListChecks,    label: "Minhas UHs" },
@@ -50,6 +54,7 @@ const navItems: { href: string; icon: typeof LayoutDashboard; label: string; rol
   { href: "/atribuicao", icon: ClipboardList, label: "Atribuição Diária" },
   { href: "/governanta", icon: ShieldCheck,   label: "Inspeções" },
   { href: "/falhas-gerenciais", icon: Building2, label: "Falhas Gerenciais", roles: ["GOVERNANTA", "GERENTE", "MASTER"] },
+  { href: "/decisao-bloqueio", icon: Lock, label: "Decisão de Bloqueio", roles: ["ATENDIMENTO", "GERENTE", "GOVERNANTA", "MASTER"] },
   { href: "/movimentos", icon: BarChart3,     label: "Performance" },
   { href: "/logs",       icon: ScrollText,    label: "Log do Sistema" },
   { href: "/relatorios", icon: FileText,      label: "Relatórios" },

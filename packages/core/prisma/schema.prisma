@@ -59,6 +59,7 @@ model Tenant {
   guestComplaints     GuestComplaint[]
   geoArrivals         GeoArrival[]
   hkManagerialFailureCards HkManagerialFailureCard[]
+  hkBlockRequests     HkBlockRequest[]
 
   // Avaliações (Booking-Reviews)
   reviewsConfig        ReviewsConfig?
@@ -167,6 +168,7 @@ model User {
   hkPushTokens       PushToken[]
   hkGeoArrivals      GeoArrival[]
   hkManagerialFailuresResolved HkManagerialFailureCard[] @relation("HkManagerialFailureResolvedBy")
+  hkBlockRequestsDecididos HkBlockRequest[] @relation("HkBlockRequestDecididoPor")
 
   // Queixas de hóspede (ver GuestComplaint) — quem registrou (Atendimento)
   // e, separadamente, a camareira penalizada quando a queixa é de Limpeza.
@@ -399,10 +401,12 @@ model UH {
   bloqueioSolicitanteNome String?
   bloqueioEm              DateTime?
   // "MANUAL" (bloqueio manual pela Camareira, ver api/bloqueio/route.ts) ou
-  // "NC_URGENTE" (automático, ao registrar uma não conformidade impeditiva
-  // ao uso — ver packages/core/src/maintenanceUrgente.ts). Existe só pra
-  // reavaliarBloqueioUrgencia saber que É SEGURO desbloquear sozinho quando
-  // não sobra nenhuma NC urgente aberta — nunca derruba um bloqueio manual.
+  // "DECISAO_ATENDIMENTO" (Atendimento/Gerente/Master decidiram bloquear a
+  // partir de um pedido criado por NC urgente — ver
+  // packages/core/src/maintenanceUrgente.ts e HkBlockRequest). O sistema
+  // não bloqueia mais sozinho (pedido explícito do Felipe) — os dois casos
+  // hoje só desbloqueiam via decisão humana (api/selecao-uhs, ação
+  // "desbloquear").
   bloqueioOrigem          String?
 
   assignments      DailyAssignment[]
@@ -411,6 +415,7 @@ model UH {
   selecoes         DailyUHSelection[]
   guestComplaints  GuestComplaint[]
   hkManagerialFailureCards HkManagerialFailureCard[]
+  hkBlockRequests  HkBlockRequest[]
 
   // Manutenção (Upkeep) — cadastro de UH continua centralizado aqui (gateway),
   // o módulo Manutenção referencia via FK em vez de ter seu próprio model
@@ -685,6 +690,42 @@ model HkManagerialFailureCard {
   resolvedBy        User?     @relation("HkManagerialFailureResolvedBy", fields: [resolvedById], references: [id])
 
   createdAt DateTime @default(now())
+}
+
+// Pedido de bloqueio de UH gerado por uma não conformidade urgente — o
+// sistema NÃO bloqueia mais sozinho (pedido explícito do Felipe: "vamos
+// remover o bloqueio automático para manutenção"). Ao registrar uma NC
+// urgente, cria-se um pedido PENDENTE e notifica-se Gerente/Atendimento/
+// Governanta/Master; só o Atendimento (ou Gerente/Master) decide bloquear
+// ou não, na tela de Decisão de Bloqueio. Remover um bloqueio já aplicado
+// também é decisão do Atendimento (ação "desbloquear", fora deste model —
+// mexe direto em UH.bloqueada, igual ao fluxo manual já existente).
+model HkBlockRequest {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  // Não é relação formal com o checklist — mesmo padrão de
+  // MaintenanceCorrection.checklistItemId — o item pode sumir do catálogo
+  // depois; itemNome é o snapshot que sobrevive a isso.
+  checklistItemId String?
+  itemNome        String?
+  comment         String  @db.Text
+  solicitanteNome String
+
+  status String @default("PENDENTE") // PENDENTE | BLOQUEADO | NAO_BLOQUEADO | CANCELADO
+
+  decididoPorId   String?
+  decididoPor     User?     @relation("HkBlockRequestDecididoPor", fields: [decididoPorId], references: [id])
+  decididoPorNome String?
+  decididoEm      DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
 }
 
 model FalhaLavanderia {

@@ -7,7 +7,7 @@ import {
   getSession,
   hasModuleAccess,
   prisma,
-  reavaliarBloqueioUrgencia,
+  cancelarSolicitacaoBloqueioSeNecessario,
   resolveCorrectionCard,
 } from "@praxis/core";
 import { safeAction } from "@/lib/safeAction";
@@ -174,7 +174,7 @@ async function createInspecaoImpl(input: {
             solicitanteNome: session.nome,
           });
         } else if (it.urgente !== true && urgenteAntes === true) {
-          await reavaliarBloqueioUrgencia({ tenantId: session.tenantId, uhId: input.uhId });
+          await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: session.tenantId, uhId: input.uhId });
         }
         continue;
       }
@@ -596,7 +596,7 @@ async function editarSpotInspecaoImpl(input: {
     // Resolveu direto pelo UH 3D (bypassa os kanbans de Correção) — se
     // essa NC era urgente, reavalia se dá pra desbloquear a UH.
     if (item.urgente) {
-      await reavaliarBloqueioUrgencia({ tenantId: session.tenantId, uhId: item.inspection.uhId });
+      await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: session.tenantId, uhId: item.inspection.uhId });
     }
   } else {
     // NAO_CONFORME → NAO_CONFORME (editar descrição/fotos) ou
@@ -637,7 +637,7 @@ async function editarSpotInspecaoImpl(input: {
           solicitanteNome: session.nome,
         });
       } else if (input.urgente !== true && urgenteAntes === true) {
-        await reavaliarBloqueioUrgencia({ tenantId: session.tenantId, uhId: item.inspection.uhId });
+        await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: session.tenantId, uhId: item.inspection.uhId });
       }
     }
   }
