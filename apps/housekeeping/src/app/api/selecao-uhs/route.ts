@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createCorrectionCardForItem, getSession, hasModuleAccess, notificarPorRoles, prisma, sendPushToUser } from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
+import { liberarSelecionadasAoMeioDia } from "@/lib/liberacao-automatica";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Igual ao addBusinessDays de apps/booking-reviews/src/lib/scoring.ts —
@@ -59,6 +60,15 @@ export async function GET(req: NextRequest) {
     await liberarLateCheckoutsVencidos(tenantId);
   } catch (e) {
     console.error("[late-checkout] falha ao liberar automaticamente:", e);
+  }
+
+  // Idem pra liberação automática ao meio-dia (ver lib/liberacao-automatica.ts)
+  // — mesmo padrão de melhor esforço, além do cron dedicado, pra funcionar
+  // mesmo se alguém abrir a tela antes do cron rodar.
+  try {
+    await liberarSelecionadasAoMeioDia(tenantId);
+  } catch (e) {
+    console.error("[liberacao-automatica] falha ao liberar automaticamente:", e);
   }
 
   const [status, selecoes, assignments, queixas] = await Promise.all([

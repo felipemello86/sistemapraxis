@@ -4,6 +4,10 @@
     {
       "path": "/governance/api/cron/late-checkout",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/governance/api/cron/liberacao-automatica",
+      "schedule": "0 15 * * *"
     }
   ]
 }
