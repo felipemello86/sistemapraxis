@@ -46,7 +46,17 @@ export default async function ClienteHub({
 
   if (!tenant) notFound();
 
-  const session = await getSession();
+  // A sessão é única pra suíte inteira (um cookie só, ver session.ts) — um
+  // usuário pode ter feito login num tenant (ex: bnbflex) e depois navegado
+  // pra URL de outro tenant (ex: avel) sem sair antes (cookie de 30 dias,
+  // troca de tenant só editando a URL). Sem essa checagem, esse hub
+  // renderizava os tiles do tenant da URL só por existir QUALQUER sessão
+  // válida — mas cada módulo (Governança, Manutenção, ...) descobre o
+  // tenant pela sessão, não pela URL (ver next.config.js), então o clique
+  // no tile acabava abrindo os dados do tenant ERRADO (o da sessão antiga).
+  // Mesmo guard já usado em configuracoes/uhs e configuracoes/usuarios.
+  const sessionBruta = await getSession();
+  const session = sessionBruta && sessionBruta.tenantId === tenant.id ? sessionBruta : null;
   const boundLogout = logoutAction.bind(null, tenant.slug);
 
   // Quando há módulos (o caso normal, com os tiles), o logo + nome do tenant

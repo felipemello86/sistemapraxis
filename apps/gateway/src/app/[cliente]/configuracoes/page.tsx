@@ -22,7 +22,12 @@ export default async function ConfiguracoesHub({
 
   const session = await getSession();
 
-  if (!session) {
+  // Sessão é única pra suíte inteira (um cookie só) — sem essa checagem, uma
+  // sessão válida de OUTRO tenant (ex: bnbflex) era aceita aqui mesmo
+  // navegando pra URL de um tenant diferente (ex: avel), mostrando
+  // nome/e-mail/senha do usuário errado nesta tela. Mesmo guard de
+  // configuracoes/uhs e configuracoes/usuarios.
+  if (!session || session.tenantId !== tenant.id) {
     return (
       <main
         style={{

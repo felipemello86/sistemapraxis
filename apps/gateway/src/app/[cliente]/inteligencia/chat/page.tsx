@@ -23,7 +23,8 @@ export default async function ChatIA({ params }: { params: { cliente: string } }
   if (!tenant) notFound();
 
   const session = await getSession();
-  if (!session) {
+  // Mesmo guard do hub [cliente]/page.tsx — evita aceitar sessão de outro tenant.
+  if (!session || session.tenantId !== tenant.id) {
     return (
       <main style={pageStyle}>
         <div style={{ textAlign: "center" }}>

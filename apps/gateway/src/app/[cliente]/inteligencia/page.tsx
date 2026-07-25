@@ -63,7 +63,11 @@ export default async function CentralInteligencia({
 
   const session = await getSession();
 
-  if (!session) {
+  // Mesmo guard do hub [cliente]/page.tsx — sem isso, uma sessão válida de
+  // OUTRO tenant era aceita aqui, misturando o feed de insights do tenant da
+  // URL com ações (marcar lido/resolver/descartar) atribuídas ao usuário da
+  // sessão errada.
+  if (!session || session.tenantId !== tenant.id) {
     return (
       <main style={pageStyle}>
         <div style={{ textAlign: "center" }}>
