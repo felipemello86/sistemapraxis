@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Settings, Users, Hotel, ClipboardList, ShieldCheck, ExternalLink } from "lucide-react";
+import { Settings, Users, ClipboardList, ShieldCheck, ExternalLink } from "lucide-react";
 import ProgramasTab from "./tabs/ProgramasTab";
 import GeralTab from "./tabs/GeralTab";
 import InspecaoTab from "./tabs/InspecaoTab";
@@ -14,16 +14,16 @@ import InspecaoTab from "./tabs/InspecaoTab";
 //   - Aba "Telegram" (bot/contatos) não foi portada — depende de infra de
 //     bot que ainda não existe em v2 (mesmo escopo deferido das notificações
 //     em geral, ver TODOs nas rotas de API).
-//   - Abas "Usuários" e "UHs" viraram redirect pro hub (cadastro único,
-//     válido pra Governança, Manutenção e Avaliações — ver
-//     apps/gateway/src/app/[cliente]/configuracoes/usuarios/ e /uhs/). UHs
-//     era CRUD local até esta fatia; passou a redirect pra evitar a mesma
-//     duplicação de cadastro que a v1 tinha com usuários (id local vs
-//     suite_core, causava bugs de FK).
+//   - Aba "Usuários" virou redirect pro hub (cadastro único, válido pra
+//     Governança, Manutenção e Avaliações — ver
+//     apps/gateway/src/app/[cliente]/configuracoes/usuarios/), pra evitar a
+//     mesma duplicação de cadastro que a v1 tinha (id local vs suite_core,
+//     causava bugs de FK).
+//   - Aba "Unidades (UHs)" foi removida daqui (era só um redirect pro hub;
+//     cadastro de UHs já vive só em apps/gateway/.../configuracoes/uhs/).
 
 const ALL_TABS = [
   { id: "geral",     label: "Geral",                  icon: Settings },
-  { id: "uhs",       label: "Unidades (UHs)",          icon: Hotel },
   { id: "usuarios",  label: "Usuários",                icon: Users },
   { id: "programas", label: "Programas de Limpeza",    icon: ClipboardList },
   { id: "inspecao",  label: "Checklist de Inspeção",   icon: ShieldCheck },
@@ -93,13 +93,6 @@ export default function ConfiguracoesClient({ role, podeOperar }: { role: string
 
       {/* Content */}
       {tabAtiva === "geral" && <GeralTab somenteLeitura={somenteLeitura} />}
-      {tabAtiva === "uhs" && (
-        <RedirectTab
-          titulo="Cadastro de UHs mudou de lugar"
-          descricao="Criar, editar e desativar UHs agora é feito em um lugar só, no hub — válido para Governança, Manutenção e Avaliações."
-          path="configuracoes/uhs"
-        />
-      )}
       {tabAtiva === "usuarios" && (
         <RedirectTab
           titulo="Gestão de usuários mudou de lugar"
