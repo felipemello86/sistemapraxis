@@ -160,10 +160,17 @@ function ModuleSwitcher({
 const SIDEBAR_COLLAPSED_KEY = "praxis-housekeeping-sidebar-collapsed";
 
 function NavContent({
-  nome, role, tenantSlug, pathname, onClose, collapsible,
+  nome, role, tenantSlug, pathname, onClose, onNavigate, collapsible,
 }: {
   nome: string; role: string; tenantSlug: string; pathname: string;
-  onClose?: () => void; collapsible?: boolean;
+  // `onClose` é só o botão no header (recolher sidebar no desktop / fechar
+  // drawer no mobile). `onNavigate` é o que dispara ao clicar num item do
+  // menu — no mobile é o mesmo "fechar drawer", mas no desktop expandido
+  // fica undefined de propósito. Antes os dois eram a mesma função
+  // (onClose reaproveitado no onClick do Link), o que fazia qualquer clique
+  // num item do menu recolher a sidebar no desktop também — bug relatado
+  // pelo Felipe ("menu recolhendo sozinho após troca de telas").
+  onClose?: () => void; onNavigate?: () => void; collapsible?: boolean;
 }) {
   return (
     <>
@@ -194,7 +201,7 @@ function NavContent({
             <Link
               key={href}
               href={href}
-              onClick={onClose}
+              onClick={onNavigate}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 active ? "bg-gray-900 text-white shadow-sm" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
               }`}
@@ -313,7 +320,7 @@ export function Sidebar({
             className="relative w-72 max-w-[85vw] bg-white text-gray-900 flex flex-col h-full shadow-xl"
             style={{ paddingTop: "env(safe-area-inset-top)" }}
           >
-            <NavContent {...navProps} onClose={() => setMobileOpen(false)} />
+            <NavContent {...navProps} onClose={() => setMobileOpen(false)} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
