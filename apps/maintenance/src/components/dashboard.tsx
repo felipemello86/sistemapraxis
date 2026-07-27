@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/avatar'
 import type {
   AtribuicoesPorUnidade,
+  ConformitySnapshot,
   CorrectionCardView,
   CorrectionSummary,
   DailyCommitmentView,
@@ -197,6 +198,7 @@ export function Dashboard({
   commitments,
   hojeSP,
   cardsExecutadasHoje,
+  conformitySnapshots,
 }: {
   user: DashboardUser
   // false = usuário pode ver todas as telas normalmente, mas os botões de
@@ -228,6 +230,9 @@ export function Dashboard({
   // alimenta Aquisição/Serviços/A Processar, pra não poluir esses outros
   // lugares com cards já resolvidos.
   cardsExecutadasHoje: CorrectionCardView[]
+  // Fallback decorativo pro gráfico de Evolução (ver comentário completo em
+  // page.tsx e no schema, model MaintenanceConformitySnapshot).
+  conformitySnapshots: ConformitySnapshot[]
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -419,6 +424,7 @@ export function Dashboard({
               unidades={unidades}
               itens={itens}
               atribuicoes={atribuicoes}
+              conformitySnapshots={conformitySnapshots}
             />
           )}
           {view === 'informacoes' && (

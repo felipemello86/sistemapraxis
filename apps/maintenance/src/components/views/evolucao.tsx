@@ -18,24 +18,50 @@ import {
 import { Panel, StatCard } from '@/components/ui-kit'
 import { Activity, ClipboardList } from 'lucide-react'
 import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
-import type { AtribuicoesPorUnidade, ChecklistItem, InspecaoComUnidade, UnitOption } from '@/lib/types'
+import type { AtribuicoesPorUnidade, ChecklistItem, ConformitySnapshot, InspecaoComUnidade, UnitOption } from '@/lib/types'
 
-// Janela da série diária de conformidade — pedido explícito (era mensal, virou
-// diária, hoje sempre na ponta direita). 30 dias é um piso razoável pra não
-// virar uma tela infinita de rolagem, mas ainda mostrar uma tendência útil.
-const DIAS_JANELA = 30
+// Janela da série diária de conformidade — era 30 dias (pedido antigo: era
+// mensal, virou diária, hoje sempre na ponta direita). Ampliada pra ~4 meses
+// (pedido do Felipe: "queria um seed de 4 meses, saindo de um patamar de
+// 54%... até o valor atual") — sem isso, o histórico fictício semeado em
+// MaintenanceConformitySnapshot nunca apareceria na tela, já que a janela
+// cortava tudo antes dos últimos 30 dias.
+const DIAS_JANELA = 120
+
+// Formata como "YYYY-MM-DD" em horário LOCAL (não usar toISOString, que
+// converte pra UTC e pode empurrar a data um dia pra trás/frente perto da
+// meia-noite) — precisa bater com o formato gravado em
+// MaintenanceConformitySnapshot.data.
+function isoLocal(d: Date) {
+  const ano = d.getFullYear()
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
 
 export function Evolucao({
   inspecoes,
   unidades,
   itens,
   atribuicoes,
+  conformitySnapshots,
 }: {
   inspecoes: InspecaoComUnidade[]
   unidades: UnitOption[]
   itens: ChecklistItem[]
   atribuicoes: AtribuicoesPorUnidade
+  // Fallback decorativo (ver comentário no schema, model
+  // MaintenanceConformitySnapshot) — só usado nos dias sem nenhuma inspeção
+  // real ainda; o dia em que a primeira inspeção real acontecer (em
+  // qualquer UH) e todo dia depois sempre usa o valor real, mesmo que exista
+  // uma linha de snapshot pra ele.
+  conformitySnapshots: ConformitySnapshot[]
 }) {
+  const snapshotPorDia = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of conformitySnapshots) m.set(s.data, s.conformidade)
+    return m
+  }, [conformitySnapshots])
   // Volume de inspeções continua mensal (não fazia parte do pedido de virar
   // diário) — usado só pelo último gráfico da tela.
   const serieMensal = useMemo(() => {
@@ -87,10 +113,15 @@ export function Evolucao({
       const contagens = Array.from(ultimaPorUnidadeAteODia.values()).map(contarConformidade)
       const total = contagens.reduce((s, x) => s + x.total, 0)
       const ok = contagens.reduce((s, x) => s + x.ok, 0)
-      dias.push({ dia: label, conformidade: total > 0 ? Math.round((ok / total) * 100) : 0 })
+      // total > 0 = já existe pelo menos uma inspeção real até este dia →
+      // valor real sempre prevalece. Sem isso ainda (dias antes da primeira
+      // inspeção de verdade), cai no snapshot decorativo se existir um pra
+      // essa data, senão 0 (mesmo comportamento de antes).
+      const conformidade = total > 0 ? Math.round((ok / total) * 100) : (snapshotPorDia.get(isoLocal(d)) ?? 0)
+      dias.push({ dia: label, conformidade })
     }
     return dias
-  }, [inspecoes])
+  }, [inspecoes, snapshotPorDia])
 
   // Conformidade ATUAL (não é média histórica): considera só a inspeção mais
   // recente de cada UH — o estado de hoje, não a mistura de todas as

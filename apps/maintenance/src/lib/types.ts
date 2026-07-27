@@ -137,6 +137,15 @@ export type CorrectionSummary = {
   authorName: string | null;
 };
 
+// Valor decorativo de conformidade por dia (ver comentário completo no
+// schema Prisma, model MaintenanceConformitySnapshot) — usado só como
+// fallback pelo gráfico "Conformidade ao longo do tempo" da tela Evolução,
+// em dias sem nenhuma inspeção real ainda.
+export type ConformitySnapshot = {
+  data: string; // "YYYY-MM-DD"
+  conformidade: number; // 0-100
+};
+
 /* --------------------------- Fluxo de Correção ---------------------------- */
 // Tela "Correção" (Aquisição / Serviços Externos / Execução) — ver
 // comentário completo em MaintenanceCorrectionCard no schema Prisma e em

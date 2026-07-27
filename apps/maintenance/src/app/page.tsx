@@ -4,6 +4,7 @@ import { Dashboard } from "@/components/dashboard";
 import type {
   AtribuicoesPorUnidade,
   ChecklistItem,
+  ConformitySnapshot,
   CorrectionCardView,
   CorrectionSummary,
   DailyCommitmentView,
@@ -57,6 +58,7 @@ export default async function Home() {
     suppliers,
     uhsSelecionadasHoje,
     commitments,
+    conformitySnapshots,
   ] = await Promise.all([
     prisma.uH.findMany({
       where: { tenantId: session.tenantId, ativo: true },
@@ -188,6 +190,14 @@ export default async function Home() {
         },
       },
       orderBy: { data: "desc" },
+    }),
+    // Fallback decorativo pro gráfico "Conformidade ao longo do tempo" (ver
+    // comentário completo no schema, model MaintenanceConformitySnapshot) —
+    // só usado nos dias sem nenhuma inspeção real ainda (ver serieDiaria em
+    // components/views/evolucao.tsx).
+    prisma.maintenanceConformitySnapshot.findMany({
+      where: { tenantId: session.tenantId },
+      select: { data: true, conformidade: true },
     }),
   ]);
 
@@ -413,6 +423,11 @@ export default async function Home() {
     })),
   }));
 
+  const conformitySnapshotsView: ConformitySnapshot[] = conformitySnapshots.map((s) => ({
+    data: s.data,
+    conformidade: s.conformidade,
+  }));
+
   return (
     <Dashboard
       user={{
@@ -441,6 +456,7 @@ export default async function Home() {
       uhIdsLiberadasHoje={uhsSelecionadasHoje.filter((u) => u.liberada).map((u) => u.uhId)}
       commitments={commitmentsView}
       hojeSP={hoje}
+      conformitySnapshots={conformitySnapshotsView}
     />
   );
 }

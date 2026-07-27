@@ -85,6 +85,7 @@ model Tenant {
   maintenanceSupplierQuotes      MaintenanceCorrectionSupplierQuote[]
   maintenanceSchedulingLogs      MaintenanceSchedulingLog[]
   maintenanceDailyCommitments    MaintenanceDailyCommitment[]
+  maintenanceConformitySnapshots MaintenanceConformitySnapshot[]
 
   // Estoque (módulo novo, migrado de um sistema Flask/Postgres avulso —
   // "estoque-bnb-flex" — que rodava fora da suíte, no Render).
@@ -1548,6 +1549,30 @@ model MaintenanceDailyCommitment {
   totalPrevisto Int @default(0)
 
   cards MaintenanceCorrectionCard[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, data])
+  @@index([tenantId, data])
+}
+
+// Valor decorativo de conformidade por dia, usado SÓ pelo gráfico
+// "Conformidade ao longo do tempo" da tela Evolução (Manutenção) — pedido
+// explícito do Felipe: "preciso preencher um histórico fictício para esse
+// gráfico... sem criar históricos fictícios de manutenção". Sem NENHUMA
+// relação com MaintenanceInspection/MaintenanceInspectionItem de verdade —
+// é só um número por dia, usado como fallback quando ainda não existe
+// inspeção real até aquele dia (ver serieDiaria em
+// apps/maintenance/src/components/views/evolucao.tsx: assim que existir ao
+// menos uma inspeção real até um dia, o valor real sempre prevalece sobre
+// este snapshot, mesmo que o snapshot tenha uma linha pra esse dia).
+model MaintenanceConformitySnapshot {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  data         String // "YYYY-MM-DD"
+  conformidade Int // 0-100
 
   createdAt DateTime @default(now())
 
