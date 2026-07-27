@@ -270,50 +270,97 @@ export default async function Home() {
     createdAt: l.createdAt.toISOString(),
   }));
 
-  const correctionCardsView: CorrectionCardView[] = correctionCards.map((c) => ({
-    id: c.id,
-    uhId: c.uhId,
-    uhName: c.uh.numero,
-    checklistItemId: c.checklistItemId,
-    checklistItemName: c.checklistItem?.name ?? null,
-    checklistItemCategory: c.checklistItem?.category ?? null,
-    comment: c.inspectionItem.comment,
-    photos: safeParsePhotos(c.inspectionItem.photos),
-    createdAt: c.createdAt.toISOString(),
-    urgente: c.inspectionItem.urgente,
-    needsMaterial: c.needsMaterial,
-    needsExternalService: c.needsExternalService,
-    materialStatus: c.materialStatus as "A_ADQUIRIR" | "COMPRADO",
-    materialReceiptPhoto: c.materialReceiptPhoto,
-    materialCompradoEm: c.materialCompradoEm ? c.materialCompradoEm.toISOString() : null,
-    externalServiceStatus: c.externalServiceStatus as "A_CONTRATAR" | "EM_NEGOCIACAO" | "AGENDADO" | "EXECUTADO",
-    hiredSupplierId: c.hiredSupplierId,
-    hiredSupplierNome: c.hiredSupplier?.nome ?? null,
-    scheduledDate: c.scheduledDate ? c.scheduledDate.toISOString() : null,
-    quotes: c.quotes.map((q) => ({
-      id: q.id,
-      supplierId: q.supplierId,
-      supplierNome: q.supplier.nome,
-      createdAt: q.createdAt.toISOString(),
-    })),
-    schedulingLogs: c.schedulingLogs.map((l) => ({
-      id: l.id,
-      previousSupplierNome: l.previousSupplierNome,
-      previousDate: l.previousDate ? l.previousDate.toISOString() : null,
-      newSupplierNome: l.newSupplierNome,
-      newDate: l.newDate ? l.newDate.toISOString() : null,
-      authorName: l.author?.nome ?? null,
-      createdAt: l.createdAt.toISOString(),
-    })),
-    executionStatus: c.executionStatus as "A_FAZER" | "PLANEJADA" | "EXECUTADA",
-    dailyCommitmentId: c.dailyCommitmentId,
-    blockForReservation: c.blockForReservation,
-    previsto: c.previsto,
-    executedDescription: c.executedDescription,
-    executedPhotos: safeParsePhotos(c.executedPhotos),
-    executedAt: c.executedAt ? c.executedAt.toISOString() : null,
-    executedByName: c.executedBy?.nome ?? null,
-  }));
+  // Extraído em função (em vez de inline no .map) porque agora tem duas
+  // fontes: correctionCards (o fetch principal, só itens ainda NAO_CONFORME)
+  // e executedTodayCards (fetch à parte, ver comentário mais abaixo) — ambos
+  // têm exatamente o mesmo shape de include, então a conversão é idêntica.
+  function toCorrectionCardView(c: (typeof correctionCards)[number]): CorrectionCardView {
+    return {
+      id: c.id,
+      uhId: c.uhId,
+      uhName: c.uh.numero,
+      checklistItemId: c.checklistItemId,
+      checklistItemName: c.checklistItem?.name ?? null,
+      checklistItemCategory: c.checklistItem?.category ?? null,
+      comment: c.inspectionItem.comment,
+      photos: safeParsePhotos(c.inspectionItem.photos),
+      createdAt: c.createdAt.toISOString(),
+      urgente: c.inspectionItem.urgente,
+      needsMaterial: c.needsMaterial,
+      needsExternalService: c.needsExternalService,
+      materialStatus: c.materialStatus as "A_ADQUIRIR" | "COMPRADO",
+      materialReceiptPhoto: c.materialReceiptPhoto,
+      materialCompradoEm: c.materialCompradoEm ? c.materialCompradoEm.toISOString() : null,
+      externalServiceStatus: c.externalServiceStatus as "A_CONTRATAR" | "EM_NEGOCIACAO" | "AGENDADO" | "EXECUTADO",
+      hiredSupplierId: c.hiredSupplierId,
+      hiredSupplierNome: c.hiredSupplier?.nome ?? null,
+      scheduledDate: c.scheduledDate ? c.scheduledDate.toISOString() : null,
+      quotes: c.quotes.map((q) => ({
+        id: q.id,
+        supplierId: q.supplierId,
+        supplierNome: q.supplier.nome,
+        createdAt: q.createdAt.toISOString(),
+      })),
+      schedulingLogs: c.schedulingLogs.map((l) => ({
+        id: l.id,
+        previousSupplierNome: l.previousSupplierNome,
+        previousDate: l.previousDate ? l.previousDate.toISOString() : null,
+        newSupplierNome: l.newSupplierNome,
+        newDate: l.newDate ? l.newDate.toISOString() : null,
+        authorName: l.author?.nome ?? null,
+        createdAt: l.createdAt.toISOString(),
+      })),
+      executionStatus: c.executionStatus as "A_FAZER" | "PLANEJADA" | "EXECUTADA",
+      dailyCommitmentId: c.dailyCommitmentId,
+      blockForReservation: c.blockForReservation,
+      previsto: c.previsto,
+      executedDescription: c.executedDescription,
+      executedPhotos: safeParsePhotos(c.executedPhotos),
+      executedAt: c.executedAt ? c.executedAt.toISOString() : null,
+      executedByName: c.executedBy?.nome ?? null,
+    };
+  }
+
+  const correctionCardsView: CorrectionCardView[] = correctionCards.map(toCorrectionCardView);
+
+  // Cards executados HOJE — busca à parte porque o fetch principal
+  // (correctionCards, acima) só traz itens ainda NAO_CONFORME (pedido
+  // explícito documentado ali: um item resolvido por qualquer caminho some
+  // sozinho de todo kanban). Isso inclui a própria coluna "Executadas" do
+  // Kanban de Execução, que ficava sempre vazia mesmo com cards executados
+  // de verdade (bug relatado pelo Felipe: "pq as atividades n aparecem como
+  // Executadas?" — os cards tinham executionStatus=EXECUTADA e
+  // dailyCommitmentId certo, só não chegavam nem a ser buscados do banco).
+  // Corrigido buscando à parte, sem tocar no fetch principal (que também
+  // alimenta Aquisição/Serviços/A Processar/A Fazer e o relatório de
+  // Performance — mudar o filtro ali reabriria cards antigos já resolvidos
+  // nesses lugares, o que não é o pedido). Passado como prop separada
+  // (cardsExecutadasHoje) só pro Kanban de Execução usar — não entra no
+  // `cards` genérico de Correcao.tsx, então não polui Aquisição/Serviços
+  // nem o contador da aba.
+  const commitmentHojeId = commitments.find((cm) => cm.data === hoje)?.id ?? null;
+  const executedTodayCards = commitmentHojeId
+    ? await prisma.maintenanceCorrectionCard.findMany({
+        where: { tenantId: session.tenantId, executionStatus: "EXECUTADA", dailyCommitmentId: commitmentHojeId },
+        include: {
+          inspectionItem: { select: { comment: true, photos: true, urgente: true } },
+          uh: { select: { id: true, numero: true } },
+          checklistItem: { select: { id: true, name: true, category: true } },
+          hiredSupplier: { select: { id: true, nome: true } },
+          executedBy: { select: { nome: true } },
+          quotes: {
+            include: { supplier: { select: { id: true, nome: true } } },
+            orderBy: { createdAt: "asc" },
+          },
+          schedulingLogs: {
+            include: { author: { select: { nome: true } } },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+        orderBy: { executedAt: "desc" },
+      })
+    : [];
+  const cardsExecutadasHojeView: CorrectionCardView[] = executedTodayCards.map(toCorrectionCardView);
 
   const suppliersView: SupplierView[] = suppliers.map((s) => ({
     id: s.id,
@@ -387,6 +434,7 @@ export default async function Home() {
       itemInfoLogs={itemInfoLogsView}
       inspectionItemIdsComCard={correctionCards.map((c) => c.inspectionItemId)}
       correctionCards={correctionCardsView}
+      cardsExecutadasHoje={cardsExecutadasHojeView}
       suppliers={suppliersView}
       uhIdsSelecionadasHoje={uhsSelecionadasHoje.map((u) => u.uhId)}
       uhIdsComReservaHoje={uhsSelecionadasHoje.filter((u) => u.temReserva).map((u) => u.uhId)}

@@ -23,6 +23,7 @@ type Aba = 'execucao' | 'aquisicao' | 'servicos'
 export function Correcao({
   podeOperar,
   cards,
+  cardsExecutadasHoje,
   suppliers,
   uhIdsSelecionadasHoje,
   uhIdsComReservaHoje,
@@ -33,6 +34,11 @@ export function Correcao({
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
+  // Ver comentário completo em dashboard.tsx — cards EXECUTADA de hoje,
+  // buscados à parte pra não sumir da coluna "Executadas" (bug relatado
+  // pelo Felipe). Só passa adiante pro KanbanExecucao, não entra nos
+  // filtros de cardsAquisicao/cardsServicos/cardsAProcessar abaixo.
+  cardsExecutadasHoje: CorrectionCardView[]
   suppliers: SupplierView[]
   uhIdsSelecionadasHoje: string[]
   uhIdsComReservaHoje: string[]
@@ -132,6 +138,7 @@ export function Correcao({
         <KanbanExecucao
           podeOperar={podeOperar}
           cards={cardsExecucao}
+          cardsExecutadasHoje={cardsExecutadasHoje}
           cardsAProcessar={cardsAProcessar}
           uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
           uhIdsComReservaHoje={uhIdsComReservaHoje}

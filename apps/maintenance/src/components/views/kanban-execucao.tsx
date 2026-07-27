@@ -52,6 +52,7 @@ function formatarHoraExecucao(iso: string) {
 export function KanbanExecucao({
   podeOperar,
   cards,
+  cardsExecutadasHoje,
   cardsAProcessar,
   uhIdsSelecionadasHoje,
   uhIdsComReservaHoje,
@@ -61,6 +62,11 @@ export function KanbanExecucao({
 }: {
   podeOperar: boolean
   cards: CorrectionCardView[]
+  // Buscados à parte em page.tsx (ver comentário lá) — já vêm filtrados por
+  // executionStatus=EXECUTADA + dailyCommitmentId de hoje, então usados
+  // direto, sem precisar re-filtrar `cards` (que nem contém mais cards
+  // EXECUTADA, esse é o bug que isso corrige).
+  cardsExecutadasHoje: CorrectionCardView[]
   cardsAProcessar: CorrectionCardView[]
   uhIdsSelecionadasHoje: string[]
   uhIdsComReservaHoje: string[]
@@ -82,10 +88,7 @@ export function KanbanExecucao({
     () => cards.filter((c) => c.executionStatus === 'PLANEJADA' && c.dailyCommitmentId === commitmentHoje?.id),
     [cards, commitmentHoje],
   )
-  const executadas = useMemo(
-    () => cards.filter((c) => c.executionStatus === 'EXECUTADA' && c.dailyCommitmentId === commitmentHoje?.id),
-    [cards, commitmentHoje],
-  )
+  const executadas = cardsExecutadasHoje
 
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [blockMap, setBlockMap] = useState<Record<string, boolean>>({})

@@ -196,6 +196,7 @@ export function Dashboard({
   uhIdsLiberadasHoje,
   commitments,
   hojeSP,
+  cardsExecutadasHoje,
 }: {
   user: DashboardUser
   // false = usuário pode ver todas as telas normalmente, mas os botões de
@@ -220,6 +221,13 @@ export function Dashboard({
   uhIdsLiberadasHoje: string[]
   commitments: DailyCommitmentView[]
   hojeSP: string
+  // Cards com executionStatus=EXECUTADA de hoje — buscados à parte no
+  // page.tsx porque o fetch principal (correctionCards) só traz itens ainda
+  // NAO_CONFORME (ver comentário lá). Só usado pela coluna "Executadas" do
+  // Kanban de Execução — não entra no filtro genérico de `cards` que
+  // alimenta Aquisição/Serviços/A Processar, pra não poluir esses outros
+  // lugares com cards já resolvidos.
+  cardsExecutadasHoje: CorrectionCardView[]
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -430,6 +438,7 @@ export function Dashboard({
             <Correcao
               podeOperar={podeOperar}
               cards={correctionCards}
+              cardsExecutadasHoje={cardsExecutadasHoje}
               suppliers={suppliers}
               uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
               uhIdsComReservaHoje={uhIdsComReservaHoje}
