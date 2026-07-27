@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createCorrectionCardForItem, getSession, hasModuleAccess, notificarPorRoles, prisma, sendPushToUser } from "@praxis/core";
+import { criarSolicitacaoManutencao, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
 import { liberarSelecionadasAoMeioDia } from "@/lib/liberacao-automatica";
@@ -315,120 +315,50 @@ export async function PATCH(req: NextRequest) {
   }
 
   // ── Toggle manutenção ─────────────────────────────────────────────
+  // Pedido explícito do Felipe: "toda Manutenção não deve ser
+  // automaticamente bloqueada pelo módulo manutenção. Deve ser direcionado
+  // uma solicitação para o atendimento processar." — mesmo padrão já
+  // aplicado à NC urgente (ver packages/core/src/maintenanceUrgente.ts).
+  // LIGAR não liga mais a flag na hora: cria uma solicitação PENDENTE
+  // (tipo=MANUTENCAO) que só o Atendimento/Gerente/Master decide na tela de
+  // Decisão de Bloqueio (aprovarSolicitacao chama ativarManutencaoUH, que
+  // faz o que este bloco fazia direto antes). DESLIGAR continua imediato —
+  // não é uma decisão que precise de aprovação, só limpa os 4 campos.
   if (action === "toggle_manutencao") {
     const uh = await prisma.uH.findUnique({
       where: { id: uhId },
       select: { numero: true, emManutencao: true },
     });
-    const novoValor = !(uh?.emManutencao ?? false);
-    await prisma.uH.update({
-      where: { id: uhId },
-      data: {
-        emManutencao: novoValor,
-        manutencaoDescricao: novoValor ? (descricao ?? null) : null,
-      },
-    });
+    if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });
 
-    // Ao ativar manutenção: trocar programa ARRUMACAO → LIMPEZA_COMPLETA
-    if (novoValor && uh) {
-      const [assignment, programaLimpezaEspecifica] = await Promise.all([
-        prisma.dailyAssignment.findFirst({
-          where: { tenantId, data, uhId },
-          include: { program: { select: { id: true, tipo: true } } },
-        }),
-        prisma.cleaningProgram.findFirst({ where: { tenantId, tipo: "LIMPEZA_COMPLETA" } }),
-      ]);
-
-      if (assignment && assignment.program?.tipo === "ARRUMACAO" && programaLimpezaEspecifica) {
-        await prisma.dailyAssignment.update({
-          where: { id: assignment.id },
-          data: { programId: programaLimpezaEspecifica.id },
-        });
-      }
-
-      if (assignment) {
-        await sendPushToUser(assignment.camareiraId, {
-          title: "UH em manutenção",
-          body: `UH ${uh.numero} entrou em manutenção${descricao ? `: ${descricao}` : "."}`,
-          data: { tipo: "uh_manutencao", uhId, data },
-        });
-      }
-      const destinatariosManutencao = await prisma.user.findMany({
-        where: { tenantId, ativo: true, role: { in: ["GOVERNANTA", "GERENTE", "MASTER"] } },
-        select: { id: true },
+    if (uh.emManutencao) {
+      await prisma.uH.update({
+        where: { id: uhId },
+        data: {
+          emManutencao: false,
+          manutencaoDescricao: null,
+          manutencaoSolicitanteNome: null,
+          manutencaoEm: null,
+        },
       });
-      for (const d of destinatariosManutencao) {
-        await sendPushToUser(d.id, {
-          title: "UH em manutenção",
-          body: `UH ${uh.numero} entrou em manutenção.`,
-          data: { tipo: "uh_manutencao", uhId, data },
-        });
-      }
-      // TODO: notificar camareira/governantas/gerentes via Telegram sobre a manutenção
-
-      // Sensibiliza o módulo de Manutenção — mesmo mecanismo dos outros 3
-      // pontos de entrada de necessidade de manutenção (camareira arrumando,
-      // governanta inspecionando): cria um MaintenanceInspectionItem (sem
-      // checklistItemId, já que esta flag é da UH inteira, não de um item
-      // específico) + o card de Correção correspondente, sem triagem — cai
-      // direto na coluna "A Processar" do kanban Execução (ver
-      // packages/core/src/maintenanceCorrection.ts). Evita duplicar: só cria
-      // se não existir já um item genérico (checklistItemId null) em aberto
-      // pra essa UH.
-      const ultimaInspecaoManut = await prisma.maintenanceInspection.findFirst({
-        where: { tenantId, uhId },
-        orderBy: { date: "desc" },
-        include: { items: { where: { checklistItemId: null } } },
-      });
-      const itemGenericoAberto = ultimaInspecaoManut?.items.find((it) => it.status === "NAO_CONFORME");
-
-      if (!itemGenericoAberto) {
-        const descricaoFlag = descricao?.trim() || "UH marcada em manutenção na tela Seleção e Liberação.";
-        let inspectionItemId: string;
-
-        if (ultimaInspecaoManut) {
-          const novoItem = await prisma.maintenanceInspectionItem.create({
-            data: {
-              inspectionId: ultimaInspecaoManut.id,
-              checklistItemId: null,
-              status: "NAO_CONFORME",
-              comment: descricaoFlag,
-            },
-          });
-          inspectionItemId = novoItem.id;
-        } else {
-          const novaInspecao = await prisma.maintenanceInspection.create({
-            data: {
-              tenantId,
-              uhId,
-              inspectorId: session.userId,
-              date: new Date(),
-              items: { create: [{ checklistItemId: null, status: "NAO_CONFORME", comment: descricaoFlag }] },
-            },
-            include: { items: true },
-          });
-          inspectionItemId = novaInspecao.items[0].id;
-        }
-
-        await createCorrectionCardForItem({
-          tenantId,
-          inspectionItemId,
-          uhId,
-          checklistItemId: null,
-          needsMaterial: null,
-          needsExternalService: null,
-          triagedById: null,
-        });
-
-        await notificarPorRoles(tenantId, ["MANUTENCAO", "GERENTE", "GOVERNANTA"], {
-          title: "🔧 Necessidade de manutenção registrada",
-          body: `UH ${uh.numero}: ${descricaoFlag}`,
-          data: { view: "correcao" },
-        });
-      }
+      return NextResponse.json({ emManutencao: false });
     }
 
-    return NextResponse.json({ emManutencao: novoValor });
+    // Descrição obrigatória pra pedir a manutenção — a UI já bloqueia o
+    // botão "Confirmar" sem texto (ver manutencaoModal em SelecaoView.tsx),
+    // mas reforça aqui também.
+    if (!descricao?.trim()) {
+      return NextResponse.json({ error: "Descrição obrigatória para solicitar manutenção." }, { status: 400 });
+    }
+
+    await criarSolicitacaoManutencao({
+      tenantId,
+      uhId,
+      descricao: descricao.trim(),
+      solicitanteNome: session.nome,
+    });
+
+    return NextResponse.json({ solicitado: true });
   }
 
   // ── Desbloquear UH manualmente ────────────────────────────────────

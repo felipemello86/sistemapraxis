@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, notificarPorRoles, prisma } from "@praxis/core";
+import { ativarManutencaoUH, getSession, hasModuleAccess, notificarPorRoles, prisma } from "@praxis/core";
 
 // Tela de Decisão de Bloqueio — pedido explícito do Felipe: "vamos remover o
 // bloqueio automático para manutenção [...] cabe ao Atendimento decidir".
 // Uma NC urgente já não bloqueia mais a UH sozinha (ver
 // packages/core/src/maintenanceUrgente.ts) — só cria um HkBlockRequest
-// PENDENTE. Esta rota lista os pedidos pendentes + as UHs atualmente
-// bloqueadas, e decide (bloquear ou não) um pedido.
+// PENDENTE. O mesmo padrão foi estendido pra marcar uma UH "Em Manutenção"
+// (ver comentário do model HkBlockRequest no schema) — decisão explícita do
+// Felipe de reaproveitar esta tela em vez de criar uma nova só pra isso, daí
+// o campo `tipo` (BLOQUEIO | MANUTENCAO) aparecer em tudo abaixo. Esta rota
+// lista os pedidos pendentes dos dois tipos + o estado atual das UHs
+// (bloqueadas e em manutenção), e decide (aprovar ou não) um pedido.
 //
 // ATENDIMENTO tem as mesmas permissões de GERENTE aqui, mesmo padrão usado
 // em selecao-uhs/route.ts e atribuicoes/route.ts. GOVERNANTA é notificada
-// (junto com Gerente/Atendimento/Master, ver aplicarBloqueioPorUrgencia) mas
-// não decide — decisão explícita do Felipe ("cabe ao Atendimento decidir").
-// Remover um bloqueio já aplicado continua pela ação "desbloquear" de
-// /api/selecao-uhs (não duplicada aqui), que já inclui Governanta —
-// mudança pedida por Felipe em outra ocasião e não afetada por este pedido.
+// (junto com Gerente/Atendimento/Master) mas não decide — decisão explícita
+// do Felipe ("cabe ao Atendimento decidir"). Remover uma decisão já aplicada
+// (desbloquear, ou encerrar manutenção) continua pelas ações
+// "desbloquear"/"toggle_manutencao" (UH já em manutenção → desliga direto,
+// sem aprovação) de /api/selecao-uhs — não duplicadas aqui.
 function onlyManagerOrMaster(role: string) {
   return ["MASTER", "GERENTE", "ATENDIMENTO"].includes(role);
 }
@@ -28,7 +32,7 @@ export async function GET() {
   // fica restrito a quem tem motivo de ver essa tela (ver Sidebar.tsx).
   const tenantId = session.tenantId;
 
-  const [pendentes, bloqueadas] = await Promise.all([
+  const [pendentes, bloqueadas, emManutencao] = await Promise.all([
     prisma.hkBlockRequest.findMany({
       where: { tenantId, status: "PENDENTE" },
       include: { uh: { select: { numero: true } } },
@@ -46,12 +50,24 @@ export async function GET() {
       },
       orderBy: { numero: "asc" },
     }),
+    prisma.uH.findMany({
+      where: { tenantId, emManutencao: true },
+      select: {
+        id: true,
+        numero: true,
+        manutencaoDescricao: true,
+        manutencaoSolicitanteNome: true,
+        manutencaoEm: true,
+      },
+      orderBy: { numero: "asc" },
+    }),
   ]);
 
   return NextResponse.json({
     podeDecidir: onlyManagerOrMaster(session.role),
     pendentes: pendentes.map((r) => ({
       id: r.id,
+      tipo: r.tipo,
       uhId: r.uhId,
       uhNumero: r.uh.numero,
       itemNome: r.itemNome,
@@ -67,10 +83,17 @@ export async function GET() {
       bloqueioEm: u.bloqueioEm,
       bloqueioOrigem: u.bloqueioOrigem,
     })),
+    emManutencao: emManutencao.map((u) => ({
+      uhId: u.id,
+      numero: u.numero,
+      manutencaoDescricao: u.manutencaoDescricao,
+      manutencaoSolicitanteNome: u.manutencaoSolicitanteNome,
+      manutencaoEm: u.manutencaoEm,
+    })),
   });
 }
 
-// PATCH /api/decisao-bloqueio — ação: decidir (requestId, bloquear: boolean)
+// PATCH /api/decisao-bloqueio — ação: decidir (requestId, aprovar: boolean)
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -82,7 +105,7 @@ export async function PATCH(req: NextRequest) {
   }
   const tenantId = session.tenantId;
 
-  const { action, requestId, bloquear } = await req.json();
+  const { action, requestId, aprovar } = await req.json();
 
   if (action === "decidir") {
     const pedido = await prisma.hkBlockRequest.findUnique({ where: { id: requestId } });
@@ -93,12 +116,15 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Este pedido já foi decidido" }, { status: 400 });
     }
 
-    const novoStatus = bloquear ? "BLOQUEADO" : "NAO_BLOQUEADO";
+    const novoStatus = aprovar ? "APROVADO" : "REJEITADO";
 
-    // Decide junto qualquer outro pedido pendente pra mesma UH — evita que
-    // um segundo card fique esquecido pendente depois da decisão.
+    // Decide junto qualquer outro pedido pendente pra mesma UH E mesmo tipo
+    // — evita que um segundo card do mesmo tipo fique esquecido pendente
+    // depois da decisão. Não mexe em pedidos do OUTRO tipo pra mesma UH
+    // (uma UH pode ter, ao mesmo tempo, um pedido de bloqueio E um pedido de
+    // manutenção pendentes — são decisões independentes).
     await prisma.hkBlockRequest.updateMany({
-      where: { tenantId, uhId: pedido.uhId, status: "PENDENTE" },
+      where: { tenantId, uhId: pedido.uhId, status: "PENDENTE", tipo: pedido.tipo },
       data: {
         status: novoStatus,
         decididoPorId: session.userId,
@@ -107,10 +133,24 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
+    if (pedido.tipo === "MANUTENCAO") {
+      if (aprovar) {
+        await ativarManutencaoUH({
+          tenantId,
+          uhId: pedido.uhId,
+          descricao: pedido.comment,
+          solicitanteNome: pedido.solicitanteNome,
+          aprovadoPorId: session.userId,
+        });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // tipo === "BLOQUEIO" (comportamento original, só renomeado bloquear→aprovar)
     const uh = await prisma.uH.findUnique({ where: { id: pedido.uhId }, select: { numero: true, bloqueada: true } });
     if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });
 
-    if (bloquear && !uh.bloqueada) {
+    if (aprovar && !uh.bloqueada) {
       await prisma.uH.update({
         where: { id: pedido.uhId },
         data: {

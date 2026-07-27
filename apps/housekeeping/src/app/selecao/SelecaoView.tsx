@@ -511,11 +511,22 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   async function confirmarManutencao(uh: UHSel, descricao: string | null) {
     if (!podeOperar) return;
     setManutencaoModal(null);
-    await apiFetch("/api/selecao-uhs", {
+    const res = await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "toggle_manutencao", data, uhId: uh.uhId, descricao }),
     });
+    // Ligar não marca mais a UH em manutenção na hora — vira uma solicitação
+    // pendente pro Atendimento decidir (ver tela Decisão de Bloqueio, e
+    // comentário em api/selecao-uhs toggle_manutencao). Desligar continua
+    // imediato. Sem esse aviso, a UH não mudar de badge na hora pareceria
+    // que a ação falhou.
+    if (res.ok) {
+      const body = await res.json().catch(() => ({}));
+      if (body?.solicitado) {
+        alert(`Solicitação de manutenção enviada. A UH ${uh.numero} só entra em manutenção após aprovação do Atendimento.`);
+      }
+    }
     carregar();
   }
 
@@ -769,9 +780,11 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center gap-2 mb-1">
               <Wrench className="w-5 h-5 text-orange-500" />
-              <h2 className="text-base font-bold text-gray-900">Descreva a manutenção</h2>
+              <h2 className="text-base font-bold text-gray-900">Solicitar manutenção</h2>
             </div>
-            <p className="text-sm text-gray-500 mb-3">UH <strong>{manutencaoModal.numero}</strong> — informe o motivo ou o problema a ser resolvido.</p>
+            <p className="text-sm text-gray-500 mb-3">
+              UH <strong>{manutencaoModal.numero}</strong> — informe o motivo ou o problema a ser resolvido. A solicitação vai pro Atendimento decidir.
+            </p>
             <textarea
               autoFocus
               value={manutencaoDescricaoInput}
@@ -793,7 +806,7 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                 onClick={() => confirmarManutencao(manutencaoModal, manutencaoDescricaoInput.trim())}
                 className="flex-1 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Confirmar
+                Enviar solicitação
               </button>
             </div>
           </div>
@@ -1318,7 +1331,7 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                             <button
                               onClick={() => toggleManutencao(uh)}
                               disabled={!podeOperar}
-                              title={!podeOperar ? tituloSemAcesso : uh.emManutencao ? "Remover manutenção" : "Marcar em manutenção"}
+                              title={!podeOperar ? tituloSemAcesso : uh.emManutencao ? "Remover manutenção" : "Solicitar manutenção"}
                               className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
                                 uh.emManutencao
                                   ? "bg-orange-100 text-orange-600 hover:bg-orange-200"

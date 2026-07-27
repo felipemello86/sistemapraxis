@@ -401,6 +401,13 @@ model UH {
 
   emManutencao            Boolean   @default(false)
   manutencaoDescricao     String?
+  // Preenchidos quando o Atendimento aprova uma solicitação de manutenção
+  // (ver HkBlockRequest tipo=MANUTENCAO e ativarManutencaoUH em
+  // packages/core/src/maintenanceUrgente.ts) — mesmo padrão de
+  // bloqueioSolicitanteNome/bloqueioEm abaixo, pra exibir "quem pediu e
+  // quando" na tela de Decisão de Bloqueio.
+  manutencaoSolicitanteNome String?
+  manutencaoEm              DateTime?
   bloqueada               Boolean   @default(false)
   bloqueioDescricao       String?
   bloqueioSolicitanteNome String?
@@ -697,14 +704,23 @@ model HkManagerialFailureCard {
   createdAt DateTime @default(now())
 }
 
-// Pedido de bloqueio de UH gerado por uma não conformidade urgente — o
-// sistema NÃO bloqueia mais sozinho (pedido explícito do Felipe: "vamos
-// remover o bloqueio automático para manutenção"). Ao registrar uma NC
-// urgente, cria-se um pedido PENDENTE e notifica-se Gerente/Atendimento/
-// Governanta/Master; só o Atendimento (ou Gerente/Master) decide bloquear
-// ou não, na tela de Decisão de Bloqueio. Remover um bloqueio já aplicado
-// também é decisão do Atendimento (ação "desbloquear", fora deste model —
-// mexe direto em UH.bloqueada, igual ao fluxo manual já existente).
+// Pedido de decisão sobre uma UH gerado sem ação automática do sistema — o
+// mesmo model cobre dois tipos hoje (campo `tipo`):
+//   - BLOQUEIO: gerado por uma não conformidade urgente (pedido explícito do
+//     Felipe: "vamos remover o bloqueio automático para manutenção"). Ao
+//     registrar uma NC urgente, cria-se um pedido PENDENTE — só o Atendimento
+//     (ou Gerente/Master) decide bloquear a UH pra reservas ou não.
+//   - MANUTENCAO: gerado ao marcar uma UH como "Em Manutenção" (Seleção e
+//     Liberação) — mesma lógica aplicada aqui por pedido do Felipe ("toda
+//     Manutenção não deve ser automaticamente bloqueada pelo módulo
+//     manutenção, deve ser direcionado uma solicitação para o atendimento
+//     processar"). Só o Atendimento decide ligar UH.emManutencao ou não.
+// Os dois tipos aparecem juntos na mesma tela de decisão (Decisão de
+// Bloqueio) — decisão explícita do Felipe de reaproveitar a tela em vez de
+// criar uma nova só pra manutenção. Remover uma decisão já aplicada (UH
+// desbloqueada ou fora de manutenção) continua fora deste model, mexendo
+// direto em UH.bloqueada / UH.emManutencao (ações "desbloquear" e
+// "toggle_manutencao" em api/selecao-uhs).
 model HkBlockRequest {
   id       String @id @default(cuid())
   tenantId String
@@ -713,15 +729,19 @@ model HkBlockRequest {
   uhId String
   uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
 
+  tipo String @default("BLOQUEIO") // BLOQUEIO | MANUTENCAO
+
   // Não é relação formal com o checklist — mesmo padrão de
   // MaintenanceCorrection.checklistItemId — o item pode sumir do catálogo
-  // depois; itemNome é o snapshot que sobrevive a isso.
+  // depois; itemNome é o snapshot que sobrevive a isso. Só usado por
+  // BLOQUEIO (a NC pode vir de um item específico do checklist);
+  // MANUTENCAO sempre tem checklistItemId/itemNome null.
   checklistItemId String?
   itemNome        String?
   comment         String  @db.Text
   solicitanteNome String
 
-  status String @default("PENDENTE") // PENDENTE | BLOQUEADO | NAO_BLOQUEADO | CANCELADO
+  status String @default("PENDENTE") // PENDENTE | APROVADO | REJEITADO | CANCELADO
 
   decididoPorId   String?
   decididoPor     User?     @relation("HkBlockRequestDecididoPor", fields: [decididoPorId], references: [id])
