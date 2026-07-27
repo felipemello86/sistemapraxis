@@ -40,12 +40,20 @@ export default async function UsuariosPage({
   return (
     <main style={{ minHeight: "100svh", padding: "max(20px, env(safe-area-inset-top)) 20px 40px" }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        <a
-          href={`/${tenant.slug}/configuracoes`}
-          style={{ color: "#0071e3", fontSize: 14, textDecoration: "none" }}
-        >
-          ← Configurações
-        </a>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <a
+            href={`/${tenant.slug}/configuracoes`}
+            style={{ color: "#0071e3", fontSize: 14, textDecoration: "none" }}
+          >
+            ← Configurações
+          </a>
+          <a
+            href={`/${tenant.slug}`}
+            style={{ color: "#0071e3", fontSize: 14, textDecoration: "none" }}
+          >
+            Início
+          </a>
+        </div>
 
         <h1 style={{ fontSize: 24, fontWeight: 700, margin: "12px 0 4px" }}>Usuários</h1>
         <p style={{ color: "#6e6e73", fontSize: 14, margin: "0 0 24px" }}>
