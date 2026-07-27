@@ -1,6 +1,15 @@
 import { prisma } from "./prisma";
 import { cancelarSolicitacaoBloqueioSeNecessario } from "./maintenanceUrgente";
+import { notificarPorRoles } from "./notify";
 import { emitEvent } from "./aiEvents";
+
+// Pedido explícito do Felipe: notificar Gerente/Atendimento/Master/
+// Governança toda vez que uma manutenção (reparo/NC) for concluída —
+// independente do caminho (Kanban Execução "Marcar como executada", Kanban
+// Serviços Externos "Executado", ou o atalho "Corrigir"). Roles fixos,
+// reaproveitados nos dois pontos que fecham uma NC abaixo (resolveCorrectionCard
+// e o branch sem card de corrigirItemDireto).
+const ROLES_NOTIFICAR_MANUTENCAO_CONCLUIDA = ["GERENTE", "ATENDIMENTO", "MASTER", "GOVERNANTA"];
 
 // Fluxo de Correção (Aquisição / Serviços Externos / Execução) — substitui a
 // antiga Rota de Correção de passo único. Compartilhado em @praxis/core (em
@@ -89,7 +98,11 @@ export async function resolveCorrectionCard(params: {
 }) {
   const card = await prisma.maintenanceCorrectionCard.findUniqueOrThrow({
     where: { id: params.cardId },
-    include: { inspectionItem: { select: { urgente: true } } },
+    include: {
+      inspectionItem: { select: { urgente: true } },
+      uh: { select: { numero: true } },
+      checklistItem: { select: { name: true } },
+    },
   });
 
   const now = new Date();
@@ -131,6 +144,16 @@ export async function resolveCorrectionCard(params: {
     await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: params.tenantId, uhId: card.uhId });
   }
 
+  // Pedido explícito do Felipe: notificar Gerente/Atendimento/Master/
+  // Governança a cada manutenção concluída — mesmo choke point de baixo
+  // (cobre Execução "Executadas", Serviços Externos "Executado" e o atalho
+  // "Corrigir" quando já existe card).
+  await notificarPorRoles(params.tenantId, ROLES_NOTIFICAR_MANUTENCAO_CONCLUIDA, {
+    title: "🔧 Manutenção concluída",
+    body: `UH ${card.uh.numero}${card.checklistItem ? ` — ${card.checklistItem.name}` : ""}: ${params.description}`,
+    data: { view: "correcao", cardId: card.id },
+  });
+
   // Choke point único: cobre os 3 caminhos que levam até aqui (Serviços
   // Externos "Executado", Execução "Executadas", e o atalho "Corrigir" via
   // corrigirItemDireto) — nenhum deles precisa saber que a IA existe.
@@ -171,7 +194,10 @@ export async function corrigirItemDireto(params: {
 }) {
   const item = await prisma.maintenanceInspectionItem.findUniqueOrThrow({
     where: { id: params.inspectionItemId },
-    include: { inspection: { select: { uhId: true, tenantId: true } } },
+    include: {
+      inspection: { select: { uhId: true, tenantId: true, uh: { select: { numero: true } } } },
+      checklistItem: { select: { name: true } },
+    },
   });
   if (item.inspection.tenantId !== params.tenantId) throw new Error("Item não encontrado.");
   if (item.status !== "NAO_CONFORME") throw new Error("Este item já está conforme.");
@@ -227,6 +253,15 @@ export async function corrigirItemDireto(params: {
   if (item.urgente) {
     await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: params.tenantId, uhId: item.inspection.uhId });
   }
+
+  // Mesmo aviso de "manutenção concluída" do caminho com card (ver
+  // resolveCorrectionCard) — este branch (NC legada sem card) não passa por
+  // lá, então precisa do próprio disparo.
+  await notificarPorRoles(params.tenantId, ROLES_NOTIFICAR_MANUTENCAO_CONCLUIDA, {
+    title: "🔧 Manutenção concluída",
+    body: `UH ${item.inspection.uh.numero}${item.checklistItem ? ` — ${item.checklistItem.name}` : ""}: ${params.description}`,
+    data: { view: "correcao" },
+  });
 }
 
 /**
