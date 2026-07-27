@@ -89,6 +89,61 @@ export async function cancelarSolicitacaoBloqueioSeNecessario(params: { tenantId
   });
 }
 
+// Pedido explícito do Felipe: "Caso a UH esteja bloqueada por alguma NC
+// específica, ao concluir o serviço e dar baixa, a UH deve ser
+// automaticamente liberada." Chamado de resolveCorrectionCard/
+// corrigirItemDireto sempre que um item URGENTE é resolvido — só um item
+// urgente pode ter gerado um bloqueio via decisão do Atendimento (ver
+// aplicarBloqueioPorUrgencia).
+//
+// Só desbloqueia quando:
+//   - a UH está de fato bloqueada;
+//   - a origem foi DECISAO_ATENDIMENTO (bloqueio manual via api/bloqueio,
+//     bloqueioOrigem="MANUAL", não tem NC específica associada — não é "a
+//     UH bloqueada por alguma NC específica" do pedido do Felipe, fica fora,
+//     continua exigindo desbloqueio manual);
+//   - não sobra nenhuma OUTRA NC urgente ainda aberta nessa UH (senão
+//     desbloquearia com outro problema urgente ainda pendente).
+//
+// Diferente de cancelarSolicitacaoBloqueioSeNecessario (que só cancela
+// pedidos ainda PENDENTES, antes de qualquer decisão humana) — esta função
+// mexe em UH.bloqueada de um bloqueio JÁ APLICADO, decisão explícita desta
+// mudança de comportamento pedida pelo Felipe.
+export async function desbloquearUHSeUltimaNcUrgenteResolvida(params: { tenantId: string; uhId: string }) {
+  const uh = await prisma.uH.findUnique({
+    where: { id: params.uhId },
+    select: { numero: true, bloqueada: true, bloqueioOrigem: true },
+  });
+  if (!uh || !uh.bloqueada || uh.bloqueioOrigem !== "DECISAO_ATENDIMENTO") return;
+
+  const outraNcUrgenteAberta = await prisma.maintenanceInspectionItem.findFirst({
+    where: {
+      status: "NAO_CONFORME",
+      urgente: true,
+      inspection: { tenantId: params.tenantId, uhId: params.uhId },
+    },
+    select: { id: true },
+  });
+  if (outraNcUrgenteAberta) return;
+
+  await prisma.uH.update({
+    where: { id: params.uhId },
+    data: {
+      bloqueada: false,
+      bloqueioDescricao: null,
+      bloqueioSolicitanteNome: null,
+      bloqueioEm: null,
+      bloqueioOrigem: null,
+    },
+  });
+
+  await notificarPorRoles(params.tenantId, ["GOVERNANTA", "GERENTE", "MASTER", "ATENDIMENTO"], {
+    title: "🔓 UH liberada automaticamente",
+    body: `UH ${uh.numero} foi liberada — a manutenção que motivou o bloqueio foi concluída.`,
+    data: { tipo: "desbloqueio_automatico", uhId: params.uhId },
+  });
+}
+
 // Mesmo padrão de aplicarBloqueioPorUrgencia, mas pro segundo tipo de pedido
 // desta tela (HkBlockRequest.tipo="MANUTENCAO") — pedido explícito do Felipe:
 // "toda Manutenção não deve ser automaticamente bloqueada pelo módulo

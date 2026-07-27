@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { cancelarSolicitacaoBloqueioSeNecessario } from "./maintenanceUrgente";
+import { cancelarSolicitacaoBloqueioSeNecessario, desbloquearUHSeUltimaNcUrgenteResolvida } from "./maintenanceUrgente";
 import { notificarPorRoles } from "./notify";
 import { emitEvent } from "./aiEvents";
 
@@ -142,6 +142,10 @@ export async function resolveCorrectionCard(params: {
   // cancelarSolicitacaoBloqueioSeNecessario).
   if (card.inspectionItem.urgente) {
     await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: params.tenantId, uhId: card.uhId });
+    // Pedido explícito do Felipe: "Caso a UH esteja bloqueada por alguma NC
+    // específica, ao concluir o serviço e dar baixa, a UH deve ser
+    // automaticamente liberada." (ver função pra critérios completos).
+    await desbloquearUHSeUltimaNcUrgenteResolvida({ tenantId: params.tenantId, uhId: card.uhId });
   }
 
   // Pedido explícito do Felipe: notificar Gerente/Atendimento/Master/
@@ -252,6 +256,9 @@ export async function corrigirItemDireto(params: {
 
   if (item.urgente) {
     await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: params.tenantId, uhId: item.inspection.uhId });
+    // Mesmo auto-desbloqueio do caminho com card (ver resolveCorrectionCard)
+    // — este branch (NC legada sem card) não passa por lá.
+    await desbloquearUHSeUltimaNcUrgenteResolvida({ tenantId: params.tenantId, uhId: item.inspection.uhId });
   }
 
   // Mesmo aviso de "manutenção concluída" do caminho com card (ver
