@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Siren,
   Wrench,
-  X,
 } from 'lucide-react'
 import {
   Bar,
@@ -36,6 +35,13 @@ import {
 } from '@/lib/domain'
 import { ItemInfoField } from '@/components/item-info-field'
 import { DialogCorrigirItem } from '@/components/dialog-corrigir-item'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type {
   InspecaoComUnidade,
   ChecklistItem,
@@ -319,114 +325,107 @@ export function VisaoGerencial({
       </Panel>
 
       {/* Detalhamento vem logo após o gráfico (mesma lógica: são o par
-          "resumo visual" + "lista pra investigar"), e o painel de detalhe do
-          item selecionado agora fica abaixo da tabela, não acima. */}
-      <div className="space-y-6">
-        <Panel
-          title={nomeUhSelecionada ? `Não conformes — ${nomeUhSelecionada}` : 'Detalhamento (Não Conformes)'}
-        >
-          <div className="max-h-[28rem] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 pr-2 font-medium">UH</th>
-                  <th className="pb-2 pr-2 font-medium">Item</th>
-                  <th className="pb-2 pr-2 font-medium">Categoria</th>
-                  <th className="pb-2 font-medium" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70">
-                {ncList.slice(0, 60).map((r, i) => {
-                  const ativo =
-                    ncSelecionado?.unitId === r.unitId && ncSelecionado?.checklistItemId === r.checklistItemId
-                  return (
-                    <tr
-                      key={`${r.unitId}-${r.checklistItemId}-${i}`}
-                      onClick={() => clicarLinhaNc(r)}
-                      className={`cursor-pointer transition-colors ${ativo ? 'bg-accent' : 'hover:bg-accent/40'}`}
-                    >
-                      <td className="py-2 pr-2 font-medium">{r.unitName}</td>
-                      <td className="py-2 pr-2 text-muted-foreground">{r.itemName}</td>
-                      <td className="py-2 pr-2">
+          "resumo visual" + "lista pra investigar"). O detalhe da NC
+          selecionada abre num popup (Dialog) em vez de um painel abaixo da
+          tabela — pedido explícito do Felipe: uma tabela de detalhamento
+          "abaixo" da tabela de linhas ficava estranho/confuso. */}
+      <Panel
+        title={nomeUhSelecionada ? `Não conformes — ${nomeUhSelecionada}` : 'Detalhamento (Não Conformes)'}
+      >
+        <div className="max-h-[28rem] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/70 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="pb-2 pr-2 font-medium">UH</th>
+                <th className="pb-2 pr-2 font-medium">Item</th>
+                <th className="pb-2 pr-2 font-medium">Categoria</th>
+                <th className="pb-2 font-medium" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/70">
+              {ncList.slice(0, 60).map((r, i) => {
+                const ativo =
+                  ncSelecionado?.unitId === r.unitId && ncSelecionado?.checklistItemId === r.checklistItemId
+                return (
+                  <tr
+                    key={`${r.unitId}-${r.checklistItemId}-${i}`}
+                    onClick={() => clicarLinhaNc(r)}
+                    className={`cursor-pointer transition-colors ${ativo ? 'bg-accent' : 'hover:bg-accent/40'}`}
+                  >
+                    <td className="py-2 pr-2 font-medium">{r.unitName}</td>
+                    <td className="py-2 pr-2 text-muted-foreground">{r.itemName}</td>
+                    <td className="py-2 pr-2">
+                      <Badge
+                        variant="outline"
+                        style={{ borderColor: corCategoria(r.category), color: corCategoria(r.category) }}
+                      >
+                        {r.category}
+                      </Badge>
+                    </td>
+                    <td className="py-2">
+                      {r.urgente && (
                         <Badge
                           variant="outline"
-                          style={{ borderColor: corCategoria(r.category), color: corCategoria(r.category) }}
+                          className="gap-1 border-destructive/40 text-destructive"
+                          title="NC impeditiva ao uso (urgente)"
                         >
-                          {r.category}
-                        </Badge>
-                      </td>
-                      <td className="py-2">
-                        {r.urgente && (
-                          <Badge
-                            variant="outline"
-                            className="gap-1 border-destructive/40 text-destructive"
-                            title="NC impeditiva ao uso (urgente)"
-                          >
-                            <Siren className="h-3 w-3" />
-                            Urgente
-                          </Badge>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {ncList.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                ✅ Tudo conforme.
-              </p>
-            )}
-          </div>
-        </Panel>
-
-        {ncSelecionado && (
-            <Panel>
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span
-                    className="mt-0.5 h-3 w-3 shrink-0 rounded-full"
-                    style={{ backgroundColor: corCategoria(ncSelecionado.category) }}
-                  />
-                  <div>
-                    <p className="flex items-center gap-1.5 text-sm font-semibold">
-                      {ncSelecionado.itemName}
-                      {ncSelecionado.urgente && (
-                        <Badge variant="outline" className="gap-1 border-destructive/40 text-destructive">
                           <Siren className="h-3 w-3" />
                           Urgente
                         </Badge>
                       )}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">Unidade {ncSelecionado.unitName}</span>
-                      {' · '}
-                      {ncSelecionado.category}
-                      {' · '}
-                      Inspeção de {formatarData(ncSelecionado.date)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {podeOperar && (
-                    <Button
-                      size="sm"
-                      className="rounded-xl"
-                      onClick={() => setCorrigindo(ncSelecionado)}
-                    >
-                      <Wrench className="h-3.5 w-3.5" />
-                      Corrigir
-                    </Button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {ncList.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              ✅ Tudo conforme.
+            </p>
+          )}
+        </div>
+      </Panel>
+
+      <Dialog open={ncSelecionado !== null} onOpenChange={(open) => !open && setNcSelecionado(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          {ncSelecionado && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex flex-wrap items-center gap-1.5 pr-6">
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: corCategoria(ncSelecionado.category) }}
+                  />
+                  {ncSelecionado.itemName}
+                  {ncSelecionado.urgente && (
+                    <Badge variant="outline" className="gap-1 border-destructive/40 text-destructive">
+                      <Siren className="h-3 w-3" />
+                      Urgente
+                    </Badge>
                   )}
-                  <button
-                    onClick={() => setNcSelecionado(null)}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                    aria-label="Fechar"
+                </DialogTitle>
+                <DialogDescription>
+                  <span className="font-medium text-foreground">Unidade {ncSelecionado.unitName}</span>
+                  {' · '}
+                  {ncSelecionado.category}
+                  {' · '}
+                  Inspeção de {formatarData(ncSelecionado.date)}
+                </DialogDescription>
+              </DialogHeader>
+
+              {podeOperar && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => setCorrigindo(ncSelecionado)}
                   >
-                    <X className="h-4 w-4" />
-                  </button>
+                    <Wrench className="h-3.5 w-3.5" />
+                    Corrigir
+                  </Button>
                 </div>
-              </div>
+              )}
 
               <ItemInfoField
                 uhId={ncSelecionado.unitId}
@@ -445,7 +444,6 @@ export function VisaoGerencial({
                 logs={itemInfoLogs.filter(
                   (l) => l.uhId === ncSelecionado.unitId && l.checklistItemId === ncSelecionado.checklistItemId,
                 )}
-                className="mb-6"
               />
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -515,9 +513,10 @@ export function VisaoGerencial({
                   </div>
                 </div>
               </div>
-            </Panel>
-        )}
-      </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
