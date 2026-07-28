@@ -7,6 +7,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   XAxis,
   YAxis,
 } from 'recharts'
@@ -65,6 +66,7 @@ export function Evolucao({
   itens,
   atribuicoes,
   conformitySnapshots,
+  meta,
 }: {
   inspecoes: InspecaoComUnidade[]
   unidades: UnitOption[]
@@ -76,6 +78,10 @@ export function Evolucao({
   // qualquer UH) e todo dia depois sempre usa o valor real, mesmo que exista
   // uma linha de snapshot pra ele.
   conformitySnapshots: ConformitySnapshot[]
+  // Meta de conformidade (%) configurável em Configurações — mesmo valor
+  // usado no hint "meta: X%" da Visão Gerencial (config.goal). Desenhada
+  // como linha de referência tracejada no gráfico de evolução.
+  meta: number
 }) {
   const snapshotPorDia = useMemo(() => {
     const m = new Map<string, number>()
@@ -267,6 +273,20 @@ export function Evolucao({
           tick={{ fontSize: 11 }}
         />
         <YAxis tickLine={false} axisLine={false} width={40} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+        {/* Linha de meta — mesmo valor configurável usado no hint "meta: X%"
+            da Visão Gerencial (config.goal, setup inicial 90%). */}
+        <ReferenceLine
+          y={meta}
+          stroke="var(--muted-foreground)"
+          strokeDasharray="4 4"
+          strokeWidth={1.5}
+          label={{
+            value: `Meta ${meta}%`,
+            position: 'insideTopRight',
+            fill: 'var(--muted-foreground)',
+            fontSize: 11,
+          }}
+        />
         <ChartTooltip content={<ChartTooltipContent />} />
         <Area
           dataKey="conformidade"

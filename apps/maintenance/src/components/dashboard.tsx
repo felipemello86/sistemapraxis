@@ -425,6 +425,7 @@ export function Dashboard({
               itens={itens}
               atribuicoes={atribuicoes}
               conformitySnapshots={conformitySnapshots}
+              meta={config.goal}
             />
           )}
           {view === 'informacoes' && (
