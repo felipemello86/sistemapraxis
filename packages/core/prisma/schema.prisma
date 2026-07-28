@@ -1271,6 +1271,22 @@ model MaintenanceInspection {
 
   date DateTime @default(now())
 
+  // true quando este registro nasceu só pra pendurar UM relato avulso (flag
+  // de Manutenção na Seleção e Liberação, relato de Camareira/Governanta, ou
+  // spot na UH 3D) — não uma Rota de Inspeção completa de verdade. Pedido
+  // explícito do Felipe: "não é pq alguém lançou um defeito que a UH já pode
+  // ser considerada inspecionada." Telas de acompanhamento de conformidade
+  // (Inspeções: pendente/em dia; Visão Gerencial: %/barra/cobertura;
+  // Evolução: conformidade atual/série diária) ignoram inspeções com
+  // avulsa=true ao calcular a "última inspeção" de uma UH — só uma Inspeção
+  // completa conta. O item continua aparecendo normalmente em Correção (A
+  // Processar) e na UH 3D, que tratam o item em si, não "a UH foi
+  // inspecionada". Só fica true quando a inspeção é CRIADA do zero por um
+  // desses relatos (sem inspeção anterior pra anexar o item) — anexar um
+  // item avulso numa inspeção real já existente não muda o avulsa dela nem
+  // sua date, então não afeta o prazo de conformidade nesse caso.
+  avulsa Boolean @default(false)
+
   items MaintenanceInspectionItem[]
 
   createdAt DateTime @default(now())

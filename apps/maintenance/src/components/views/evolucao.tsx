@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
 import { Activity, ClipboardList, Maximize2, Minimize2 } from 'lucide-react'
-import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
+import { contarConformidade, itensParaUnidade, ultimaInspecaoRealPorUnidade } from '@/lib/domain'
 import type { AtribuicoesPorUnidade, ChecklistItem, ConformitySnapshot, InspecaoComUnidade, UnitOption } from '@/lib/types'
 
 // Janela da série diária de conformidade — era 30 dias (pedido antigo: era
@@ -114,9 +114,13 @@ export function Evolucao({
   // (que usa o mesmo critério, sem corte). Ordenada do dia mais antigo
   // (esquerda) pro mais atual/hoje (direita), últimos DIAS_JANELA dias.
   const serieDiaria = useMemo(() => {
-    const inspecoesOrdenadas = [...inspecoes].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    )
+    // Ignora inspeções avulsa=true (relato avulso, não Rota de Inspeção
+    // completa) — mesmo critério do card "Conformidade atual" abaixo
+    // (ultimaInspecaoRealPorUnidade) e da Visão Gerencial, pra o ponto de
+    // hoje sempre bater entre as telas.
+    const inspecoesOrdenadas = inspecoes
+      .filter((insp) => !insp.avulsa)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     const dias: { dia: string; conformidade: number }[] = []
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
@@ -166,7 +170,7 @@ export function Evolucao({
   // recente de cada UH — o estado de hoje, não a mistura de todas as
   // inspeções já feitas ao longo do tempo (isso inflava/distorcia o número
   // com UHs reinspecionadas várias vezes).
-  const ultimaPorUnidade = useMemo(() => ultimaInspecaoPorUnidade(inspecoes), [inspecoes])
+  const ultimaPorUnidade = useMemo(() => ultimaInspecaoRealPorUnidade(inspecoes), [inspecoes])
   const contagensAtuais = useMemo(
     () => Array.from(ultimaPorUnidade.values()).map(contarConformidade),
     [ultimaPorUnidade],

@@ -31,7 +31,7 @@ import {
   formatarData,
   labelResultado,
   temPendencia,
-  ultimaInspecaoPorUnidade,
+  ultimaInspecaoRealPorUnidade,
 } from '@/lib/domain'
 import { ItemInfoField } from '@/components/item-info-field'
 import { DialogCorrigirItem } from '@/components/dialog-corrigir-item'
@@ -100,8 +100,15 @@ export function VisaoGerencial({
   const totalUnidades = unidades.length
   const totalInspecoes = inspecoes.length
   const comPendencias = inspecoes.filter(temPendencia).length
+  // Só conta Inspeção real (avulsa=false) pro % de Conformidade, cobertura
+  // ("X já inspecionadas") e barra por UH — pedido explícito do Felipe: uma
+  // UH cujo único registro é um relato avulso (flag de Manutenção,
+  // Camareira/Governanta, spot UH 3D) não deve ganhar um "score" de
+  // conformidade nem barra no gráfico. O defeito continua aparecendo
+  // normalmente em Correção (A Processar) e na UH 3D — só some daqui e da
+  // tabela de Detalhamento abaixo, que usa esse mesmo ultimaMap.
   const ultimaMap = useMemo(
-    () => ultimaInspecaoPorUnidade(inspecoes),
+    () => ultimaInspecaoRealPorUnidade(inspecoes),
     [inspecoes],
   )
   const inspecionadas = ultimaMap.size

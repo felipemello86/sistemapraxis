@@ -79,3 +79,20 @@ export function ultimaInspecaoPorUnidade(inspecoes: InspecaoComUnidade[]) {
   }
   return map
 }
+
+/**
+ * Igual a ultimaInspecaoPorUnidade, mas ignora inspeções avulsa=true (só
+ * pendurando um relato de flag de Manutenção/Camareira/Governanta/spot UH
+ * 3D — não uma Rota de Inspeção completa). Pedido explícito do Felipe: "não
+ * é pq alguém lançou um defeito que a UH já pode ser considerada
+ * inspecionada." Usado pelas telas de acompanhamento de conformidade
+ * (Inspeções: pendente/em dia; Visão Gerencial: %/barra/cobertura;
+ * Evolução: conformidade atual/série diária) — todas precisam concordar
+ * entre si sobre o que conta como "última inspeção", por isso o mesmo
+ * helper é reaproveitado nas três. uh-3d.tsx continua usando a versão
+ * original (inclusiva) de propósito: o viewer mostra o status de cada item
+ * em si, não se a UH "foi inspecionada".
+ */
+export function ultimaInspecaoRealPorUnidade(inspecoes: InspecaoComUnidade[]) {
+  return ultimaInspecaoPorUnidade(inspecoes.filter((insp) => !insp.avulsa))
+}

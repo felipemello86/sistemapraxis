@@ -701,6 +701,11 @@ async function registrarNcAvulsaImpl(input: {
         uhId: input.uhId,
         inspectorId: session.userId,
         date: new Date(),
+        // avulsa=true: nasceu só pra pendurar este relato do spot da UH 3D,
+        // não é uma Rota de Inspeção completa — não conta como "UH
+        // inspecionada" pro prazo de conformidade (ver
+        // MaintenanceInspection.avulsa no schema).
+        avulsa: true,
         items: {
           create: [
             {

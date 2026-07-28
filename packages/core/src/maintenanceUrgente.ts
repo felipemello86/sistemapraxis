@@ -333,6 +333,11 @@ export async function ativarManutencaoUH(params: {
           uhId,
           inspectorId: registradoPorId,
           date: new Date(),
+          // avulsa=true: essa Inspeção nasceu só pra pendurar o relato da
+          // flag de Manutenção, não é uma Rota de Inspeção completa — não
+          // deve contar como "UH inspecionada" pro prazo de conformidade
+          // (ver comentário no schema, MaintenanceInspection.avulsa).
+          avulsa: true,
           items: { create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoFlag }] },
         },
         include: { items: true },

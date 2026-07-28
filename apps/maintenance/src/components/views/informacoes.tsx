@@ -44,7 +44,7 @@ import {
   itensParaUnidade,
   labelResultado,
   temPendencia,
-  ultimaInspecaoPorUnidade,
+  ultimaInspecaoRealPorUnidade,
 } from '@/lib/domain'
 import { deleteInspecaoAction, triarCorrecaoCardAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
@@ -142,7 +142,11 @@ export function Informacoes({
     itemName: string | null
   } | null>(null)
 
-  const ultimaMap = useMemo(() => ultimaInspecaoPorUnidade(inspecoes), [inspecoes])
+  // Só conta Inspeção real (avulsa=false) pro cálculo de "última
+  // inspeção"/pendente/em dia/situação — pedido explícito do Felipe: "não é
+  // pq alguém lançou um defeito que a UH já pode ser considerada
+  // inspecionada." Ver ultimaInspecaoRealPorUnidade em lib/domain.ts.
+  const ultimaMap = useMemo(() => ultimaInspecaoRealPorUnidade(inspecoes), [inspecoes])
 
   const inspecoesPorUnidade = useMemo(() => {
     const m = new Map<string, InspecaoComUnidade[]>()

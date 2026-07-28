@@ -39,6 +39,12 @@ export type InspecaoComUnidade = {
   inspectorId: string | null;
   inspector: { id: string; name: string } | null;
   items: InspectionItem[];
+  // true = nasceu só pra pendurar um relato avulso (flag de Manutenção,
+  // Camareira/Governanta, spot UH 3D), não uma Rota de Inspeção completa —
+  // ver comentário em MaintenanceInspection.avulsa no schema. Telas de
+  // acompanhamento de conformidade ignoram essas ao calcular "última
+  // inspeção" (ver ultimaInspecaoRealPorUnidade em lib/domain.ts).
+  avulsa: boolean;
 };
 
 export type DashboardUser = {

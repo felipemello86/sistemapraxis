@@ -104,6 +104,10 @@ export async function POST(req: NextRequest) {
         uhId,
         inspectorId: session.userId,
         date: new Date(),
+        // avulsa=true: relato pontual (Camareira/Governanta), não uma Rota
+        // de Inspeção completa — não conta como "UH inspecionada" pro prazo
+        // de conformidade (ver MaintenanceInspection.avulsa no schema).
+        avulsa: true,
         items: {
           create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, urgente }],
         },

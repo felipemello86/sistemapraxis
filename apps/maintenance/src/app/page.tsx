@@ -225,6 +225,7 @@ export default async function Home() {
     unit: { id: insp.uh.id, name: insp.uh.numero },
     inspectorId: insp.inspectorId,
     inspector: insp.inspector ? { id: insp.inspector.id, name: insp.inspector.nome } : null,
+    avulsa: insp.avulsa,
     items: insp.items.map((it) => ({
       id: it.id,
       checklistItemId: it.checklistItemId,
