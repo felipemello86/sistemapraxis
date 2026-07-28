@@ -11,6 +11,7 @@ import type {
   InspecaoComUnidade,
   ItemInfo,
   ItemInfoLogEntry,
+  LogEvento,
   MaintenanceConfigView,
   SupplierView,
   UhImage,
@@ -59,6 +60,7 @@ export default async function Home() {
     uhsSelecionadasHoje,
     commitments,
     conformitySnapshots,
+    allCardsForLog,
   ] = await Promise.all([
     prisma.uH.findMany({
       where: { tenantId: session.tenantId, ativo: true },
@@ -198,6 +200,42 @@ export default async function Home() {
     prisma.maintenanceConformitySnapshot.findMany({
       where: { tenantId: session.tenantId },
       select: { data: true, conformidade: true },
+    }),
+    // Tela "Log do Sistema" — diferente do fetch `correctionCards` acima
+    // (só itens ainda NAO_CONFORME, pro kanban), este traz TODO card já
+    // criado, resolvido ou não, pra reconstruir o histórico completo de
+    // criação/triagem/execução/reagendamento (pedido explícito do Felipe:
+    // "já incluindo os logs antigos"). Select enxuto — a timeline só
+    // precisa de nome/data/autor, não das fotos/orçamentos completos que o
+    // Kanban usa.
+    prisma.maintenanceCorrectionCard.findMany({
+      where: { tenantId: session.tenantId },
+      select: {
+        id: true,
+        createdAt: true,
+        triagedAt: true,
+        needsMaterial: true,
+        needsExternalService: true,
+        executedAt: true,
+        executedDescription: true,
+        uh: { select: { numero: true } },
+        checklistItem: { select: { name: true } },
+        inspectionItem: { select: { comment: true, urgente: true } },
+        triagedBy: { select: { nome: true } },
+        executedBy: { select: { nome: true } },
+        schedulingLogs: {
+          select: {
+            id: true,
+            createdAt: true,
+            previousSupplierNome: true,
+            previousDate: true,
+            newSupplierNome: true,
+            newDate: true,
+            author: { select: { nome: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
 
@@ -429,6 +467,100 @@ export default async function Home() {
     conformidade: s.conformidade,
   }));
 
+  // Log do Sistema — timeline montada a partir dos dados já buscados acima
+  // (inspections, allCardsForLog, itemInfoLogs), sem tabela de auditoria
+  // dedicada, mesmo padrão da tela equivalente de Housekeeping. uhNumeroPorId
+  // /itemNomePorId só existem pra resolver itemInfoLogs, que não inclui esses
+  // nomes na própria query (ver comentário nela acima).
+  const uhNumeroPorId = new Map(uhs.map((u) => [u.id, u.numero]));
+  const itemNomePorId = new Map(checklistItems.map((i) => [i.id, i.name]));
+
+  const logEventos: LogEvento[] = [];
+
+  for (const insp of inspections) {
+    const ncCount = insp.items.filter((it) => it.status === "NAO_CONFORME").length;
+    logEventos.push({
+      id: `insp-${insp.id}`,
+      tipo: insp.avulsa ? "relato_avulso" : "inspecao",
+      timestamp: insp.date.toISOString(),
+      uhNumero: insp.uh.numero,
+      itemNome: null,
+      atorNome: insp.inspector?.nome ?? null,
+      detalhe: insp.avulsa
+        ? insp.items[0]?.comment ?? "Relato avulso registrado."
+        : `Inspeção completa — ${ncCount} não conformidade${ncCount === 1 ? "" : "s"} de ${insp.items.length} ${insp.items.length === 1 ? "item verificado" : "itens verificados"}.`,
+      urgente: insp.items.some((it) => it.status === "NAO_CONFORME" && it.urgente),
+    });
+  }
+
+  for (const c of allCardsForLog) {
+    const itemNome = c.checklistItem?.name ?? "Relato avulso";
+    const urgente = c.inspectionItem.urgente;
+    logEventos.push({
+      id: `card-criado-${c.id}`,
+      tipo: "correcao_criada",
+      timestamp: c.createdAt.toISOString(),
+      uhNumero: c.uh.numero,
+      itemNome,
+      atorNome: null,
+      detalhe: c.inspectionItem.comment,
+      urgente,
+    });
+    if (c.triagedAt) {
+      logEventos.push({
+        id: `card-triado-${c.id}`,
+        tipo: "correcao_triada",
+        timestamp: c.triagedAt.toISOString(),
+        uhNumero: c.uh.numero,
+        itemNome,
+        atorNome: c.triagedBy?.nome ?? null,
+        detalhe: `Precisa de material: ${c.needsMaterial ? "sim" : "não"} · Precisa de serviço externo: ${c.needsExternalService ? "sim" : "não"}`,
+        urgente,
+      });
+    }
+    if (c.executedAt) {
+      logEventos.push({
+        id: `card-executado-${c.id}`,
+        tipo: "correcao_executada",
+        timestamp: c.executedAt.toISOString(),
+        uhNumero: c.uh.numero,
+        itemNome,
+        atorNome: c.executedBy?.nome ?? null,
+        detalhe: c.executedDescription,
+        urgente,
+      });
+    }
+    for (const l of c.schedulingLogs) {
+      const de = l.previousSupplierNome ?? (l.previousDate ? new Date(l.previousDate).toLocaleDateString("pt-BR") : "—");
+      const para = l.newSupplierNome ?? (l.newDate ? new Date(l.newDate).toLocaleDateString("pt-BR") : "—");
+      logEventos.push({
+        id: `sched-${l.id}`,
+        tipo: "reagendamento",
+        timestamp: l.createdAt.toISOString(),
+        uhNumero: c.uh.numero,
+        itemNome,
+        atorNome: l.author?.nome ?? null,
+        detalhe: `${de} → ${para}`,
+        urgente,
+      });
+    }
+  }
+
+  for (const l of itemInfoLogs) {
+    logEventos.push({
+      id: `info-${l.id}`,
+      tipo: "info_editada",
+      timestamp: l.createdAt.toISOString(),
+      uhNumero: uhNumeroPorId.get(l.uhId) ?? "—",
+      itemNome: itemNomePorId.get(l.checklistItemId) ?? null,
+      atorNome: l.author?.nome ?? null,
+      detalhe: l.newInfo,
+      urgente: false,
+    });
+  }
+
+  logEventos.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
   return (
     <Dashboard
       user={{
@@ -458,6 +590,7 @@ export default async function Home() {
       commitments={commitmentsView}
       hojeSP={hoje}
       conformitySnapshots={conformitySnapshotsView}
+      logEventos={logEventos}
     />
   );
 }

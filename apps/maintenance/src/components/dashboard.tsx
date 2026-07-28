@@ -19,6 +19,7 @@ import {
   Package,
   UtensilsCrossed,
   Sparkles,
+  History,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/apiFetch'
@@ -37,6 +38,7 @@ import type {
   ChecklistItem,
   ItemInfo,
   ItemInfoLogEntry,
+  LogEvento,
   MaintenanceConfigView,
   SupplierView,
   UhImage,
@@ -50,6 +52,7 @@ import { Informacoes } from '@/components/views/informacoes'
 import { Correcao } from '@/components/views/correcao'
 import { Performance } from '@/components/views/performance'
 import { Uh3D } from '@/components/views/uh-3d'
+import { Logs } from '@/components/views/logs'
 import { Configuracoes } from '@/components/views/configuracoes'
 
 // Portado de apps/maintenance/src/components/dashboard.tsx (v1). Diferenças:
@@ -173,6 +176,7 @@ const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'correcao', label: 'Correção', icon: Wrench },
   { id: 'performance', label: 'Performance', icon: BarChart3 },
   { id: 'uh3d', label: 'UH 3D', icon: Box },
+  { id: 'logs', label: 'Log do Sistema', icon: History },
   { id: 'config', label: 'Configurações', icon: Settings },
 ]
 
@@ -199,6 +203,7 @@ export function Dashboard({
   hojeSP,
   cardsExecutadasHoje,
   conformitySnapshots,
+  logEventos,
 }: {
   user: DashboardUser
   // false = usuário pode ver todas as telas normalmente, mas os botões de
@@ -233,6 +238,9 @@ export function Dashboard({
   // Fallback decorativo pro gráfico de Evolução (ver comentário completo em
   // page.tsx e no schema, model MaintenanceConformitySnapshot).
   conformitySnapshots: ConformitySnapshot[]
+  // Timeline "Log do Sistema" — já vem pronta e ordenada (desc) do page.tsx,
+  // ver comentário completo em lib/types.ts (LogEvento).
+  logEventos: LogEvento[]
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -456,6 +464,7 @@ export function Dashboard({
             />
           )}
           {view === 'performance' && <Performance commitments={commitments} />}
+          {view === 'logs' && <Logs eventos={logEventos} />}
           {view === 'uh3d' && (
             <Uh3D
               podeOperar={podeOperar}

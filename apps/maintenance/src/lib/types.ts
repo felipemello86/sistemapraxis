@@ -61,6 +61,7 @@ export type ViewId =
   | "correcao"
   | "performance"
   | "uh3d"
+  | "logs"
   | "config";
 
 // Cômodos padrão da tela imersiva "UH 3D" — "porta" é sempre a imagem de
@@ -220,6 +221,33 @@ export type CorrectionCardView = {
   executedPhotos: string[];
   executedAt: string | null; // ISO
   executedByName: string | null;
+};
+
+// Tela "Log do Sistema" — timeline só de leitura, montada a partir de dados
+// que já existem (Inspeções, cards de Correção, edições de Informações do
+// Item), sem tabela de auditoria dedicada — mesmo padrão já usado na tela
+// equivalente de Housekeeping (apps/housekeeping/src/app/api/logs/route.ts).
+// Pedido explícito do Felipe, motivado pela investigação do card órfão da
+// 406-V (ver comentário em MaintenanceInspection.avulsa no schema): dá pra
+// reconstruir o histórico de tudo que JÁ tem timestamp/autor no banco, mas
+// não existe (e não dá pra recuperar retroativamente) log de exclusão de
+// item do catálogo — MaintenanceChecklistItem não tem histórico próprio.
+export type LogEvento = {
+  id: string;
+  tipo:
+    | "inspecao" // Rota de Inspeção completa registrada
+    | "relato_avulso" // flag de Manutenção / Camareira / Governanta / spot UH 3D
+    | "correcao_criada" // card de Correção nasceu (NC virou card)
+    | "correcao_triada" // needsMaterial/needsExternalService respondidos
+    | "correcao_executada" // reparo concluído, item voltou a CONFORME
+    | "reagendamento" // MaintenanceSchedulingLog — fornecedor/data trocados
+    | "info_editada"; // MaintenanceItemInfo editado (IV-UH)
+  timestamp: string; // ISO
+  uhNumero: string;
+  itemNome: string | null;
+  atorNome: string | null;
+  detalhe: string | null;
+  urgente: boolean;
 };
 
 export type DailyCommitmentView = {
