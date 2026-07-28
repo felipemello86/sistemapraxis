@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -16,7 +16,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
-import { Activity, ClipboardList } from 'lucide-react'
+import { Activity, ClipboardList, Maximize2, Minimize2 } from 'lucide-react'
 import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
 import type { AtribuicoesPorUnidade, ChecklistItem, ConformitySnapshot, InspecaoComUnidade, UnitOption } from '@/lib/types'
 
@@ -151,15 +151,77 @@ export function Evolucao({
   // Gerencial (rolagem só dentro do bloco do gráfico, não na tela inteira).
   const larguraGraficoDiario = Math.max(serieDiaria.length * 44, 600)
 
+  // Modo maximizado do gráfico "Conformidade ao longo do tempo" — pedido
+  // explícito do Felipe: com a janela agora em 120 dias (ver DIAS_JANELA
+  // acima), o gráfico ficou bem mais largo, então ajuda ter um jeito de
+  // expandir pra tela cheia do navegador em vez de só rolar dentro do card
+  // pequeno. Trava o scroll da página por trás enquanto expandido (senão dá
+  // pra rolar o conteúdo atrás do overlay, que fica meio quebrado) e fecha
+  // com Esc além do botão. Declarado ANTES do efeito de scroll logo abaixo,
+  // que depende dele.
+  const [expandido, setExpandido] = useState(false)
+  useEffect(() => {
+    if (!expandido) return
+    const bodyOverflowAnterior = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setExpandido(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = bodyOverflowAnterior
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [expandido])
+
   // O dia mais recente (hoje) é o último ponto da série, então já nasce
   // rolado pro final — sem isso o usuário abre a tela e cai no dia mais
   // antigo, tendo que arrastar manualmente até achar "hoje" (pedido
   // explícito pra abrir direto no dia mais recente).
+  // Mesmo ref usado nos dois modos (compacto/expandido) — só um dos dois
+  // divs de scroll está montado por vez (ver `expandido` acima), então não
+  // há conflito. `expandido` entra nas dependências pra rolar de novo pro
+  // final ao trocar de modo (o outro div nasce com scrollLeft=0 senão).
   const scrollGraficoRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = scrollGraficoRef.current
     if (el) el.scrollLeft = el.scrollWidth
-  }, [serieDiaria])
+  }, [serieDiaria, expandido])
+
+  // Conteúdo do gráfico em si — extraído numa variável pra não duplicar o
+  // AreaChart inteiro entre o card normal e o overlay maximizado abaixo, só
+  // a altura do container muda entre os dois.
+  const graficoConformidade = (
+    <AreaChart data={serieDiaria} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
+      <defs>
+        <linearGradient id="fillConf" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor="var(--color-conformidade)" stopOpacity={0.3} />
+          <stop offset="95%" stopColor="var(--color-conformidade)" stopOpacity={0.02} />
+        </linearGradient>
+      </defs>
+      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+      <XAxis
+        dataKey="dia"
+        tickLine={false}
+        axisLine={false}
+        tickMargin={8}
+        interval={0}
+        angle={-45}
+        textAnchor="end"
+        height={50}
+        tick={{ fontSize: 11 }}
+      />
+      <YAxis tickLine={false} axisLine={false} width={40} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+      <ChartTooltip content={<ChartTooltipContent />} />
+      <Area
+        dataKey="conformidade"
+        type="monotone"
+        stroke="var(--color-conformidade)"
+        fill="url(#fillConf)"
+        strokeWidth={2.5}
+      />
+    </AreaChart>
+  )
 
   return (
     <div className="space-y-6">
@@ -179,65 +241,71 @@ export function Evolucao({
         />
       </div>
 
-      <Panel
-        title="Conformidade ao longo do tempo"
-        description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias). Arraste pros lados pra ver os outros dias.`}
-      >
-        <div className="overflow-x-auto" ref={scrollGraficoRef}>
-          <div style={{ minWidth: larguraGraficoDiario }}>
-            <ChartContainer
-              config={{
-                conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
-              }}
-              className="h-72 w-full"
+      {!expandido ? (
+        <Panel
+          title="Conformidade ao longo do tempo"
+          description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias). Arraste pros lados pra ver os outros dias.`}
+          action={
+            <button
+              type="button"
+              onClick={() => setExpandido(true)}
+              title="Expandir gráfico"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              <AreaChart data={serieDiaria} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
-                <defs>
-                  <linearGradient id="fillConf" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor="var(--color-conformidade)"
-                      stopOpacity={0.3}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor="var(--color-conformidade)"
-                      stopOpacity={0.02}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="dia"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  interval={0}
-                  angle={-45}
-                  textAnchor="end"
-                  height={50}
-                  tick={{ fontSize: 11 }}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  width={40}
-                  domain={[0, 100]}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Area
-                  dataKey="conformidade"
-                  type="monotone"
-                  stroke="var(--color-conformidade)"
-                  fill="url(#fillConf)"
-                  strokeWidth={2.5}
-                />
-              </AreaChart>
-            </ChartContainer>
+              <Maximize2 className="h-4 w-4" />
+            </button>
+          }
+        >
+          <div className="overflow-x-auto" ref={scrollGraficoRef}>
+            <div style={{ minWidth: larguraGraficoDiario }}>
+              <ChartContainer
+                config={{
+                  conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
+                }}
+                className="h-72 w-full"
+              >
+                {graficoConformidade}
+              </ChartContainer>
+            </div>
           </div>
+        </Panel>
+      ) : (
+        // Só um dos dois (compacto OU expandido) fica montado por vez —
+        // renderizar os dois ao mesmo tempo duplicaria o id do
+        // <linearGradient> (mesmo JSX reaproveitado nos dois), que é único
+        // por documento; com getElementById dando ambíguo, o preenchimento
+        // do segundo gráfico ficaria arriscado.
+        <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 md:p-6">
+          <Panel
+            title="Conformidade ao longo do tempo"
+            description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias). Arraste pros lados pra ver os outros dias.`}
+            action={
+              <button
+                type="button"
+                onClick={() => setExpandido(false)}
+                title="Reduzir gráfico (Esc)"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </button>
+            }
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden" ref={scrollGraficoRef}>
+              <div style={{ minWidth: larguraGraficoDiario, height: '100%' }}>
+                <ChartContainer
+                  config={{
+                    conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
+                  }}
+                  className="h-full w-full"
+                >
+                  {graficoConformidade}
+                </ChartContainer>
+              </div>
+            </div>
+          </Panel>
         </div>
-      </Panel>
+      )}
 
       <Panel
         title="Volume de inspeções"
