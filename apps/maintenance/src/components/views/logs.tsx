@@ -65,12 +65,30 @@ const TIPO_FILTRO_OPCOES: { value: 'todos' | LogEvento['tipo']; label: string }[
   { value: 'info_editada', label: 'Informações do item' },
 ]
 
+// Sempre fuso America/Sao_Paulo, explícito — mesmo padrão já usado em
+// page.tsx (agrupamento de commitments por dia) e em InspecaoComUnidade.date
+// em outras telas. Sem isso, agrupar por dia batendo em `timestamp.slice(0,10)`
+// pega a data em UTC: um evento das 21h-23h59 (horário de Brasília, UTC-3)
+// vira o dia seguinte em UTC e aparece agrupado no dia errado.
+function diaSP(iso: string) {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+}
+
 function formatarDataCompleta(iso: string) {
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(iso))
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'America/Sao_Paulo',
+  }).format(new Date(iso))
 }
 
 function formatarHora(iso: string) {
-  return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  }).format(new Date(iso))
 }
 
 const PAGINA = 60
@@ -94,7 +112,7 @@ export function Logs({ eventos }: { eventos: LogEvento[] }) {
   const grupos = useMemo(() => {
     const m = new Map<string, LogEvento[]>()
     for (const e of visiveis) {
-      const dia = e.timestamp.slice(0, 10)
+      const dia = diaSP(e.timestamp)
       const lista = m.get(dia) ?? []
       lista.push(e)
       m.set(dia, lista)
