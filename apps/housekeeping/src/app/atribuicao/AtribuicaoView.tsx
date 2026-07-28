@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { Plus, Trash2, Send, CheckCircle2, Clock, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Wrench, BedDouble } from "lucide-react";
+import { Plus, Trash2, Send, CheckCircle2, Clock, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Wrench, BedDouble, MessageCircle } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -17,7 +17,18 @@ import { apiFetch } from "@/lib/apiFetch";
 //     Telegram de fato (TODO na API) — o botão funciona, só não dispara nada
 //     ainda.
 
-type UH = { id: string; numero: string; tipo: string; status: string; emManutencao: boolean; manutencaoDescricao?: string | null };
+type UH = {
+  id: string;
+  numero: string;
+  tipo: string;
+  status: string;
+  emManutencao: boolean;
+  manutencaoDescricao?: string | null;
+  // Comentário livre cadastrado em Seleção e Liberação — pedido explícito
+  // do Felipe pra aparecer sempre, também na Atribuição Diária.
+  comentario?: string | null;
+  comentarioPorNome?: string | null;
+};
 type User = { id: string; nome: string; role: string; foto?: string | null };
 type Program = { id: string; nome: string; tipo: string };
 type Assignment = {
@@ -91,6 +102,17 @@ function AssignmentCard({
         {a.uh.emManutencao && a.uh.manutencaoDescricao && (
           <p className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded-lg px-2 py-1 mt-1">
             {a.uh.manutencaoDescricao}
+          </p>
+        )}
+        {a.uh.comentario && (
+          <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 mt-1 flex items-start gap-1">
+            <MessageCircle className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
+            <span>
+              {a.uh.comentario}
+              {a.uh.comentarioPorNome && (
+                <span className="block text-[10px] text-blue-400 mt-0.5">— {a.uh.comentarioPorNome}</span>
+              )}
+            </span>
           </p>
         )}
         {temMultiplasCamareiras && (

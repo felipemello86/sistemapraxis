@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
+import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, MessageCircle, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import GeoCheckin from "./GeoCheckin";
@@ -21,7 +21,20 @@ type Assignment = {
   solicitacaoStatus: string | null;
   solicitacaoTipo: string | null;
   temReserva?: boolean;
-  uh: { id: string; numero: string; tipo: string; status: string; emManutencao?: boolean; manutencaoDescricao?: string | null };
+  uh: {
+    id: string;
+    numero: string;
+    tipo: string;
+    status: string;
+    emManutencao?: boolean;
+    manutencaoDescricao?: string | null;
+    // Comentário livre da UH (ex.: "Hóspede só fará check-in às 16h"),
+    // cadastrado em Seleção e Liberação — pedido explícito do Felipe pra
+    // aparecer sempre (Minhas UHs, Atribuição, durante a Limpeza), não só
+    // lá. Ver UH.comentario/comentarioPorNome no schema Prisma.
+    comentario?: string | null;
+    comentarioPorNome?: string | null;
+  };
   program: { id: string; nome: string; tipo: string; steps: { id: string; titulo: string; descricao: string; ordem: number }[] } | null;
   cleaningSession: {
     id: string;
@@ -778,6 +791,17 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
           <div className="flex items-center gap-1.5 mt-2 text-xs bg-white/15 rounded-lg px-2 py-1 w-fit">
             <Clock className="w-3.5 h-3.5" /> Tempo pausado nesta etapa
           </div>
+          {assignmentAtivo.uh.comentario && (
+            <div className="mt-2 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                {assignmentAtivo.uh.comentario}
+                {assignmentAtivo.uh.comentarioPorNome && (
+                  <span className="block text-xs opacity-70 mt-0.5">— {assignmentAtivo.uh.comentarioPorNome}</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
         <ModalCancelarUH />
 
@@ -1020,6 +1044,17 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
             <Clock className="w-4 h-4" />
             <span className="font-mono">{formatarTempo(elapsed)}</span>
           </div>
+          {assignmentAtivo?.uh.comentario && (
+            <div className="mt-2 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                {assignmentAtivo.uh.comentario}
+                {assignmentAtivo.uh.comentarioPorNome && (
+                  <span className="block text-xs opacity-70 mt-0.5">— {assignmentAtivo.uh.comentarioPorNome}</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
         <ModalCancelarUH />
 
@@ -1347,6 +1382,17 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                 <span className="font-semibold">Observações: </span>{assignmentAtivo.observacoes}
               </div>
             )}
+            {assignmentAtivo.uh.comentario && (
+              <div className="mt-2 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+                <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>
+                  {assignmentAtivo.uh.comentario}
+                  {assignmentAtivo.uh.comentarioPorNome && (
+                    <span className="block text-xs opacity-70 mt-0.5">— {assignmentAtivo.uh.comentarioPorNome}</span>
+                  )}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 mt-2 text-2xl font-mono font-bold">
               <Clock className="w-5 h-5" />
               {formatarTempo(elapsed)}
@@ -1387,6 +1433,17 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
               <p className="text-xs opacity-60">Meta: 25 min</p>
             </div>
           </div>
+          {assignmentAtivo.uh.comentario && (
+            <div className="mt-1 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                {assignmentAtivo.uh.comentario}
+                {assignmentAtivo.uh.comentarioPorNome && (
+                  <span className="block text-xs opacity-70 mt-0.5">— {assignmentAtivo.uh.comentarioPorNome}</span>
+                )}
+              </span>
+            </div>
+          )}
           {/* Barra de progresso */}
           <div className="mt-3 bg-blue-600 rounded-full h-2">
             <div
@@ -1780,6 +1837,17 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                     {a.uh.emManutencao && a.uh.manutencaoDescricao && (
                       <p className="w-full text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 mt-1">
                         {a.uh.manutencaoDescricao}
+                      </p>
+                    )}
+                    {a.uh.comentario && (
+                      <p className="w-full text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 mt-1 flex items-start gap-1">
+                        <MessageCircle className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
+                        <span>
+                          {a.uh.comentario}
+                          {a.uh.comentarioPorNome && (
+                            <span className="block text-[10px] text-blue-400 mt-0.5">— {a.uh.comentarioPorNome}</span>
+                          )}
+                        </span>
                       </p>
                     )}
                     {a.temReserva && (

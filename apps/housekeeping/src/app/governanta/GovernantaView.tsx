@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ChevronLeft, ChevronDown, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, ThumbsUp, ThumbsDown, Pencil, Star, Undo2, Flag, Wrench, HelpCircle, Info, Camera } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ChevronLeft, ChevronDown, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, MessageCircle, ThumbsUp, ThumbsDown, Pencil, Star, Undo2, Flag, Wrench, HelpCircle, Info, Camera } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/g/[token]/GovernantaView.tsx (v1),
@@ -25,7 +25,15 @@ type Sessao = {
   id: string;
   finalizadaEm: string;
   duracaoSegundos: number;
-  uh: { id: string; numero: string; tipo: string };
+  uh: {
+    id: string;
+    numero: string;
+    tipo: string;
+    // Comentário livre cadastrado em Seleção e Liberação — pedido explícito
+    // do Felipe pra aparecer sempre, também pra Governança.
+    comentario?: string | null;
+    comentarioPorNome?: string | null;
+  };
   camareira: { nome: string };
   assignment: { data: string };
   inspection: {
@@ -714,6 +722,17 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
               <p className="text-xs opacity-70 mt-1">{Math.min(itemAtualIdx + 1, itens.length)} de {itens.length} itens</p>
             </>
           )}
+          {sessaoAtiva.uh.comentario && (
+            <div className="mt-2 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                {sessaoAtiva.uh.comentario}
+                {sessaoAtiva.uh.comentarioPorNome && (
+                  <span className="block text-xs opacity-70 mt-0.5">— {sessaoAtiva.uh.comentarioPorNome}</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="p-4">
@@ -1338,6 +1357,12 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                 <h3 className="font-bold">{s.uh.numero}</h3>
                 <p className="text-sm text-gray-500">por {s.camareira.nome}</p>
                 {s.inspection && !s.inspection.finalizadaEm && <p className="text-xs text-blue-600">▶ Inspeção em andamento</p>}
+                {s.uh.comentario && (
+                  <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 mt-1 flex items-start gap-1">
+                    <MessageCircle className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
+                    <span>{s.uh.comentario}</span>
+                  </p>
+                )}
               </div>
               <ChevronRight className="w-5 h-5 text-indigo-400" />
             </div>
@@ -1355,6 +1380,12 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
               <div>
                 <h3 className="font-bold">{s.uh.numero}</h3>
                 <p className="text-sm text-gray-500">por {s.camareira.nome}</p>
+                {s.uh.comentario && (
+                  <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 mt-1 flex items-start gap-1">
+                    <MessageCircle className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
+                    <span>{s.uh.comentario}</span>
+                  </p>
+                )}
               </div>
               {s.inspection!.totalFalhas === 0 ? (
                 <CheckCircle2 className="w-5 h-5 text-green-500" />
