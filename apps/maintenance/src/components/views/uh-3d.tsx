@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils'
 import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '@/lib/domain'
 import { editarSpotInspecaoAction, registrarNcAvulsaAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
-import { apiFetch } from '@/lib/apiFetch'
+import { uploadFoto } from '@/lib/uploadFoto'
 import { ItemInfoField } from '@/components/item-info-field'
 import { DialogCorrigirItem } from '@/components/dialog-corrigir-item'
 import { ROOM_TYPES, ROOM_TYPE_LABELS } from '@/lib/types'
@@ -813,23 +813,8 @@ function SpotDetailDialog({
           toast.error(`"${file.name}" é maior que 8MB — pulada.`)
           continue
         }
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('pasta', `uh3d-edicoes/${unidadeNome}`)
-        fd.append('tipo', 'inspecao')
-        const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-        if (!res.ok) {
-          let msg = `Falha no upload (HTTP ${res.status}).`
-          try {
-            const errBody = await res.json()
-            if (errBody?.error) msg = errBody.error
-          } catch {
-            // resposta não era JSON — mantém a mensagem com o status.
-          }
-          throw new Error(msg)
-        }
-        const data = await res.json()
-        urls.push(data.url as string)
+        const data = await uploadFoto(file, `uh3d-edicoes/${unidadeNome}`, 'inspecao')
+        urls.push(data.url)
       }
       setFotos((f) => [...f, ...urls])
     } catch (e) {

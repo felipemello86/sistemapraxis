@@ -30,7 +30,7 @@ import { toast } from 'sonner'
 import { corCategoria } from '@/lib/domain'
 import { createInspecaoAction, removerItemIncompativelAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
-import { apiFetch } from '@/lib/apiFetch'
+import { uploadFoto } from '@/lib/uploadFoto'
 import type { ChecklistItem, UnitOption } from '@/lib/types'
 
 // Fluxo gamificado item a item (execução + resumo), extraído de
@@ -167,21 +167,15 @@ export function InspecaoWizard({
           toast.error(`"${file.name}" é maior que 8MB — pulado.`)
           continue
         }
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('pasta', `inspecoes/${unidade.name}`)
-        fd.append('tipo', 'item')
-        const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-        if (!res.ok) throw new Error('Falha no upload.')
-        const data = await res.json()
-        urls.push(data.url as string)
+        const data = await uploadFoto(file, `inspecoes/${unidade.name}`, 'item')
+        urls.push(data.url)
       }
       setRespostas((r) => ({
         ...r,
         [itemId]: { ...r[itemId], photos: [...(r[itemId]?.photos ?? []), ...urls] },
       }))
-    } catch {
-      toast.error('Não foi possível enviar a(s) foto(s).')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível enviar a(s) foto(s).')
     } finally {
       setUploadingItemId(null)
     }

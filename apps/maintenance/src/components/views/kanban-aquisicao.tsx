@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import { formatarData } from '@/lib/domain'
 import { comprarMaterialAction } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
-import { apiFetch } from '@/lib/apiFetch'
+import { uploadFoto } from '@/lib/uploadFoto'
 import { CorrectionCardHeader } from '@/components/views/correction-card-header'
 import type { CorrectionCardView } from '@/lib/types'
 
@@ -51,16 +51,10 @@ export function KanbanAquisicao({
     if (!file) return
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('pasta', 'correcao-aquisicao')
-      fd.append('tipo', 'cupom-fiscal')
-      const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-      if (!res.ok) throw new Error('Falha no upload.')
-      const data = await res.json()
-      setCupomUrl(data.url as string)
-    } catch {
-      toast.error('Não foi possível enviar o cupom fiscal.')
+      const data = await uploadFoto(file, 'correcao-aquisicao', 'cupom-fiscal')
+      setCupomUrl(data.url)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível enviar o cupom fiscal.')
     } finally {
       setUploading(false)
     }

@@ -22,7 +22,7 @@ import {
   triarCardAProcessarAction,
 } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
-import { apiFetch } from '@/lib/apiFetch'
+import { uploadFoto } from '@/lib/uploadFoto'
 import { CorrectionCardHeader } from '@/components/views/correction-card-header'
 import type { CorrectionCardView, DailyCommitmentView } from '@/lib/types'
 
@@ -653,16 +653,10 @@ function DialogExecutarCard({
     if (!file || fotos.length >= MAX_FOTOS_EXECUCAO) return
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('pasta', 'correcao-execucao')
-      fd.append('tipo', 'execucao')
-      const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-      if (!res.ok) throw new Error('Falha no upload.')
-      const data = await res.json()
-      setFotos((f) => [...f, data.url as string])
-    } catch {
-      toast.error('Não foi possível enviar a foto.')
+      const data = await uploadFoto(file, 'correcao-execucao', 'execucao')
+      setFotos((f) => [...f, data.url])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível enviar a foto.')
     } finally {
       setUploading(false)
     }

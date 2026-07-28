@@ -23,7 +23,7 @@ import {
   deleteUhSpotAction,
 } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
-import { apiFetch } from '@/lib/apiFetch'
+import { uploadFoto } from '@/lib/uploadFoto'
 import { ROOM_TYPES, ROOM_TYPE_LABELS } from '@/lib/types'
 import type {
   AtribuicoesPorUnidade,
@@ -111,25 +111,7 @@ export function Uh3dConfigTab({
     }
     setUploadingTipo(tipo)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('pasta', `uh3d/${uhId}`)
-      fd.append('tipo', tipo)
-      const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-      if (!res.ok) {
-        // Tenta extrair a mensagem real do erro (nossa rota devolve JSON com
-        // `error`; uma falha de plataforma — ex.: limite de tamanho do corpo
-        // da requisição no Vercel — pode devolver texto puro em vez de JSON).
-        let msg = `Falha no upload (HTTP ${res.status}).`
-        try {
-          const errBody = await res.json()
-          if (errBody?.error) msg = errBody.error
-        } catch {
-          // resposta não era JSON — mantém a mensagem com o status.
-        }
-        throw new Error(msg)
-      }
-      const data = await res.json()
+      const data = await uploadFoto(file, `uh3d/${uhId}`, tipo)
       const novoId = unwrapSafeAction(await salvarUhImagemAction({ uhId, tipo, imageUrl: data.url }))
       // Já abre o editor de spots na foto recém-enviada — próximo passo
       // natural depois de subir uma imagem.

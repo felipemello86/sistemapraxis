@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { formatarData } from '@/lib/domain'
 import { salvarInfoItemAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
-import { apiFetch } from '@/lib/apiFetch'
+import { uploadFoto } from '@/lib/uploadFoto'
 import type { ItemInfoLogEntry } from '@/lib/types'
 
 const MAX_FOTOS_INFO = 4
@@ -85,23 +85,8 @@ export function ItemInfoField({
           toast.error(`"${file.name}" é maior que 8MB — pulada.`)
           continue
         }
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('pasta', `iv-uh/${uhId}`)
-        fd.append('tipo', 'info-item')
-        const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-        if (!res.ok) {
-          let msg = `Falha no upload (HTTP ${res.status}).`
-          try {
-            const errBody = await res.json()
-            if (errBody?.error) msg = errBody.error
-          } catch {
-            // resposta não era JSON — mantém a mensagem com o status.
-          }
-          throw new Error(msg)
-        }
-        const data = await res.json()
-        urls.push(data.url as string)
+        const data = await uploadFoto(file, `iv-uh/${uhId}`, 'info-item')
+        urls.push(data.url)
       }
       const novasFotos = [...fotos, ...urls]
       setFotos(novasFotos)

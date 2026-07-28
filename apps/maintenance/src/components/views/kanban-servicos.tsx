@@ -26,7 +26,7 @@ import { toast } from 'sonner'
 import { formatarData } from '@/lib/domain'
 import { agendarServicoAction, executarServicoAction, registrarCotacaoAction } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
-import { apiFetch } from '@/lib/apiFetch'
+import { uploadFoto } from '@/lib/uploadFoto'
 import { CorrectionCardHeader } from '@/components/views/correction-card-header'
 import type { CorrectionCardView, SupplierView } from '@/lib/types'
 
@@ -488,16 +488,10 @@ function DialogExecutarServico({ card, onClose }: { card: CorrectionCardView | n
     if (!file || fotos.length >= MAX_FOTOS_EXECUCAO) return
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      fd.append('pasta', 'correcao-servicos')
-      fd.append('tipo', 'execucao')
-      const res = await apiFetch('/api/upload', { method: 'POST', body: fd })
-      if (!res.ok) throw new Error('Falha no upload.')
-      const data = await res.json()
-      setFotos((f) => [...f, data.url as string])
-    } catch {
-      toast.error('Não foi possível enviar a foto.')
+      const data = await uploadFoto(file, 'correcao-servicos', 'execucao')
+      setFotos((f) => [...f, data.url])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível enviar a foto.')
     } finally {
       setUploading(false)
     }
