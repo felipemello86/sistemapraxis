@@ -1575,6 +1575,15 @@ model MaintenanceDailyCommitment {
   // explícito: "10 previstos + 1 intempestivo executado = 110%").
   totalPrevisto Int @default(0)
 
+  // Retrato ("snapshot") das UHs com inspeção em atraso no momento em que o
+  // Resultado Diário foi enviado (ver listarUHsEmAtraso em
+  // apps/maintenance/src/lib/dailyReport.ts) — congelado igual
+  // conformidadeDepois, pra não ficar mudando retroativamente conforme o
+  // relógio avança. JSON array de {uhNumero, dias}. Pedido explícito do
+  // Felipe: "a relação de inspeções em atraso deve ser um dos itens do
+  // Relatório Diário".
+  uhsEmAtrasoSnapshot String?
+
   cards MaintenanceCorrectionCard[]
 
   createdAt DateTime @default(now())

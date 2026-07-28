@@ -539,7 +539,7 @@ export function Informacoes({
             </button>
           </div>
           <div className="divide-y divide-border/70">
-          {linhas.map(({ unidade, ultima, dias, historico: historicoDaUnidade }) => {
+          {linhas.map(({ unidade, ultima, dias, pendente, historico: historicoDaUnidade }) => {
             const aberta = expandida === unidade.id
             return (
               <div key={unidade.id} className="py-3">
@@ -562,25 +562,37 @@ export function Informacoes({
                       )}
                     </p>
                   </div>
-                  {!ultima ? (
+                  <div className="flex shrink-0 flex-col items-end gap-1">
                     <Badge
                       variant="outline"
-                      className="shrink-0 border-border bg-muted text-muted-foreground"
-                    >
-                      Pendente
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className={`shrink-0 ${
-                        temPendencia(ultima)
+                      className={
+                        pendente
                           ? 'border-[var(--warning)]/30 bg-[var(--warning)]/12 text-[var(--warning)]'
                           : 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
-                      }`}
+                      }
                     >
-                      {labelResultado(ultima)}
+                      {pendente ? 'Em Atraso' : 'Em dia'}
                     </Badge>
-                  )}
+                    {!ultima ? (
+                      <Badge
+                        variant="outline"
+                        className="border-border bg-muted text-muted-foreground"
+                      >
+                        Pendente
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className={
+                          temPendencia(ultima)
+                            ? 'border-[var(--warning)]/30 bg-[var(--warning)]/12 text-[var(--warning)]'
+                            : 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
+                        }
+                      >
+                        {labelResultado(ultima)}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <Button
                   size="sm"
@@ -635,12 +647,13 @@ export function Informacoes({
                     <SortIcon field="ultima" />
                   </button>
                 </th>
+                <th className="pb-3 pr-4 font-medium">Prazo da Inspeção</th>
                 <th className="pb-3 pr-4 font-medium">Situação</th>
                 <th className="pb-3 font-medium" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border/70">
-              {linhas.map(({ unidade, ultima, dias, historico: historicoDaUnidade }) => {
+              {linhas.map(({ unidade, ultima, dias, pendente, historico: historicoDaUnidade }) => {
                 const aberta = expandida === unidade.id
                 return (
                   <Fragment key={unidade.id}>
@@ -661,6 +674,18 @@ export function Informacoes({
                         ) : (
                           'Nunca inspecionada'
                         )}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Badge
+                          variant="outline"
+                          className={
+                            pendente
+                              ? 'border-[var(--warning)]/30 bg-[var(--warning)]/12 text-[var(--warning)]'
+                              : 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
+                          }
+                        >
+                          {pendente ? 'Em Atraso' : 'Em dia'}
+                        </Badge>
                       </td>
                       <td className="py-3 pr-4">
                         {!ultima ? (
@@ -698,7 +723,7 @@ export function Informacoes({
                     </tr>
                     {aberta && (
                       <tr key={`${unidade.id}-detalhe`}>
-                        <td colSpan={5} className="bg-muted/30 px-4 py-3">
+                        <td colSpan={6} className="bg-muted/30 px-4 py-3">
                           <DetalheHistorico unidade={unidade} historicoDaUnidade={historicoDaUnidade} />
                         </td>
                       </tr>

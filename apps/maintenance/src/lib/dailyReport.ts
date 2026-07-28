@@ -45,6 +45,68 @@ export async function calcularConformidadeAtual(tenantId: string): Promise<numbe
 }
 
 /**
+ * UHs com inspeção em atraso de um tenant — mesmo critério de
+ * "pendente"/"Em Atraso" da tela Informações (informacoes.tsx: dias===null
+ * || dias>=maxDias, só sobre Inspeção real, avulsa=false, ver
+ * ultimaInspecaoRealPorUnidade em apps/maintenance/src/lib/domain.ts).
+ * Reimplementado aqui direto sobre Prisma (mesmo padrão de
+ * calcularConformidadeAtual acima) porque roda em contexto de
+ * servidor/cron, sem o array já carregado no client.
+ */
+export async function listarUHsEmAtraso(tenantId: string) {
+  const [config, unidades, inspecoes] = await Promise.all([
+    prisma.maintenanceConfig.findUnique({ where: { tenantId } }),
+    prisma.uH.findMany({ where: { tenantId, ativo: true }, select: { id: true, numero: true } }),
+    prisma.maintenanceInspection.findMany({
+      where: { tenantId, avulsa: false },
+      select: { uhId: true, date: true },
+    }),
+  ]);
+  const maxDias = config?.maxDaysBetweenInspections ?? 90;
+
+  const ultimaPorUnidade = new Map<string, Date>();
+  for (const insp of inspecoes) {
+    const atual = ultimaPorUnidade.get(insp.uhId);
+    if (!atual || insp.date > atual) ultimaPorUnidade.set(insp.uhId, insp.date);
+  }
+
+  const agora = Date.now();
+  return unidades
+    .map((u) => {
+      const ultima = ultimaPorUnidade.get(u.id) ?? null;
+      const dias = ultima ? Math.floor((agora - ultima.getTime()) / (1000 * 60 * 60 * 24)) : null;
+      return { uhId: u.id, uhNumero: u.numero, dias, pendente: dias === null || dias >= maxDias };
+    })
+    .filter((l) => l.pendente)
+    .sort((a, b) => (b.dias ?? Infinity) - (a.dias ?? Infinity));
+}
+
+/**
+ * Notifica Gerente/Governanta/Master se houver alguma UH com inspeção em
+ * atraso — chamada pelo cron das 8h (api/cron/inspecoes-atrasadas/route.ts).
+ * Pedido explícito do Felipe: "às 8am, se houver alguma UH com inspeção em
+ * atraso, emitir notificação para Gerente, Governanta e Master." Não envia
+ * nada se a lista estiver vazia (sem alarme falso todo dia).
+ */
+export async function notificarInspecoesEmAtrasoSeHouver(tenantId: string) {
+  const uhsEmAtraso = await listarUHsEmAtraso(tenantId);
+  if (uhsEmAtraso.length === 0) return 0;
+
+  const exemplos = uhsEmAtraso
+    .slice(0, 5)
+    .map((u) => `UH ${u.uhNumero}`)
+    .join(", ");
+  const resto = uhsEmAtraso.length > 5 ? ` e mais ${uhsEmAtraso.length - 5}` : "";
+
+  await notificarPorRoles(tenantId, ["GERENTE", "GOVERNANTA", "MASTER"], {
+    title: "🕒 Inspeções em atraso",
+    body: `${uhsEmAtraso.length} UH${uhsEmAtraso.length === 1 ? "" : "s"} com inspeção em atraso: ${exemplos}${resto}.`,
+    data: { view: "informacoes" },
+  });
+  return uhsEmAtraso.length;
+}
+
+/**
  * Envia o "Resultado Diário da Manutenção" pra um compromisso do dia — SÓ SE
  * ainda não foi enviado (reportSentAt null). Chamado tanto ao executar o
  * último card pendente do dia quanto pelo cron de 19h — o primeiro que
@@ -69,17 +131,23 @@ export async function enviarResultadoDiarioSeNecessario(commitmentId: string) {
   const naoPrevistoExecutados = commitment.cards.filter((c) => !c.previsto && c.executionStatus === "EXECUTADA").length;
   const naoPrevistoTotal = commitment.cards.filter((c) => !c.previsto).length;
   const conformidadeDepois = await calcularConformidadeAtual(commitment.tenantId);
+  const uhsEmAtraso = await listarUHsEmAtraso(commitment.tenantId);
 
   await prisma.maintenanceDailyCommitment.update({
     where: { id: commitment.id },
-    data: { conformidadeDepois, reportSentAt: new Date() },
+    data: {
+      conformidadeDepois,
+      reportSentAt: new Date(),
+      uhsEmAtrasoSnapshot: JSON.stringify(uhsEmAtraso.map((u) => ({ uhNumero: u.uhNumero, dias: u.dias }))),
+    },
   });
 
   const antes = commitment.conformidadeAntes ?? "—";
   const extraTexto = naoPrevistoTotal > 0 ? `, +${naoPrevistoExecutados}/${naoPrevistoTotal} não previstos` : "";
+  const atrasoTexto = uhsEmAtraso.length > 0 ? ` ${uhsEmAtraso.length} UH(s) com inspeção em atraso.` : "";
   await notificarTodosDoTenant(commitment.tenantId, {
     title: "📋 Resultado Diário da Manutenção",
-    body: `${pct}% da programação de hoje concluída (${executados}/${totalPrevisto} previstos${extraTexto}). Conformidade geral: ${antes}% → ${conformidadeDepois}%.`,
+    body: `${pct}% da programação de hoje concluída (${executados}/${totalPrevisto} previstos${extraTexto}). Conformidade geral: ${antes}% → ${conformidadeDepois}%.${atrasoTexto}`,
     data: { view: "performance" },
   });
 }

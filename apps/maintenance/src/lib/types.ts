@@ -286,4 +286,9 @@ export type DailyCommitmentView = {
     createdAt: string; // ISO
     urgente: boolean;
   }[];
+  // Retrato das UHs com inspeção em atraso no momento em que este relatório
+  // foi enviado (ver uhsEmAtrasoSnapshot no schema + listarUHsEmAtraso em
+  // lib/dailyReport.ts) — congelado, igual conformidadeDepois. null quando o
+  // relatório ainda não foi enviado (reportSentAt null).
+  uhsEmAtraso: { uhNumero: string; dias: number | null }[] | null;
 };

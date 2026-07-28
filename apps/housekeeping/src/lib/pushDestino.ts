@@ -69,6 +69,8 @@ export function resolverDestinoNotificacao(
       return { modulo: "upkeep", caminho: "/?view=correcao" };
     case "performance":
       return { modulo: "upkeep", caminho: "/?view=performance" };
+    case "informacoes":
+      return { modulo: "upkeep", caminho: "/?view=informacoes" };
   }
 
   return null;

@@ -460,6 +460,7 @@ export default async function Home() {
       createdAt: c.createdAt.toISOString(),
       urgente: c.inspectionItem.urgente,
     })),
+    uhsEmAtraso: cm.uhsEmAtrasoSnapshot ? JSON.parse(cm.uhsEmAtrasoSnapshot) : null,
   }));
 
   const conformitySnapshotsView: ConformitySnapshot[] = conformitySnapshots.map((s) => ({

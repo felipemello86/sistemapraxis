@@ -269,6 +269,32 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
                     </ul>
                   )}
                 </div>
+
+                <div>
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <AlertTriangle className="h-3.5 w-3.5 text-[var(--warning)]" />
+                    Inspeções em atraso{c.uhsEmAtraso ? ` (${c.uhsEmAtraso.length})` : ''}
+                  </p>
+                  {c.uhsEmAtraso === null ? (
+                    <p className="text-sm text-muted-foreground">Relatório ainda não enviado.</p>
+                  ) : c.uhsEmAtraso.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhuma UH em atraso nesse dia.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {c.uhsEmAtraso.map((u) => (
+                        <li
+                          key={u.uhNumero}
+                          className="flex items-center justify-between rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/8 px-2.5 py-1.5 text-sm"
+                        >
+                          <span>Unidade {u.uhNumero}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {u.dias === null ? 'Nunca inspecionada' : `${u.dias} dias`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </Panel>
           )
