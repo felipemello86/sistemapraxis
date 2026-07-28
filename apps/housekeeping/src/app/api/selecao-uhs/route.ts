@@ -203,30 +203,37 @@ export async function POST(req: NextRequest) {
   if (!data) return NextResponse.json({ error: "data obrigatória" }, { status: 400 });
 
   const existentes = await prisma.dailyUHSelection.findMany({ where: { tenantId, data } });
-  const liberadasMap = Object.fromEntries(existentes.map((e) => [e.uhId, e]));
 
   const idsAntigos = new Set(existentes.map((e) => e.uhId));
   const idsNovos = new Set((uhIds ?? []) as string[]);
   const removidasIds = [...idsAntigos].filter((id) => !idsNovos.has(id));
-  // const adicionadasIds = [...idsNovos].filter((id) => !idsAntigos.has(id));
+  const adicionadasIds = [...idsNovos].filter((id) => !idsAntigos.has(id));
   // TODO: notificar governanta/suporte via Telegram sobre UHs adicionadas/removidas em edição
 
+  // Só mexe no que de fato mudou (adiciona as novas, remove as tiradas da
+  // lista) — NUNCA apaga/recria as UHs que já estavam e continuam
+  // selecionadas. Antes disso era delete+recreate de TODAS as linhas do dia
+  // a cada "Salvar", mesmo quando só uma UH era adicionada/removida — e o
+  // createMany só levava adiante liberada/liberadaEm/temReserva
+  // explicitamente, então comentario/prioridade/lateCheckout das UHs
+  // inalteradas eram apagados silenciosamente toda vez, e temReserva
+  // especificamente virava uma corrida: se alguém marcasse/desmarcasse a
+  // reserva de uma UH (PATCH toggle_reserva) entre o momento em que este
+  // POST leu `existentes` (linha acima) e o commit do delete+recreate, essa
+  // mudança concorrente era perdida — bug real reportado: "flag de reserva
+  // sendo desabilitada sozinha" (e podia acontecer nos dois sentidos).
   if (removidasIds.length > 0) {
     await prisma.dailyAssignment.deleteMany({
       where: { tenantId, data, uhId: { in: removidasIds } },
     });
+    await prisma.dailyUHSelection.deleteMany({
+      where: { tenantId, data, uhId: { in: removidasIds } },
+    });
   }
 
-  await prisma.dailyUHSelection.deleteMany({ where: { tenantId, data } });
-
-  if (uhIds && uhIds.length > 0) {
+  if (adicionadasIds.length > 0) {
     await prisma.dailyUHSelection.createMany({
-      data: uhIds.map((uhId: string) => ({
-        tenantId, data, uhId,
-        liberada: liberadasMap[uhId]?.liberada ?? false,
-        liberadaEm: liberadasMap[uhId]?.liberadaEm ?? null,
-        temReserva: liberadasMap[uhId]?.temReserva ?? false,
-      })),
+      data: adicionadasIds.map((uhId) => ({ tenantId, data, uhId })),
     });
   }
 
