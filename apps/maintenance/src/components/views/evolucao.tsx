@@ -21,12 +21,32 @@ import { contarConformidade, itensParaUnidade, ultimaInspecaoPorUnidade } from '
 import type { AtribuicoesPorUnidade, ChecklistItem, ConformitySnapshot, InspecaoComUnidade, UnitOption } from '@/lib/types'
 
 // Janela da série diária de conformidade — era 30 dias (pedido antigo: era
-// mensal, virou diária, hoje sempre na ponta direita). Ampliada pra ~4 meses
-// (pedido do Felipe: "queria um seed de 4 meses, saindo de um patamar de
-// 54%... até o valor atual") — sem isso, o histórico fictício semeado em
-// MaintenanceConformitySnapshot nunca apareceria na tela, já que a janela
-// cortava tudo antes dos últimos 30 dias.
-const DIAS_JANELA = 120
+// mensal, virou diária, hoje sempre na ponta direita). Ajustada pra 3 meses
+// (pedido do Felipe) — o histórico fictício semeado em
+// MaintenanceConformitySnapshot cobre essa mesma janela (ver script de seed).
+const DIAS_JANELA = 90
+
+// Cor por score — vermelho (ruim) -> amber -> verde (bom), interpolação
+// linear em 2 trechos (0-50 e 50-100). Usada nos stops do gradiente
+// horizontal do gráfico de Conformidade (pedido do Felipe: "a área sob a
+// curva ir mudando de cor conforme o score, quanto pior mais vermelho").
+function corPorScore(pct: number): string {
+  const paradas: [number, [number, number, number]][] = [
+    [0, [239, 68, 68]], // red-500
+    [50, [245, 158, 11]], // amber-500
+    [100, [34, 197, 94]], // green-500
+  ]
+  const clamped = Math.max(0, Math.min(100, pct))
+  let i = 0
+  while (i < paradas.length - 2 && clamped > paradas[i + 1][0]) i++
+  const [p0, c0] = paradas[i]
+  const [p1, c1] = paradas[i + 1]
+  const t = p1 === p0 ? 0 : (clamped - p0) / (p1 - p0)
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * t)
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * t)
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * t)
+  return `rgb(${r}, ${g}, ${b})`
+}
 
 // Formata como "YYYY-MM-DD" em horário LOCAL (não usar toISOString, que
 // converte pra UTC e pode empurrar a data um dia pra trás/frente perto da
@@ -123,6 +143,19 @@ export function Evolucao({
     return dias
   }, [inspecoes, snapshotPorDia])
 
+  // Stops do gradiente horizontal (um por dia da série) — cada stop usa a
+  // cor correspondente ao score daquele dia (corPorScore acima), criando o
+  // efeito de a área/linha mudar de cor ao longo do eixo X conforme o score
+  // sobe ou desce, em vez do gradiente estático de 2 cores de antes.
+  const stopsGradiente = useMemo(() => {
+    const n = serieDiaria.length
+    if (n === 0) return []
+    return serieDiaria.map((d, i) => ({
+      offset: `${(i / Math.max(n - 1, 1)) * 100}%`,
+      cor: corPorScore(d.conformidade),
+    }))
+  }, [serieDiaria])
+
   // Conformidade ATUAL (não é média histórica): considera só a inspeção mais
   // recente de cada UH — o estado de hoje, não a mistura de todas as
   // inspeções já feitas ao longo do tempo (isso inflava/distorcia o número
@@ -152,8 +185,8 @@ export function Evolucao({
   const larguraGraficoDiario = Math.max(serieDiaria.length * 44, 600)
 
   // Modo maximizado do gráfico "Conformidade ao longo do tempo" — pedido
-  // explícito do Felipe: com a janela agora em 120 dias (ver DIAS_JANELA
-  // acima), o gráfico ficou bem mais largo, então ajuda ter um jeito de
+  // explícito do Felipe: com a janela em DIAS_JANELA dias (3 meses), o
+  // gráfico fica bem mais largo, então ajuda ter um jeito de
   // expandir pra tela cheia do navegador em vez de só rolar dentro do card
   // pequeno. Trava o scroll da página por trás enquanto expandido (senão dá
   // pra rolar o conteúdo atrás do overlay, que fica meio quebrado) e fecha
@@ -194,9 +227,19 @@ export function Evolucao({
   const graficoConformidade = (
     <AreaChart data={serieDiaria} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
       <defs>
-        <linearGradient id="fillConf" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="5%" stopColor="var(--color-conformidade)" stopOpacity={0.3} />
-          <stop offset="95%" stopColor="var(--color-conformidade)" stopOpacity={0.02} />
+        {/* Gradiente HORIZONTAL (x1→x2, não y1→y2 como antes) — um stop por
+            dia, cor conforme o score daquele dia (stopsGradiente acima).
+            Dois gradientes com os mesmos stops de cor: um mais translúcido
+            pro preenchimento da área, outro opaco pro traço da linha. */}
+        <linearGradient id="fillConf" x1="0" y1="0" x2="1" y2="0">
+          {stopsGradiente.map((s, i) => (
+            <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={0.35} />
+          ))}
+        </linearGradient>
+        <linearGradient id="strokeConf" x1="0" y1="0" x2="1" y2="0">
+          {stopsGradiente.map((s, i) => (
+            <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={1} />
+          ))}
         </linearGradient>
       </defs>
       <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -216,7 +259,7 @@ export function Evolucao({
       <Area
         dataKey="conformidade"
         type="monotone"
-        stroke="var(--color-conformidade)"
+        stroke="url(#strokeConf)"
         fill="url(#fillConf)"
         strokeWidth={2.5}
       />
