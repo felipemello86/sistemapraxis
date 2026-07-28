@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { Plus, Trash2, Send, CheckCircle2, Clock, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Wrench, BedDouble, MessageCircle } from "lucide-react";
+import { Plus, Trash2, Send, CheckCircle2, Clock, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Wrench, BedDouble, MessageCircle, Flag } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -28,6 +28,11 @@ type UH = {
   // do Felipe pra aparecer sempre, também na Atribuição Diária.
   comentario?: string | null;
   comentarioPorNome?: string | null;
+  // Prioridade — flag com motivo obrigatório, cadastrada em Seleção e
+  // Liberação — mesmo pedido de "sempre aparecer" do comentário acima.
+  prioridade?: boolean;
+  prioridadeDescricao?: string | null;
+  prioridadePorNome?: string | null;
 };
 type User = { id: string; nome: string; role: string; foto?: string | null };
 type Program = { id: string; nome: string; tipo: string };
@@ -102,6 +107,15 @@ function AssignmentCard({
         {a.uh.emManutencao && a.uh.manutencaoDescricao && (
           <p className="text-xs text-orange-700 bg-orange-50 border border-orange-100 rounded-lg px-2 py-1 mt-1">
             {a.uh.manutencaoDescricao}
+          </p>
+        )}
+        {a.uh.prioridade && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1 flex items-start gap-1">
+            <Flag className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
+            <span>
+              <span className="font-semibold">Prioridade: </span>
+              {a.uh.prioridadeDescricao}
+            </span>
           </p>
         )}
         {a.uh.comentario && (

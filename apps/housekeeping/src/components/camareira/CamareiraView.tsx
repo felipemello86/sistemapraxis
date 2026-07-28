@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, MessageCircle, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
+import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, MessageCircle, Flag, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import GeoCheckin from "./GeoCheckin";
@@ -34,6 +34,11 @@ type Assignment = {
     // lá. Ver UH.comentario/comentarioPorNome no schema Prisma.
     comentario?: string | null;
     comentarioPorNome?: string | null;
+    // Prioridade — flag com motivo obrigatório, cadastrada em Seleção e
+    // Liberação — mesmo pedido de "sempre aparecer" do comentário acima.
+    prioridade?: boolean;
+    prioridadeDescricao?: string | null;
+    prioridadePorNome?: string | null;
   };
   program: { id: string; nome: string; tipo: string; steps: { id: string; titulo: string; descricao: string; ordem: number }[] } | null;
   cleaningSession: {
@@ -791,6 +796,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
           <div className="flex items-center gap-1.5 mt-2 text-xs bg-white/15 rounded-lg px-2 py-1 w-fit">
             <Clock className="w-3.5 h-3.5" /> Tempo pausado nesta etapa
           </div>
+          {assignmentAtivo.uh.prioridade && (
+            <div className="mt-2 bg-amber-400/25 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <Flag className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                <span className="font-semibold">Prioridade: </span>
+                {assignmentAtivo.uh.prioridadeDescricao}
+              </span>
+            </div>
+          )}
           {assignmentAtivo.uh.comentario && (
             <div className="mt-2 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
               <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -1044,6 +1058,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
             <Clock className="w-4 h-4" />
             <span className="font-mono">{formatarTempo(elapsed)}</span>
           </div>
+          {assignmentAtivo?.uh.prioridade && (
+            <div className="mt-2 bg-amber-400/25 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <Flag className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                <span className="font-semibold">Prioridade: </span>
+                {assignmentAtivo.uh.prioridadeDescricao}
+              </span>
+            </div>
+          )}
           {assignmentAtivo?.uh.comentario && (
             <div className="mt-2 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
               <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -1382,6 +1405,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                 <span className="font-semibold">Observações: </span>{assignmentAtivo.observacoes}
               </div>
             )}
+            {assignmentAtivo.uh.prioridade && (
+              <div className="mt-2 bg-amber-400/25 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+                <Flag className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>
+                  <span className="font-semibold">Prioridade: </span>
+                  {assignmentAtivo.uh.prioridadeDescricao}
+                </span>
+              </div>
+            )}
             {assignmentAtivo.uh.comentario && (
               <div className="mt-2 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
                 <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -1433,6 +1465,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
               <p className="text-xs opacity-60">Meta: 25 min</p>
             </div>
           </div>
+          {assignmentAtivo.uh.prioridade && (
+            <div className="mt-1 bg-amber-400/25 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <Flag className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                <span className="font-semibold">Prioridade: </span>
+                {assignmentAtivo.uh.prioridadeDescricao}
+              </span>
+            </div>
+          )}
           {assignmentAtivo.uh.comentario && (
             <div className="mt-1 bg-white/15 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
               <MessageCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -1837,6 +1878,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                     {a.uh.emManutencao && a.uh.manutencaoDescricao && (
                       <p className="w-full text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 mt-1">
                         {a.uh.manutencaoDescricao}
+                      </p>
+                    )}
+                    {a.uh.prioridade && (
+                      <p className="w-full text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1 flex items-start gap-1">
+                        <Flag className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
+                        <span>
+                          <span className="font-semibold">Prioridade: </span>
+                          {a.uh.prioridadeDescricao}
+                        </span>
                       </p>
                     )}
                     {a.uh.comentario && (

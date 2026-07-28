@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageCircle, MessageCirclePlus, Paperclip } from "lucide-react";
+import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageCircle, MessageCirclePlus, Paperclip, Flag } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import QueixaDetailModal from "@/components/QueixaDetailModal";
@@ -35,6 +35,13 @@ type UHSel = {
   comentario: string | null;
   comentarioPorNome: string | null;
   comentarioEm: string | null;
+  // Prioridade — flag com motivo obrigatório (ex.: hóspede VIP, pedido
+  // especial), exibida do mesmo jeito nas demais telas (pedido explícito do
+  // Felipe: "sempre").
+  prioridade: boolean;
+  prioridadeDescricao: string | null;
+  prioridadePorNome: string | null;
+  prioridadeEm: string | null;
   queixas: { id: string; titulo: string; tipo: string; descricao: string; pontosDescontados: number | null; anexos: QueixaAnexo[]; createdAt: string }[];
   lateCheckout: boolean;
   lateCheckoutHora: string | null;
@@ -401,6 +408,51 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
     setLateCheckoutModal(null);
     carregar();
   }
+
+  // Prioridade — mesmo padrão do Late Check-out acima (modal com campo
+  // obrigatório), mas com texto livre em vez de horário. Diferente do
+  // comentário (opcional, edição inline), aqui o motivo é sempre exigido
+  // pra ativar (pedido explícito do Felipe).
+  const [prioridadeModal, setPrioridadeModal] = useState<UHSel | null>(null);
+  const [prioridadeDescricaoInput, setPrioridadeDescricaoInput] = useState("");
+  const [salvandoPrioridade, setSalvandoPrioridade] = useState(false);
+
+  function abrirPrioridade(uh: UHSel) {
+    setPrioridadeDescricaoInput(uh.prioridadeDescricao ?? "");
+    setPrioridadeModal(uh);
+  }
+
+  async function confirmarPrioridade() {
+    if (!prioridadeModal || !prioridadeDescricaoInput.trim() || !podeOperar) return;
+    setSalvandoPrioridade(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "set_prioridade",
+        data,
+        uhId: prioridadeModal.uhId,
+        descricao: prioridadeDescricaoInput.trim(),
+      }),
+    });
+    setSalvandoPrioridade(false);
+    setPrioridadeModal(null);
+    carregar();
+  }
+
+  async function removerPrioridade() {
+    if (!prioridadeModal || !podeOperar) return;
+    setSalvandoPrioridade(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "remover_prioridade", data, uhId: prioridadeModal.uhId }),
+    });
+    setSalvandoPrioridade(false);
+    setPrioridadeModal(null);
+    carregar();
+  }
+
   const [editandoComentarioId, setEditandoComentarioId] = useState<string | null>(null);
   const [comentarioInput, setComentarioInput] = useState("");
   const [modoReedicao, setModoReedicao] = useState(false);
@@ -767,6 +819,60 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                 title={!podeOperar ? tituloSemAcesso : undefined}
                 onClick={confirmarLateCheckout}
                 className="flex-1 py-2 rounded-lg bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {prioridadeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Flag className="w-5 h-5 text-amber-500" />
+              <h2 className="text-base font-bold text-gray-900">Prioridade</h2>
+            </div>
+            <p className="text-sm text-gray-500 mb-3">
+              UH <strong>{prioridadeModal.numero}</strong> — marque esta UH como prioritária pro dia. Informe o motivo (obrigatório); ele também aparece nas demais telas (Minhas UHs, Atribuição, Limpeza e Governança).
+            </p>
+            <label className="block text-xs text-gray-500 font-medium mb-1">Motivo</label>
+            <textarea
+              autoFocus
+              rows={3}
+              value={prioridadeDescricaoInput}
+              onChange={(e) => setPrioridadeDescricaoInput(e.target.value)}
+              placeholder="Ex.: hóspede VIP, pedido especial de horário..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            {prioridadeModal.prioridade && (
+              <p className="text-xs text-gray-400 mt-2">
+                Marcado por {prioridadeModal.prioridadePorNome ?? "—"}.
+              </p>
+            )}
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setPrioridadeModal(null)}
+                className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              {prioridadeModal.prioridade && (
+                <button
+                  disabled={salvandoPrioridade || !podeOperar}
+                  title={!podeOperar ? tituloSemAcesso : undefined}
+                  onClick={removerPrioridade}
+                  className="flex-1 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Remover
+                </button>
+              )}
+              <button
+                disabled={!prioridadeDescricaoInput.trim() || salvandoPrioridade || !podeOperar}
+                title={!podeOperar ? tituloSemAcesso : undefined}
+                onClick={confirmarPrioridade}
+                className="flex-1 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Confirmar
               </button>
@@ -1172,8 +1278,16 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                       </div>
                     </div>
 
-                    {(uh.bloqueada || uh.emManutencao || uh.temReserva || uh.queixas.length > 0 || (uh.lateCheckout && !liberada)) && (
+                    {(uh.prioridade || uh.bloqueada || uh.emManutencao || uh.temReserva || uh.queixas.length > 0 || (uh.lateCheckout && !liberada)) && (
                       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {uh.prioridade && (
+                          <span
+                            title={uh.prioridadeDescricao ?? undefined}
+                            className="flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 rounded-full px-2 py-0.5"
+                          >
+                            <Flag className="w-3 h-3" /> Prioridade
+                          </span>
+                        )}
                         {uh.bloqueada && (
                           <span
                             title={uh.bloqueioDescricao ?? undefined}
@@ -1232,6 +1346,24 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                       <p className="text-xs text-orange-700 bg-orange-50 rounded-lg px-2 py-1 mt-1 border border-orange-100">
                         {uh.manutencaoDescricao}
                       </p>
+                    )}
+
+                    {uh.prioridade && (
+                      <button
+                        className="w-full text-left mt-1.5"
+                        onClick={() => podeComentar && abrirPrioridade(uh)}
+                      >
+                        <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-2 py-1 border border-amber-200 flex items-start gap-1">
+                          <Flag className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
+                          <span>
+                            <span className="font-semibold">Prioridade: </span>
+                            {uh.prioridadeDescricao}
+                            {uh.prioridadePorNome && (
+                              <span className="block text-[10px] text-amber-500 mt-0.5">— {uh.prioridadePorNome}</span>
+                            )}
+                          </span>
+                        </p>
+                      </button>
                     )}
 
                     {editandoComentarioId === uh.uhId ? (
@@ -1298,6 +1430,19 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                             }`}
                           >
                             <MessageCirclePlus className="w-4 h-4" />
+                          </button>
+                        )}
+                        {podeComentar && (
+                          <button
+                            onClick={() => abrirPrioridade(uh)}
+                            title={uh.prioridade ? "Editar prioridade" : "Marcar como prioridade"}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              uh.prioridade
+                                ? "bg-amber-100 text-amber-600 hover:bg-amber-200"
+                                : "text-gray-300 hover:text-amber-500 hover:bg-amber-50"
+                            }`}
+                          >
+                            <Flag className="w-4 h-4" />
                           </button>
                         )}
                         {podeComentar && (

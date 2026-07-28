@@ -80,7 +80,7 @@ export async function GET() {
   // apps/maintenance/src/lib/domain.ts, já replicada em /api/sessoes (ver
   // comentário lá) pro mesmo passo do lado da camareira.
   const uhIds = [...new Set(sessions.map((s) => s.uhId))];
-  const [catalogo, atribuicoesCustom, inspecoesManutencao] = await Promise.all([
+  const [catalogo, atribuicoesCustom, inspecoesManutencao, selecoesHoje] = await Promise.all([
     prisma.maintenanceChecklistItem.findMany({
       where: { tenantId },
       select: { id: true, name: true, category: true },
@@ -94,7 +94,22 @@ export async function GET() {
       where: { tenantId, uhId: { in: uhIds } },
       select: { uhId: true, date: true, items: { select: { checklistItemId: true, status: true } } },
     }),
+    // Comentário e Prioridade vivem em DailyUHSelection (por dia), não em
+    // UH — precisam ser mesclados manualmente em cada s.uh abaixo pra
+    // aparecer também pra Governança (pedido explícito do Felipe: "sempre").
+    prisma.dailyUHSelection.findMany({
+      where: { tenantId, data: hoje, uhId: { in: uhIds } },
+      select: {
+        uhId: true,
+        comentario: true,
+        comentarioPorNome: true,
+        prioridade: true,
+        prioridadeDescricao: true,
+        prioridadePorNome: true,
+      },
+    }),
   ]);
+  const selecaoPorUh = new Map(selecoesHoje.map((s) => [s.uhId, s]));
 
   const atribuicaoPorUh = new Map<string, Set<string>>();
   for (const a of atribuicoesCustom) {
@@ -119,8 +134,17 @@ export async function GET() {
   const sessionsComManutencao = sessions.map((s) => {
     const permitidos = atribuicaoPorUh.get(s.uhId);
     const manutencaoItens = !permitidos || permitidos.size === 0 ? catalogo : catalogo.filter((it) => permitidos.has(it.id));
+    const sel = selecaoPorUh.get(s.uhId);
     return {
       ...s,
+      uh: {
+        ...s.uh,
+        comentario: sel?.comentario ?? null,
+        comentarioPorNome: sel?.comentarioPorNome ?? null,
+        prioridade: sel?.prioridade ?? false,
+        prioridadeDescricao: sel?.prioridadeDescricao ?? null,
+        prioridadePorNome: sel?.prioridadePorNome ?? null,
+      },
       manutencaoItens,
       manutencaoPendentes: pendentesPorUh.get(s.uhId) ?? [],
     };

@@ -464,6 +464,17 @@ model DailyUHSelection {
   comentarioPorNome String?
   comentarioEm      DateTime?
 
+  // Prioridade — sinaliza a UH como prioritária pro dia (ex.: hóspede VIP,
+  // pedido especial), sempre com um motivo obrigatório (pedido explícito do
+  // Felipe: "será obrigatório incluir um texto"). Mesmo padrão
+  // who/when de comentario acima, e exibida do mesmo jeito nas demais telas
+  // (Minhas UHs, Atribuição, Limpeza, Governança) — ver
+  // apps/housekeeping/src/app/api/selecao-uhs/route.ts.
+  prioridade          Boolean   @default(false)
+  prioridadeDescricao String?
+  prioridadePorNome   String?
+  prioridadeEm        DateTime?
+
   // Late Check-out — o Atendimento marca que esta UH só vai ser liberada
   // mais tarde (hóspede com late checkout autorizado), com hora de saída
   // obrigatória ("HH:mm"). Quando essa hora chega, o sistema libera a UH

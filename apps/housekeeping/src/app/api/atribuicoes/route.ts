@@ -50,16 +50,38 @@ export async function GET(req: NextRequest) {
     }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId, data },
-      select: { uhId: true, liberada: true },
+      select: {
+        uhId: true,
+        liberada: true,
+        // Comentário e Prioridade vivem em DailyUHSelection (por dia), não
+        // em UH — precisam ser mesclados manualmente em cada a.uh abaixo
+        // pra aparecer também na Atribuição Diária (pedido explícito do
+        // Felipe: "sempre").
+        comentario: true,
+        comentarioPorNome: true,
+        prioridade: true,
+        prioridadeDescricao: true,
+        prioridadePorNome: true,
+      },
     }),
   ]);
 
   const liberadasSet = new Set(selecoes.filter((s) => s.liberada).map((s) => s.uhId));
-  const result = assignments.map((a) =>
-    a.status === "PENDENTE" && liberadasSet.has(a.uhId)
-      ? { ...a, status: "LIBERADO" }
-      : a
-  );
+  const selecaoPorUh = new Map(selecoes.map((s) => [s.uhId, s]));
+  const result = assignments.map((a) => {
+    const sel = selecaoPorUh.get(a.uhId);
+    const uhComExtras = {
+      ...a.uh,
+      comentario: sel?.comentario ?? null,
+      comentarioPorNome: sel?.comentarioPorNome ?? null,
+      prioridade: sel?.prioridade ?? false,
+      prioridadeDescricao: sel?.prioridadeDescricao ?? null,
+      prioridadePorNome: sel?.prioridadePorNome ?? null,
+    };
+    return a.status === "PENDENTE" && liberadasSet.has(a.uhId)
+      ? { ...a, uh: uhComExtras, status: "LIBERADO" }
+      : { ...a, uh: uhComExtras };
+  });
 
   return NextResponse.json(result);
 }

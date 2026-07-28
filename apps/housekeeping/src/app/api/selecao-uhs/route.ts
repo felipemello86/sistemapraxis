@@ -137,6 +137,10 @@ export async function GET(req: NextRequest) {
         comentario: s.comentario ?? null,
         comentarioPorNome: s.comentarioPorNome ?? null,
         comentarioEm: s.comentarioEm ?? null,
+        prioridade: s.prioridade,
+        prioridadeDescricao: s.prioridadeDescricao ?? null,
+        prioridadePorNome: s.prioridadePorNome ?? null,
+        prioridadeEm: s.prioridadeEm ?? null,
         lateCheckout: s.lateCheckout,
         lateCheckoutHora: s.lateCheckoutHora ?? null,
         lateCheckoutPorNome: s.lateCheckoutPorNome ?? null,
@@ -206,7 +210,8 @@ export async function POST(req: NextRequest) {
 }
 
 // PATCH /api/selecao-uhs — ações: confirmar, liberar, desfazer_liberacao, toggle_manutencao,
-// desbloquear, toggle_reserva, renovar, set_observacao, reeditar
+// desbloquear, toggle_reserva, renovar, set_observacao, reeditar, set_comentario,
+// set_prioridade, remover_prioridade
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -499,6 +504,43 @@ export async function PATCH(req: NextRequest) {
         comentario: texto,
         comentarioPorNome: texto ? session.nome : null,
         comentarioEm: texto ? new Date() : null,
+      },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Marcar UH como prioritária ────────────────────────────────────
+  // Restrito a MASTER/GERENTE/ATENDIMENTO (mesma decisão de set_comentario).
+  // Ao contrário do comentário (opcional), o motivo aqui é OBRIGATÓRIO
+  // (pedido explícito do Felipe: "será obrigatório incluir um texto") —
+  // reaproveita o campo `descricao` do body, mesmo usado por
+  // registrar_queixa/toggle_manutencao abaixo.
+  if (action === "set_prioridade") {
+    if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    const texto = descricao?.trim();
+    if (!texto) return NextResponse.json({ error: "descricao obrigatória pra marcar prioridade" }, { status: 400 });
+    await prisma.dailyUHSelection.update({
+      where: { data_uhId: { data, uhId } },
+      data: {
+        prioridade: true,
+        prioridadeDescricao: texto,
+        prioridadePorNome: session.nome,
+        prioridadeEm: new Date(),
+      },
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Remover prioridade da UH ──────────────────────────────────────
+  if (action === "remover_prioridade") {
+    if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+    await prisma.dailyUHSelection.update({
+      where: { data_uhId: { data, uhId } },
+      data: {
+        prioridade: false,
+        prioridadeDescricao: null,
+        prioridadePorNome: null,
+        prioridadeEm: null,
       },
     });
     return NextResponse.json({ ok: true });

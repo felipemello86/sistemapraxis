@@ -40,11 +40,24 @@ export async function GET(req: NextRequest) {
     }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId: session.tenantId, data: dateStr },
-      select: { uhId: true, temReserva: true },
+      select: {
+        uhId: true,
+        temReserva: true,
+        // Comentário e Prioridade vivem em DailyUHSelection (por dia), não
+        // em UH — precisam ser mesclados manualmente em cada assignment.uh
+        // abaixo pra aparecer em "Minhas UHs" e durante a Limpeza (pedido
+        // explícito do Felipe: "sempre", não só em Seleção e Liberação).
+        comentario: true,
+        comentarioPorNome: true,
+        prioridade: true,
+        prioridadeDescricao: true,
+        prioridadePorNome: true,
+      },
     }),
   ]);
 
   const reservaSet = new Set(selecoes.filter((s) => s.temReserva).map((s) => s.uhId));
+  const selecaoPorUh = new Map(selecoes.map((s) => [s.uhId, s]));
 
   // Dados pra etapa obrigatória "Necessidade de Manutenção?" (ver
   // CamareiraView, fase "manutencao") — quais itens de checklist da
@@ -94,8 +107,17 @@ export async function GET(req: NextRequest) {
   const assignmentsComReserva = assignments.map((a) => {
     const permitidos = atribuicaoPorUh.get(a.uhId);
     const manutencaoItens = !permitidos || permitidos.size === 0 ? catalogo : catalogo.filter((it) => permitidos.has(it.id));
+    const sel = selecaoPorUh.get(a.uhId);
     return {
       ...a,
+      uh: {
+        ...a.uh,
+        comentario: sel?.comentario ?? null,
+        comentarioPorNome: sel?.comentarioPorNome ?? null,
+        prioridade: sel?.prioridade ?? false,
+        prioridadeDescricao: sel?.prioridadeDescricao ?? null,
+        prioridadePorNome: sel?.prioridadePorNome ?? null,
+      },
       temReserva: reservaSet.has(a.uhId),
       manutencaoItens,
       manutencaoPendentes: pendentesPorUh.get(a.uhId) ?? [],
