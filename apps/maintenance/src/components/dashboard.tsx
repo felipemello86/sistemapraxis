@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   LayoutDashboard,
   TrendingUp,
@@ -245,6 +246,22 @@ export function Dashboard({
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+
+  // Deep link de notificação push (?view=correcao etc, ver
+  // lib/pushDestino.ts e PushTapHandler.tsx) — essa SPA de aba única não
+  // tem rota própria por tela, então a "navegação" pra uma aba específica
+  // acontece só trocando esse estado a partir da URL. Roda tanto no mount
+  // (abriu já com ?view= na URL — cold start via gateway) quanto sempre que
+  // searchParams mudar (app já aberto, tocou em outra notificação —
+  // PushTapHandler.tsx chama router.push, que atualiza searchParams sem
+  // desmontar este componente).
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const alvo = searchParams.get('view') as ViewId | null
+    if (alvo && NAV.some((n) => n.id === alvo)) {
+      setView(alvo)
+    }
+  }, [searchParams])
 
   // Lido depois do mount (não no useState inicial) pra não divergir do HTML
   // renderizado no servidor — evita mismatch de hidratação.

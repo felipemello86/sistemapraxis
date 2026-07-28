@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { resolverDestinoNotificacao } from "@/lib/pushDestino";
 
 // Trata o toque em uma notificação push ENQUANTO o app já está rodando
 // dentro do Housekeeping (webview já carregado neste basePath /governance).
@@ -9,16 +10,20 @@ import { useRouter } from "next/navigation";
 // apps/mobile-app/capacitor.config.ts) — precisa dos dois porque a
 // navegação entre gateway e módulos é full-page (cross-app), destruindo e
 // recriando o contexto JS, então o listener só existe em quem estiver
-// carregado no momento do tap.
+// carregado no momento do tap. apps/maintenance tem seu próprio
+// PushTapHandler idêntico a este, pro mesmo motivo.
 //
-// Hoje só existe um tipo de notificação com deep link: "fim_dia" (ver
-// api/finalizacao-dia/route.ts), que leva pra Relatórios. Se surgir um novo
-// tipo, é só adicionar mais um `if` aqui.
+// resolverDestinoNotificacao (lib/pushDestino.ts) traduz o `data` da
+// notificação pro par {modulo, caminho} — antes disso só existia deep link
+// pra "fim_dia", pedido explícito do Felipe pra cobrir todos os tipos.
 //
-// router.push (em vez de window.location.href) porque já estamos dentro do
-// próprio app Next.js do Housekeeping — o Router do Next já aplica o
-// basePath "/governance" sozinho.
-export default function PushTapHandler() {
+// Se o destino é DENTRO do Housekeeping (modulo="governance"), router.push
+// basta — já estamos no app certo, o Router do Next aplica o basePath
+// "/governance" sozinho. Se o destino é OUTRO módulo (ex.: Manutenção),
+// precisa navegação cross-app de verdade (full-page), daí window.location —
+// exige tenantSlug (prop, vem da sessão lida no layout.tsx raiz) e a URL
+// pública do gateway.
+export default function PushTapHandler({ tenantSlug }: { tenantSlug?: string }) {
   const router = useRouter();
 
   useEffect(() => {
@@ -32,9 +37,17 @@ export default function PushTapHandler() {
 
         const { PushNotifications } = await import("@capacitor/push-notifications");
         listenerHandle = await PushNotifications.addListener("pushNotificationActionPerformed", (acao) => {
-          const tipo = acao.notification.data?.tipo;
-          if (tipo === "fim_dia") {
-            router.push("/relatorios");
+          const destino = resolverDestinoNotificacao(acao.notification.data as Record<string, string> | undefined);
+          if (!destino) return;
+
+          if (destino.modulo === "governance") {
+            router.push(destino.caminho);
+            return;
+          }
+
+          if (tenantSlug) {
+            const base = process.env.NEXT_PUBLIC_GATEWAY_URL || "https://sistemaspraxis.com.br";
+            window.location.href = `${base}/${tenantSlug}/${destino.modulo}${destino.caminho}`;
           }
         });
       } catch {
@@ -46,7 +59,7 @@ export default function PushTapHandler() {
     return () => {
       listenerHandle?.remove();
     };
-  }, [router]);
+  }, [router, tenantSlug]);
 
   return null;
 }

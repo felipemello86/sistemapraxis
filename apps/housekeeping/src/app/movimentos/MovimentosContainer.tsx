@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { BarChart3, WashingMachine, TrendingUp } from "lucide-react";
 import PerformanceView from "./PerformanceView";
 import EtapasView from "./EtapasView";
@@ -129,6 +130,19 @@ const ABAS: { id: Aba; label: string; icon: React.ReactNode }[] = [
 
 export default function MovimentosContainer({ isMaster, podeOperar }: { isMaster?: boolean; podeOperar: boolean }) {
   const [aba, setAba] = useState<Aba>("performance");
+
+  // Deep link de notificação push (?aba=lavanderia, ver
+  // lib/pushDestino.ts e PushTapHandler.tsx — falha_lavanderia não tem tela
+  // própria, mora aqui). Mesmo padrão do ?view= de apps/maintenance/
+  // components/dashboard.tsx: roda no mount (cold start) e sempre que
+  // searchParams mudar (app já aberto, tocou noutra notificação).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const alvo = searchParams.get("aba") as Aba | null;
+    if (alvo && ABAS.some((a) => a.id === alvo)) {
+      setAba(alvo);
+    }
+  }, [searchParams]);
 
   return (
     <div className="space-y-4">

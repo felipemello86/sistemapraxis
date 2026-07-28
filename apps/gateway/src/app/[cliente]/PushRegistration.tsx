@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { registerPlugin } from "@capacitor/core";
+import { resolverDestinoNotificacao } from "@/lib/pushDestino";
 
 // Plugin nativo LOCAL (não é pacote npm — só existe em
 // apps/mobile-app/ios/App/App/AppDelegate.swift, registrado via
@@ -59,13 +60,20 @@ export default function PushRegistration() {
   // o server.url do Capacitor sempre carrega o hub do tenant primeiro (ver
   // apps/mobile-app/capacitor.config.ts), então é aqui que o tap chega
   // quando o app estava fechado/em background sem nenhum outro módulo já
-  // carregado. Se o Housekeeping já estiver aberto no momento do tap, quem
-  // trata é apps/housekeeping/src/app/PushTapHandler.tsx — precisa dos
-  // dois porque a navegação entre gateway e módulos é full-page (cross-app,
-  // recria o contexto JS a cada troca).
+  // carregado. Se o Housekeeping ou o Manutenção já estiverem abertos no
+  // momento do tap, quem trata é PushTapHandler.tsx de cada um — precisa
+  // dos três porque a navegação entre gateway e módulos é full-page
+  // (cross-app, recria o contexto JS a cada troca), então só quem estiver
+  // de fato carregado no momento do tap recebe o evento nativo.
   //
-  // Único tipo com deep link hoje: "fim_dia" (ver api/finalizacao-dia),
-  // leva pra Relatórios do Housekeeping.
+  // Pedido explícito do Felipe: "ao clicar na notificação, o usuário deve
+  // ser direcionado para a tela correspondente ao teor daquela notificação
+  // específica" — antes só existia deep link pra "fim_dia", todo o resto
+  // caía no hub. resolverDestinoNotificacao (lib/pushDestino.ts) traduz o
+  // `data` de qualquer notificação pro par {modulo, caminho}; aqui sempre
+  // navegamos via router.push num caminho cross-app (proxied pelo rewrite
+  // do gateway, ver next.config.js) — mesmo padrão que já existia só pro
+  // caso "fim_dia".
   useEffect(() => {
     if (typeof window === "undefined" || !(window as any).Capacitor) return;
     let listenerHandle: { remove: () => void } | undefined;
@@ -77,9 +85,10 @@ export default function PushRegistration() {
 
         const { PushNotifications } = await import("@capacitor/push-notifications");
         listenerHandle = await PushNotifications.addListener("pushNotificationActionPerformed", (acao) => {
-          const tipo = acao.notification.data?.tipo;
-          if (tipo === "fim_dia" && params?.cliente) {
-            router.push(`/${params.cliente}/governance/relatorios`);
+          if (!params?.cliente) return;
+          const destino = resolverDestinoNotificacao(acao.notification.data as Record<string, string> | undefined);
+          if (destino) {
+            router.push(`/${params.cliente}/${destino.modulo}${destino.caminho}`);
           }
         });
       } catch {

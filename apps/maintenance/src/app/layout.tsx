@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { getSession } from "@praxis/core";
 import { Toaster } from "@/components/ui/sonner";
+import PushTapHandler from "./PushTapHandler";
 import "./globals.css";
 
 // Portado de apps/maintenance/src/app/layout.tsx (v1), sem <Providers>
@@ -20,11 +22,17 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+// Async só por causa do tenantSlug pro PushTapHandler (deep link cross-app
+// — ver comentário lá e em lib/pushDestino.ts). page.tsx já busca a própria
+// sessão de novo (com redirect se ausente) — aqui só lemos o tenantSlug,
+// sem redirect nenhum, mesmo padrão do layout.tsx raiz do Housekeeping.
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getSession();
+
   return (
     <html
       lang="pt-BR"
@@ -33,6 +41,7 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         {children}
         <Toaster position="top-center" />
+        <PushTapHandler tenantSlug={session?.tenantSlug} />
       </body>
     </html>
   );
