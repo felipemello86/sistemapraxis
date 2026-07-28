@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Building2, Camera, Loader2, Check, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { uploadFoto } from "@/lib/uploadFoto";
 
 // Kanban "Falhas Gerenciais" — 2 colunas (Pendências / Resolvido). Os cards
 // nascem automaticamente quando a Governanta marca como FALHA um item de
@@ -61,16 +62,10 @@ export default function FalhasGerenciaisView({ podeOperar }: { podeOperar: boole
     if (!file || fotos.length >= MAX_FOTOS) return;
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("pasta", "falhas-gerenciais");
-      fd.append("tipo", "resolucao");
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("Falha no upload.");
-      const data = await res.json();
-      setFotos((f) => [...f, data.url as string]);
-    } catch {
-      setErro("Não foi possível enviar a foto.");
+      const data = await uploadFoto(file, { pasta: "falhas-gerenciais", tipo: "resolucao" });
+      setFotos((f) => [...f, data.url]);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível enviar a foto.");
     } finally {
       setUploading(false);
     }

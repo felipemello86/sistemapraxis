@@ -18,9 +18,13 @@ export async function notificarTodosDoTenant(
     where: { tenantId, ativo: true },
     select: { id: true },
   });
-  for (const u of usuarios) {
-    await sendPushToUser(u.id, payload);
-  }
+  // Em paralelo (Promise.all), não sequencial — com N usuários um loop com
+  // `await` individual soma o tempo de TODOS os envios antes de responder
+  // (bug real encontrado: finalizar uma limpeza em apps/housekeeping ficava
+  // lento proporcionalmente ao nº de governantas do tenant). O `await`
+  // continua garantindo que a function não retorne/congele antes dos envios
+  // terminarem — só deixou de ser um-de-cada-vez.
+  await Promise.all(usuarios.map((u) => sendPushToUser(u.id, payload)));
 }
 
 export async function notificarPorRoles(
@@ -32,7 +36,5 @@ export async function notificarPorRoles(
     where: { tenantId, ativo: true, role: { in: roles } },
     select: { id: true },
   });
-  for (const u of usuarios) {
-    await sendPushToUser(u.id, payload);
-  }
+  await Promise.all(usuarios.map((u) => sendPushToUser(u.id, payload)));
 }

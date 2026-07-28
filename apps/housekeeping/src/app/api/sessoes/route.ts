@@ -323,13 +323,20 @@ export async function PATCH(req: NextRequest) {
       where: { tenantId: session.tenantId, ativo: true, role: "GOVERNANTA" },
       select: { id: true },
     });
-    for (const g of governantas) {
-      await sendPushToUser(g.id, {
-        title: "UH pronta para inspeção",
-        body: `UH ${sessaoAtualizada.assignment.uh.numero} foi finalizada por ${sessaoAtualizada.camareira.nome}.`,
-        data: { tipo: "sessao_finalizada", uhId: sessaoAtualizada.uhId },
-      });
-    }
+    // Em paralelo (Promise.all), não sequencial — era a causa da lentidão
+    // reportada ao finalizar a UH: um loop com `await` individual por
+    // governanta soma o tempo de todos os envios antes de responder ao
+    // cliente. `await` no Promise.all mantém a garantia de não retornar
+    // antes dos envios terminarem, só deixou de ser um-de-cada-vez.
+    await Promise.all(
+      governantas.map((g) =>
+        sendPushToUser(g.id, {
+          title: "UH pronta para inspeção",
+          body: `UH ${sessaoAtualizada.assignment.uh.numero} foi finalizada por ${sessaoAtualizada.camareira.nome}.`,
+          data: { tipo: "sessao_finalizada", uhId: sessaoAtualizada.uhId },
+        }),
+      ),
+    );
 
     // TODO: notificar governanta(s) via Telegram quando o bot for portado
     // pra esta v2 (ver lib/telegram.ts e lib/destinatarios.ts do v1 como

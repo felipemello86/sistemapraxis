@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ChevronLeft, ChevronDown, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, MessageCircle, ThumbsUp, ThumbsDown, Pencil, Star, Undo2, Flag, Flame, Wrench, HelpCircle, Info, Camera } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { uploadFoto } from "@/lib/uploadFoto";
 
 // Portado de apps/housekeeping/src/app/g/[token]/GovernantaView.tsx (v1),
 // mesclado com o resumo de apps/housekeeping/src/app/governanta/GovernantaAdmin.tsx.
@@ -453,13 +454,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     setUploadandoFotoManutencao(true);
     try {
       const fileComprimido = await comprimirImagem(file);
-      const fd = new FormData();
-      fd.append("file", fileComprimido);
-      fd.append("tipo", "manutencao");
-      fd.append("pasta", "manutencao-governanta");
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      const json = await res.json();
-      if (json.url) setFotosManutencao((prev) => [...prev, json.url]);
+      const json = await uploadFoto(fileComprimido, { tipo: "manutencao", pasta: "manutencao-governanta" });
+      setFotosManutencao((prev) => [...prev, json.url]);
     } catch {
       // Foto é opcional — falha silenciosa não impede o registro.
     } finally {

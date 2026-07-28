@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, MessageCircle, Flag, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
+import { uploadFoto } from "@/lib/uploadFoto";
 import GeoCheckin from "./GeoCheckin";
 
 // Portado de apps/housekeeping/src/components/camareira/CamareiraView.tsx (v1).
@@ -171,13 +172,8 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setUploadandoSuperLimpeza(true);
     try {
       const fileComprimido = await comprimirImagem(file);
-      const fd = new FormData();
-      fd.append("file", fileComprimido);
-      fd.append("tipo", "super_limpeza");
-      fd.append("pasta", "super-limpeza");
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      const json = await res.json();
-      if (json.url) setSuperLimpezaFotos((prev) => [...prev, json.url]);
+      const json = await uploadFoto(fileComprimido, { tipo: "super_limpeza", pasta: "super-limpeza" });
+      setSuperLimpezaFotos((prev) => [...prev, json.url]);
     } catch {
       // Foto é opcional — falha silenciosa não impede o pedido.
     } finally {
@@ -372,13 +368,8 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setUploadandoFotoManutencao(true);
     try {
       const fileComprimido = await comprimirImagem(file);
-      const fd = new FormData();
-      fd.append("file", fileComprimido);
-      fd.append("tipo", "manutencao");
-      fd.append("pasta", "manutencao-camareira");
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      const json = await res.json();
-      if (json.url) setFotosManutencao((prev) => [...prev, json.url]);
+      const json = await uploadFoto(fileComprimido, { tipo: "manutencao", pasta: "manutencao-camareira" });
+      setFotosManutencao((prev) => [...prev, json.url]);
     } catch {
       // Foto é opcional — falha silenciosa não impede o registro.
     } finally {
@@ -511,18 +502,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
 
     try {
       const fileComprimido = await comprimirImagem(file);
-      const fd = new FormData();
-      fd.append("file", fileComprimido);
-      fd.append("sessaoId", sessaoId);
-      fd.append("tipo", tipo);
-
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Erro ${res.status}`);
-      }
-      const { url } = await res.json();
-      if (!url) throw new Error("URL não retornada pelo servidor");
+      const { url } = await uploadFoto(fileComprimido, { sessaoId, tipo });
       setFotos((prev) => ({ ...prev, [tipo]: [...(prev[tipo] ?? []), url] }));
     } catch (err: any) {
       setErroUpload(`Falha ao enviar foto. Tente novamente. (${err.message})`);
@@ -564,18 +544,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
 
     try {
       const fileComprimido = await comprimirImagem(file);
-      const fd = new FormData();
-      fd.append("file", fileComprimido);
-      fd.append("sessaoId", editandoFotosId);
-      fd.append("tipo", tipo);
-
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Erro ${res.status}`);
-      }
-      const { url } = await res.json();
-      if (!url) throw new Error("URL não retornada pelo servidor");
+      const { url } = await uploadFoto(fileComprimido, { sessaoId: editandoFotosId, tipo });
       setFotosEdicao((prev) => ({ ...prev, [tipo]: [...(prev[tipo] ?? []), url] }));
     } catch (err: any) {
       setErroEdicaoFotos(`Falha ao enviar foto. Tente novamente. (${err.message})`);
@@ -615,13 +584,8 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setUploadandoFotoLav(true);
     try {
       const fileComprimido = await comprimirImagem(file);
-      const fd = new FormData();
-      fd.append("file", fileComprimido);
-      fd.append("tipo", "lavanderia");
-      fd.append("pasta", "lavanderia");
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (data.url) setFotoLavanderia(data.url);
+      const data = await uploadFoto(fileComprimido, { tipo: "lavanderia", pasta: "lavanderia" });
+      setFotoLavanderia(data.url);
     } catch {}
     setUploadandoFotoLav(false);
   }

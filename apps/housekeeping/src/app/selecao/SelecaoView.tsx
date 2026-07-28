@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { CheckSquare, Square, ArrowUpDown, Lock, Unlock, CheckCircle2, Edit2, Check, X, Clock, Camera, ShieldCheck, ChevronRight, AlertTriangle, BedDouble, ChevronLeft, Undo2, Wrench, Trash2, MessageCircle, MessageCirclePlus, Paperclip, Flag } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
+import { uploadFoto } from "@/lib/uploadFoto";
 import QueixaDetailModal from "@/components/QueixaDetailModal";
 
 // Portado de apps/housekeeping/src/app/selecao/SelecaoView.tsx (v1). Mesma UI
@@ -603,20 +604,10 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
     setErroAnexoQueixa(null);
     setEnviandoAnexoQueixa(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("tipo", "queixa");
-      fd.append("pasta", "queixas");
-      fd.append("resourceType", "auto");
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd });
-      const json = await res.json();
-      if (json.url) {
-        setQueixaAnexos((prev) => [...prev, { url: json.url, fileName: json.originalName ?? file.name, fileSize: json.fileSize }]);
-      } else {
-        setErroAnexoQueixa(json.error ?? "Falha ao enviar o anexo.");
-      }
-    } catch {
-      setErroAnexoQueixa("Falha ao enviar o anexo.");
+      const json = await uploadFoto(file, { tipo: "queixa", pasta: "queixas", resourceType: "auto" });
+      setQueixaAnexos((prev) => [...prev, { url: json.url, fileName: json.originalName ?? file.name, fileSize: json.fileSize }]);
+    } catch (e) {
+      setErroAnexoQueixa(e instanceof Error ? e.message : "Falha ao enviar o anexo.");
     } finally {
       setEnviandoAnexoQueixa(false);
     }
