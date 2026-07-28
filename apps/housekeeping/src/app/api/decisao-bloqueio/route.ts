@@ -133,14 +133,28 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
+    // tipo === "MANUTENCAO" — NÃO CHAMADA ATUALMENTE. Desde que
+    // api/selecao-uhs/toggle_manutencao voltou a chamar ativarManutencaoUH
+    // direto (pedido explícito do Felipe: registro de manutenção não exige
+    // mais aprovação), nada cria HkBlockRequest.tipo="MANUTENCAO" — esse
+    // branch nunca mais deve receber um pedido PENDENTE por aqui. Deixado
+    // por segurança (esse comportamento já foi revertido mais de uma vez) e
+    // pra não deixar um pedido antigo eventualmente parado sem decisão.
     if (pedido.tipo === "MANUTENCAO") {
       if (aprovar) {
+        if (!pedido.checklistItemId) {
+          return NextResponse.json(
+            { error: "Este pedido é anterior à exigência de item de checklist e não pode mais ser aprovado. Peça pra recriar a solicitação." },
+            { status: 400 },
+          );
+        }
         await ativarManutencaoUH({
           tenantId,
           uhId: pedido.uhId,
+          checklistItemId: pedido.checklistItemId,
           descricao: pedido.comment,
           solicitanteNome: pedido.solicitanteNome,
-          aprovadoPorId: session.userId,
+          registradoPorId: session.userId,
         });
       }
       return NextResponse.json({ ok: true });

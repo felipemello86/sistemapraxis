@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { criarSolicitacaoManutencao, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { ativarManutencaoUH, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
 import { liberarSelecionadasAoMeioDia } from "@/lib/liberacao-automatica";
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     console.error("[liberacao-automatica] falha ao liberar automaticamente:", e);
   }
 
-  const [status, selecoes, assignments, queixas] = await Promise.all([
+  const [status, selecoes, assignments, queixas, catalogoManutencao, atribuicoesManutencao] = await Promise.all([
     prisma.dailySelectionStatus.findUnique({ where: { tenantId_data: { tenantId, data } } }),
     prisma.dailyUHSelection.findMany({
       where: { tenantId, data },
@@ -98,7 +98,27 @@ export async function GET(req: NextRequest) {
       where: { tenantId, data },
       select: { id: true, uhId: true, titulo: true, tipo: true, descricao: true, pontosDescontados: true, anexos: true, createdAt: true },
     }),
+    // Catálogo + atribuições por UH do módulo de Manutenção — alimenta o
+    // seletor de item obrigatório no modal de "Solicitar manutenção" (pedido
+    // explícito do Felipe: todo defeito precisa ser associado a um item real
+    // do cadastro, não mais um texto solto). Mesma lógica de
+    // itensParaUnidade em apps/maintenance/src/lib/domain.ts: sem linha de
+    // atribuição pra uma UH = todos os itens do catálogo se aplicam a ela.
+    prisma.maintenanceChecklistItem.findMany({
+      where: { tenantId },
+      select: { id: true, name: true, category: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.maintenanceUnitChecklistItem.findMany({
+      where: { tenantId },
+      select: { uhId: true, checklistItemId: true },
+    }),
   ]);
+
+  const atribuicoesPorUh = new Map<string, string[]>();
+  for (const a of atribuicoesManutencao) {
+    atribuicoesPorUh.set(a.uhId, [...(atribuicoesPorUh.get(a.uhId) ?? []), a.checklistItemId]);
+  }
 
   const assignmentByUH = Object.fromEntries(assignments.map((a) => [a.uhId, a]));
   const queixasByUH = new Map<string, typeof queixas>();
@@ -153,6 +173,16 @@ export async function GET(req: NextRequest) {
           anexos: (() => { try { return JSON.parse(q.anexos); } catch { return []; } })(),
           createdAt: q.createdAt,
         })),
+        // Itens de checklist de Manutenção aplicáveis a essa UH — sem linha
+        // de atribuição customizada = catálogo inteiro se aplica (mesma
+        // regra de itensParaUnidade em apps/maintenance/src/lib/domain.ts).
+        // Alimenta o seletor obrigatório do modal "Solicitar manutenção".
+        itensManutencao: (() => {
+          const permitidos = atribuicoesPorUh.get(s.uhId);
+          if (!permitidos || permitidos.length === 0) return catalogoManutencao;
+          const permitidosSet = new Set(permitidos);
+          return catalogoManutencao.filter((it) => permitidosSet.has(it.id));
+        })(),
       };
     }),
   });
@@ -224,7 +254,7 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida, checklistItemId } = await req.json();
 
   const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao", "desbloquear"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
@@ -320,15 +350,18 @@ export async function PATCH(req: NextRequest) {
   }
 
   // ── Toggle manutenção ─────────────────────────────────────────────
-  // Pedido explícito do Felipe: "toda Manutenção não deve ser
-  // automaticamente bloqueada pelo módulo manutenção. Deve ser direcionado
-  // uma solicitação para o atendimento processar." — mesmo padrão já
-  // aplicado à NC urgente (ver packages/core/src/maintenanceUrgente.ts).
-  // LIGAR não liga mais a flag na hora: cria uma solicitação PENDENTE
-  // (tipo=MANUTENCAO) que só o Atendimento/Gerente/Master decide na tela de
-  // Decisão de Bloqueio (aprovarSolicitacao chama ativarManutencaoUH, que
-  // faz o que este bloco fazia direto antes). DESLIGAR continua imediato —
-  // não é uma decisão que precise de aprovação, só limpa os 4 campos.
+  // Pedido explícito do Felipe (revertendo uma decisão anterior): "o
+  // registro de manutenção pela tela seleção e liberação não deve exigir
+  // aprovação. Normalmente é o atendimento que registra, então já deve
+  // transformar o item para não-conforme." LIGAR chama ativarManutencaoUH
+  // direto — sem pendência, sem passar pela tela de Decisão de Bloqueio. O
+  // item real do checklist vira NAO_CONFORME na hora e o card de Correção já
+  // nasce em "A Processar" (só falta triar aquisição/serviço externo). Isso
+  // é diferente do fluxo de NC urgente/bloqueio (aplicarBloqueioPorUrgencia,
+  // mesmo arquivo core), que CONTINUA exigindo decisão do Atendimento — essa
+  // mudança foi só pro tipo Manutenção. DESLIGAR continua imediato, como
+  // sempre foi — não é uma decisão que precise de aprovação, só limpa os 4
+  // campos.
   if (action === "toggle_manutencao") {
     const uh = await prisma.uH.findUnique({
       where: { id: uhId },
@@ -356,14 +389,44 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Descrição obrigatória para solicitar manutenção." }, { status: 400 });
     }
 
-    await criarSolicitacaoManutencao({
+    // Item de checklist obrigatório (pedido explícito do Felipe: "todo
+    // defeito de manutenção aberto na tela de seleção e liberação deve ser
+    // associado a algum item real daquela UH presente no cadastro do módulo
+    // de manutenção"). Revalida no servidor que o item pertence ao catálogo
+    // aplicável a essa UH — não confia só no que a UI mandou.
+    if (!checklistItemId) {
+      return NextResponse.json({ error: "Selecione o item de checklist com defeito." }, { status: 400 });
+    }
+    const [itemCatalogo, atribuicoesDaUh] = await Promise.all([
+      prisma.maintenanceChecklistItem.findUnique({
+        where: { id: checklistItemId },
+        select: { id: true, tenantId: true },
+      }),
+      prisma.maintenanceUnitChecklistItem.findMany({
+        where: { tenantId, uhId },
+        select: { checklistItemId: true },
+      }),
+    ]);
+    if (!itemCatalogo || itemCatalogo.tenantId !== tenantId) {
+      return NextResponse.json({ error: "Item de checklist inválido." }, { status: 400 });
+    }
+    // Sem linha de atribuição pra essa UH = catálogo inteiro se aplica (ver
+    // comentário em itensParaUnidade / GET acima) — só rejeita quando existe
+    // uma lista customizada e o item escolhido não está nela.
+    if (atribuicoesDaUh.length > 0 && !atribuicoesDaUh.some((a) => a.checklistItemId === checklistItemId)) {
+      return NextResponse.json({ error: "Esse item não se aplica a essa UH." }, { status: 400 });
+    }
+
+    await ativarManutencaoUH({
       tenantId,
       uhId,
+      checklistItemId,
       descricao: descricao.trim(),
       solicitanteNome: session.nome,
+      registradoPorId: session.userId,
     });
 
-    return NextResponse.json({ solicitado: true });
+    return NextResponse.json({ emManutencao: true });
   }
 
   // ── Desbloquear UH manualmente ────────────────────────────────────

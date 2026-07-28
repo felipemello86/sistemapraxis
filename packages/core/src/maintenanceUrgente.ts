@@ -144,18 +144,17 @@ export async function desbloquearUHSeUltimaNcUrgenteResolvida(params: { tenantId
   });
 }
 
-// Mesmo padrão de aplicarBloqueioPorUrgencia, mas pro segundo tipo de pedido
-// desta tela (HkBlockRequest.tipo="MANUTENCAO") — pedido explícito do Felipe:
-// "toda Manutenção não deve ser automaticamente bloqueada pelo módulo
-// manutenção. Deve ser direcionado uma solicitação para o atendimento
-// processar." Chamado de api/selecao-uhs (action toggle_manutencao) quando
-// alguém marca uma UH como "Em Manutenção" — em vez de ligar a flag na hora,
-// cria um pedido PENDENTE que só o Atendimento (ou Gerente/Master) decide na
-// tela de Decisão de Bloqueio (mesma tela do tipo BLOQUEIO, decisão
-// explícita do Felipe de reaproveitar em vez de criar uma nova).
+// NÃO CHAMADA ATUALMENTE — api/selecao-uhs (action toggle_manutencao) foi
+// revertido pra chamar ativarManutencaoUH direto, sem etapa de pendência
+// (pedido explícito do Felipe: "o registro de manutenção pela tela seleção e
+// liberação não deve exigir aprovação"). Deixada aqui (junto com o suporte a
+// HkBlockRequest.tipo="MANUTENCAO" em decisao-bloqueio/route.ts) porque esse
+// comportamento já foi pedido e revertido mais de uma vez neste projeto —
+// mais barato manter a função pronta do que recriar se Felipe pedir de volta.
 export async function criarSolicitacaoManutencao(params: {
   tenantId: string;
   uhId: string;
+  checklistItemId: string;
   descricao: string;
   solicitanteNome: string;
 }) {
@@ -164,6 +163,22 @@ export async function criarSolicitacaoManutencao(params: {
     select: { numero: true, tenantId: true },
   });
   if (!uh || uh.tenantId !== params.tenantId) return;
+
+  // Pedido explícito do Felipe: "Todo defeito de manutenção aberto na tela
+  // de seleção e liberação deve ser associado a algum item real daquela UH
+  // presente no cadastro do módulo de manutenção." Antes disso, essa flag
+  // criava um MaintenanceInspectionItem com checklistItemId=null (nunca
+  // vinculado a nenhum item do catálogo) — o que fazia a tela de Correção
+  // exibir "Item removido do catálogo" pra um item que, na verdade, nunca
+  // tinha sido excluído: simplesmente nunca existiu vínculo nenhum. Ver
+  // itemNome abaixo — mesmo snapshot já usado por aplicarBloqueioPorUrgencia.
+  const checklistItem = await prisma.maintenanceChecklistItem.findUnique({
+    where: { id: params.checklistItemId },
+    select: { id: true, tenantId: true, name: true },
+  });
+  if (!checklistItem || checklistItem.tenantId !== params.tenantId) {
+    throw new Error("Item de checklist inválido.");
+  }
 
   const jaPendente = await prisma.hkBlockRequest.findFirst({
     where: { tenantId: params.tenantId, uhId: params.uhId, status: "PENDENTE", tipo: "MANUTENCAO" },
@@ -176,6 +191,8 @@ export async function criarSolicitacaoManutencao(params: {
         tenantId: params.tenantId,
         uhId: params.uhId,
         tipo: "MANUTENCAO",
+        checklistItemId: checklistItem.id,
+        itemNome: checklistItem.name,
         comment: params.descricao,
         solicitanteNome: params.solicitanteNome,
       },
@@ -198,25 +215,33 @@ export async function criarSolicitacaoManutencao(params: {
   });
 }
 
-// Chamado quando o Atendimento (ou Gerente/Master) APROVA um pedido
-// tipo=MANUTENCAO na tela de Decisão de Bloqueio. Faz o que
-// api/selecao-uhs/toggle_manutencao fazia direto antes desta mudança: liga
-// UH.emManutencao, troca o programa do dia ARRUMACAO→LIMPEZA_COMPLETA se for
-// o caso, notifica a camareira atribuída e Governanta/Gerente/Master, e
-// sensibiliza o módulo de Manutenção (cria MaintenanceInspectionItem + card
-// de Correção em "A Processar", com o mesmo dedupe contra item genérico já
-// aberto pra essa UH). `solicitanteNome` aqui é quem PEDIU a manutenção
-// (fica salvo em UH.manutencaoSolicitanteNome, pra exibir "quem pediu e
-// quando" na tela) — diferente de quem aprovou, que fica em
-// HkBlockRequest.decididoPorNome.
+// Chamado DIRETO por api/selecao-uhs (action toggle_manutencao) quando
+// alguém liga a flag de Manutenção de uma UH — pedido explícito do Felipe:
+// "o registro de manutenção pela tela seleção e liberação não deve exigir
+// aprovação. Normalmente é o atendimento que registra, então já deve
+// transformar o item para não-conforme." Sem etapa de aprovação/pendência
+// nenhuma (diferente do fluxo de NC urgente/bloqueio, que continua passando
+// pela Decisão de Bloqueio — isso não mudou, só o de Manutenção).
+//
+// Liga UH.emManutencao, troca o programa do dia ARRUMACAO→LIMPEZA_COMPLETA
+// se for o caso, notifica a camareira atribuída e Governanta/Gerente/Master,
+// e sensibiliza o módulo de Manutenção: marca o item real do checklist,
+// escolhido na Seleção e Liberação, como NAO_CONFORME e cria o card de
+// Correção já em "A Processar" (needsMaterial/needsExternalService ainda
+// null — só a triagem de aquisição/serviço externo fica pendente, não a
+// não-conformidade em si), com dedupe contra card já aberto pro mesmo item.
+// `solicitanteNome`/`registradoPorId` aqui são a mesma pessoa que registrou
+// (fica salvo em UH.manutencaoSolicitanteNome, pra exibir "quem registrou e
+// quando" na tela).
 export async function ativarManutencaoUH(params: {
   tenantId: string;
   uhId: string;
+  checklistItemId: string;
   descricao: string;
   solicitanteNome: string;
-  aprovadoPorId: string;
+  registradoPorId: string;
 }) {
-  const { tenantId, uhId, descricao, solicitanteNome, aprovadoPorId } = params;
+  const { tenantId, uhId, checklistItemId, descricao, solicitanteNome, registradoPorId } = params;
 
   const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
   if (!uh) return;
@@ -262,22 +287,40 @@ export async function ativarManutencaoUH(params: {
     data: { tipo: "uh_manutencao", uhId, data },
   });
 
-  const ultimaInspecaoManut = await prisma.maintenanceInspection.findFirst({
-    where: { tenantId, uhId },
-    orderBy: { date: "desc" },
-    include: { items: { where: { checklistItemId: null } } },
+  // Dedupe pelo item REAL escolhido (não mais um "item genérico" com
+  // checklistItemId null) — mesmo padrão de carryover usado em
+  // createInspecaoImpl: se esse item específico já tem um card de Correção
+  // em aberto (ainda NAO_CONFORME) pra essa UH, não duplica.
+  const cardJaAberto = await prisma.maintenanceCorrectionCard.findFirst({
+    where: {
+      tenantId,
+      uhId,
+      checklistItemId,
+      inspectionItem: { status: "NAO_CONFORME" },
+    },
+    select: { id: true },
   });
-  const itemGenericoAberto = ultimaInspecaoManut?.items.find((it) => it.status === "NAO_CONFORME");
 
-  if (!itemGenericoAberto) {
+  if (!cardJaAberto) {
     const descricaoFlag = descricao?.trim() || "UH marcada em manutenção na tela Seleção e Liberação.";
+
+    // Pedido explícito do Felipe: o item real da UH precisa virar
+    // Não Conforme de verdade (mesmo model MaintenanceInspectionItem usado
+    // pela Rota de Inspeção) — não é mais um item "solto" sem vínculo com o
+    // cadastro de Manutenção.
+    const ultimaInspecaoManut = await prisma.maintenanceInspection.findFirst({
+      where: { tenantId, uhId },
+      orderBy: { date: "desc" },
+      select: { id: true },
+    });
+
     let inspectionItemId: string;
 
     if (ultimaInspecaoManut) {
       const novoItem = await prisma.maintenanceInspectionItem.create({
         data: {
           inspectionId: ultimaInspecaoManut.id,
-          checklistItemId: null,
+          checklistItemId,
           status: "NAO_CONFORME",
           comment: descricaoFlag,
         },
@@ -288,9 +331,9 @@ export async function ativarManutencaoUH(params: {
         data: {
           tenantId,
           uhId,
-          inspectorId: aprovadoPorId,
+          inspectorId: registradoPorId,
           date: new Date(),
-          items: { create: [{ checklistItemId: null, status: "NAO_CONFORME", comment: descricaoFlag }] },
+          items: { create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoFlag }] },
         },
         include: { items: true },
       });
@@ -301,7 +344,7 @@ export async function ativarManutencaoUH(params: {
       tenantId,
       inspectionItemId,
       uhId,
-      checklistItemId: null,
+      checklistItemId,
       needsMaterial: null,
       needsExternalService: null,
       triagedById: null,

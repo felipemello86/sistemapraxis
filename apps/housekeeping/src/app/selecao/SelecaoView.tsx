@@ -46,6 +46,10 @@ type UHSel = {
   lateCheckout: boolean;
   lateCheckoutHora: string | null;
   lateCheckoutPorNome: string | null;
+  // Itens do checklist de Manutenção aplicáveis a essa UH — alimenta o
+  // seletor obrigatório do modal "Solicitar manutenção" (pedido explícito do
+  // Felipe: todo defeito precisa ser associado a um item real do cadastro).
+  itensManutencao: { id: string; name: string; category: string }[];
 };
 
 type QueixaAnexo = { url: string; fileName: string; fileSize?: number };
@@ -354,6 +358,7 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   const [confirmandoRenovar, setConfirmandoRenovar] = useState<string | null>(null);
   const [manutencaoModal, setManutencaoModal] = useState<UHSel | null>(null);
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
+  const [manutencaoItemIdInput, setManutencaoItemIdInput] = useState("");
   const [queixaModal, setQueixaModal] = useState<UHSel | null>(null);
   const [queixaTituloInput, setQueixaTituloInput] = useState("");
   const [queixaTipoInput, setQueixaTipoInput] = useState<"LIMPEZA" | "MANUTENCAO" | "LAVANDERIA" | "OUTRA">("LIMPEZA");
@@ -554,31 +559,24 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
     if (!podeOperar) return;
     if (!uh.emManutencao) {
       setManutencaoDescricaoInput("");
+      setManutencaoItemIdInput("");
       setManutencaoModal(uh);
     } else {
-      confirmarManutencao(uh, null);
+      confirmarManutencao(uh, null, null);
     }
   }
 
-  async function confirmarManutencao(uh: UHSel, descricao: string | null) {
+  async function confirmarManutencao(uh: UHSel, descricao: string | null, checklistItemId: string | null) {
     if (!podeOperar) return;
     setManutencaoModal(null);
-    const res = await apiFetch("/api/selecao-uhs", {
+    await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "toggle_manutencao", data, uhId: uh.uhId, descricao }),
+      body: JSON.stringify({ action: "toggle_manutencao", data, uhId: uh.uhId, descricao, checklistItemId }),
     });
-    // Ligar não marca mais a UH em manutenção na hora — vira uma solicitação
-    // pendente pro Atendimento decidir (ver tela Decisão de Bloqueio, e
-    // comentário em api/selecao-uhs toggle_manutencao). Desligar continua
-    // imediato. Sem esse aviso, a UH não mudar de badge na hora pareceria
-    // que a ação falhou.
-    if (res.ok) {
-      const body = await res.json().catch(() => ({}));
-      if (body?.solicitado) {
-        alert(`Solicitação de manutenção enviada. A UH ${uh.numero} só entra em manutenção após aprovação do Atendimento.`);
-      }
-    }
+    // Ligar marca a UH em manutenção na hora (sem aprovação — pedido
+    // explícito do Felipe) e já cria a NC no item real escolhido. carregar()
+    // já traz emManutencao=true refletido no badge, sem precisar de aviso.
     carregar();
   }
 
@@ -889,10 +887,24 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
               <h2 className="text-base font-bold text-gray-900">Solicitar manutenção</h2>
             </div>
             <p className="text-sm text-gray-500 mb-3">
-              UH <strong>{manutencaoModal.numero}</strong> — informe o motivo ou o problema a ser resolvido. A solicitação vai pro Atendimento decidir.
+              UH <strong>{manutencaoModal.numero}</strong> — selecione o item com defeito e descreva o problema. A solicitação vai pro Atendimento decidir.
             </p>
-            <textarea
+            <label className="block text-xs font-medium text-gray-500 mb-1">Item com defeito</label>
+            <select
               autoFocus
+              value={manutencaoItemIdInput}
+              onChange={(e) => setManutencaoItemIdInput(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+            >
+              <option value="">Selecione um item…</option>
+              {manutencaoModal.itensManutencao.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.category} — {item.name}
+                </option>
+              ))}
+            </select>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Descrição do problema</label>
+            <textarea
               value={manutencaoDescricaoInput}
               onChange={(e) => setManutencaoDescricaoInput(e.target.value)}
               placeholder="Ex: Torneira com vazamento, ar-condicionado com defeito…"
@@ -907,9 +919,9 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                 Cancelar
               </button>
               <button
-                disabled={!manutencaoDescricaoInput.trim() || !podeOperar}
+                disabled={!manutencaoDescricaoInput.trim() || !manutencaoItemIdInput || !podeOperar}
                 title={!podeOperar ? tituloSemAcesso : undefined}
-                onClick={() => confirmarManutencao(manutencaoModal, manutencaoDescricaoInput.trim())}
+                onClick={() => confirmarManutencao(manutencaoModal, manutencaoDescricaoInput.trim(), manutencaoItemIdInput)}
                 className="flex-1 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Enviar solicitação
