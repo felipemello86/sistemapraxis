@@ -182,7 +182,17 @@ export function Evolucao({
   // Largura mínima do gráfico diário — cada dia precisa de espaço pra
   // legenda não amontoar, mesma lógica aplicada no gráfico de UHs da Visão
   // Gerencial (rolagem só dentro do bloco do gráfico, não na tela inteira).
+  // Usada só no modo COMPACTO (card pequeno) — no modo expandido o gráfico
+  // ocupa a tela toda, então cabe a janela inteira sem precisar rolar (ver
+  // `intervaloExpandido` abaixo).
   const larguraGraficoDiario = Math.max(serieDiaria.length * 44, 600)
+
+  // No modo expandido, mostrar TODOS os dias como rótulo (interval={0})
+  // amontoaria ~90 legendas na largura da tela. Em vez de forçar rolagem
+  // (que foi a reclamação do Felipe: "a janela está muito curta, só 1 mês"
+  // — na real ele só via o final da rolagem), pulamos rótulos pra caber a
+  // janela inteira de uma vez, mirando ~15 legendas visíveis.
+  const intervaloExpandido = Math.max(0, Math.ceil(serieDiaria.length / 15) - 1)
 
   // Modo maximizado do gráfico "Conformidade ao longo do tempo" — pedido
   // explícito do Felipe: com a janela em DIAS_JANELA dias (3 meses), o
@@ -221,50 +231,53 @@ export function Evolucao({
     if (el) el.scrollLeft = el.scrollWidth
   }, [serieDiaria, expandido])
 
-  // Conteúdo do gráfico em si — extraído numa variável pra não duplicar o
-  // AreaChart inteiro entre o card normal e o overlay maximizado abaixo, só
-  // a altura do container muda entre os dois.
-  const graficoConformidade = (
-    <AreaChart data={serieDiaria} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
-      <defs>
-        {/* Gradiente HORIZONTAL (x1→x2, não y1→y2 como antes) — um stop por
-            dia, cor conforme o score daquele dia (stopsGradiente acima).
-            Dois gradientes com os mesmos stops de cor: um mais translúcido
-            pro preenchimento da área, outro opaco pro traço da linha. */}
-        <linearGradient id="fillConf" x1="0" y1="0" x2="1" y2="0">
-          {stopsGradiente.map((s, i) => (
-            <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={0.35} />
-          ))}
-        </linearGradient>
-        <linearGradient id="strokeConf" x1="0" y1="0" x2="1" y2="0">
-          {stopsGradiente.map((s, i) => (
-            <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={1} />
-          ))}
-        </linearGradient>
-      </defs>
-      <CartesianGrid vertical={false} strokeDasharray="3 3" />
-      <XAxis
-        dataKey="dia"
-        tickLine={false}
-        axisLine={false}
-        tickMargin={8}
-        interval={0}
-        angle={-45}
-        textAnchor="end"
-        height={50}
-        tick={{ fontSize: 11 }}
-      />
-      <YAxis tickLine={false} axisLine={false} width={40} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-      <ChartTooltip content={<ChartTooltipContent />} />
-      <Area
-        dataKey="conformidade"
-        type="monotone"
-        stroke="url(#strokeConf)"
-        fill="url(#fillConf)"
-        strokeWidth={2.5}
-      />
-    </AreaChart>
-  )
+  // Conteúdo do gráfico em si — extraído numa função (não uma variável fixa)
+  // pra não duplicar o AreaChart inteiro entre o card normal e o overlay
+  // maximizado abaixo; recebe o `interval` do XAxis como parâmetro porque
+  // ele difere entre os dois modos (ver intervaloExpandido acima).
+  function renderGraficoConformidade(interval: number) {
+    return (
+      <AreaChart data={serieDiaria} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
+        <defs>
+          {/* Gradiente HORIZONTAL (x1→x2, não y1→y2 como antes) — um stop por
+              dia, cor conforme o score daquele dia (stopsGradiente acima).
+              Dois gradientes com os mesmos stops de cor: um mais translúcido
+              pro preenchimento da área, outro opaco pro traço da linha. */}
+          <linearGradient id="fillConf" x1="0" y1="0" x2="1" y2="0">
+            {stopsGradiente.map((s, i) => (
+              <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={0.35} />
+            ))}
+          </linearGradient>
+          <linearGradient id="strokeConf" x1="0" y1="0" x2="1" y2="0">
+            {stopsGradiente.map((s, i) => (
+              <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={1} />
+            ))}
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+        <XAxis
+          dataKey="dia"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          interval={interval}
+          angle={-45}
+          textAnchor="end"
+          height={50}
+          tick={{ fontSize: 11 }}
+        />
+        <YAxis tickLine={false} axisLine={false} width={40} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        <Area
+          dataKey="conformidade"
+          type="monotone"
+          stroke="url(#strokeConf)"
+          fill="url(#fillConf)"
+          strokeWidth={2.5}
+        />
+      </AreaChart>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -307,7 +320,7 @@ export function Evolucao({
                 }}
                 className="h-72 w-full"
               >
-                {graficoConformidade}
+                {renderGraficoConformidade(0)}
               </ChartContainer>
             </div>
           </div>
@@ -321,7 +334,7 @@ export function Evolucao({
         <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 md:p-6">
           <Panel
             title="Conformidade ao longo do tempo"
-            description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias). Arraste pros lados pra ver os outros dias.`}
+            description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias) — janela inteira visível abaixo.`}
             action={
               <button
                 type="button"
@@ -334,17 +347,21 @@ export function Evolucao({
             }
             className="flex min-h-0 flex-1 flex-col"
           >
-            <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden" ref={scrollGraficoRef}>
-              <div style={{ minWidth: larguraGraficoDiario, height: '100%' }}>
-                <ChartContainer
-                  config={{
-                    conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
-                  }}
-                  className="h-full w-full"
-                >
-                  {graficoConformidade}
-                </ChartContainer>
-              </div>
+            {/* Sem rolagem aqui (diferente do modo compacto acima) — o
+                objetivo do modo expandido é justamente caber a janela
+                inteira de uma vez (pedido do Felipe: "a janela está muito
+                curta, só mostra 1 mês" — o problema era precisar rolar pra
+                ver o resto). O gráfico ocupa 100% da largura disponível e
+                os rótulos do eixo X pulam de acordo com intervaloExpandido. */}
+            <div className="min-h-0 flex-1" ref={scrollGraficoRef}>
+              <ChartContainer
+                config={{
+                  conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
+                }}
+                className="h-full w-full"
+              >
+                {renderGraficoConformidade(intervaloExpandido)}
+              </ChartContainer>
             </div>
           </Panel>
         </div>
