@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Camera, CheckCircle2, ClipboardList, Inbox, Lock, Loader2, ListChecks, Plus } from 'lucide-react'
+import { Camera, CheckCircle2, ClipboardList, Inbox, Lock, Loader2, ListChecks, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -18,6 +18,7 @@ import {
   adicionarCardUrgenteAction,
   executarCardExecucaoAction,
   fecharProgramacaoDiaAction,
+  reabrirProgramacaoDiaAction,
   triarCardAProcessarAction,
 } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
@@ -42,12 +43,14 @@ function formatarHoraExecucao(iso: string) {
 // seleção do dia precede a liberação (pedido explícito: o técnico deve ver
 // o card assim que a UH entra na programação do dia). Selecionar cards aqui + "Fechar
 // programação do dia" cria o MaintenanceDailyCommitment de hoje (um por
-// dia, não pode reabrir) — só a partir daí os cards viram "Planejadas". Com
-// o dia já fechado, cards intempestivos/urgentes que ainda apareceriam em
-// "A Fazer" podem ser adicionados direto em "Planejadas" (marcados
-// previsto=false, não contam no denominador do % de realização — ver
-// adicionarCardUrgenteAction). "Executadas" volta o IV a Conforme
-// automaticamente (resolveCorrectionCard, na Server Action).
+// dia) — só a partir daí os cards viram "Planejadas". Com o dia já fechado,
+// cards intempestivos/urgentes que ainda apareceriam em "A Fazer" podem ser
+// adicionados direto em "Planejadas" (marcados previsto=false, não contam
+// no denominador do % de realização — ver adicionarCardUrgenteAction).
+// "Executadas" volta o IV a Conforme automaticamente (resolveCorrectionCard,
+// na Server Action). Dá pra desfazer um fechamento por engano com "Reabrir
+// programação do dia" (reabrirProgramacaoDiaAction), enquanto nenhum card
+// tiver sido executado ainda — ver comentário completo na Server Action.
 
 export function KanbanExecucao({
   podeOperar,
@@ -94,6 +97,8 @@ export function KanbanExecucao({
   const [blockMap, setBlockMap] = useState<Record<string, boolean>>({})
   const [confirmando, setConfirmando] = useState(false)
   const [fechando, setFechando] = useState(false)
+  const [confirmandoReabertura, setConfirmandoReabertura] = useState(false)
+  const [reabrindo, setReabrindo] = useState(false)
   const [cardExecutando, setCardExecutando] = useState<{ id: string; uhName: string; checklistItemName: string | null } | null>(null)
   const [cardTriando, setCardTriando] = useState<CorrectionCardView | null>(null)
   const [adicionandoUrgente, setAdicionandoUrgente] = useState<string | null>(null)
@@ -145,6 +150,27 @@ export function KanbanExecucao({
     }
   }
 
+  // Pedido explícito do Felipe: "criar a função de reabrir programação do
+  // dia (para casos de erro de fechamento da programação)". Só faz sentido
+  // reabrir enquanto nada foi executado ainda hoje — se algum item já foi
+  // marcado como feito, o mesmo gate existe no servidor (reabrirProgramacaoDiaImpl)
+  // e aqui só desabilita o botão com uma dica do motivo, em vez de deixar o
+  // clique falhar sem explicação.
+  const podeReabrir = executadas.length === 0
+
+  async function confirmarReabertura() {
+    setReabrindo(true)
+    try {
+      unwrapSafeAction(await reabrirProgramacaoDiaAction())
+      toast.success('Programação do dia reaberta.')
+      setConfirmandoReabertura(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao reabrir a programação.')
+    } finally {
+      setReabrindo(false)
+    }
+  }
+
   const selecionadosArr = aFazer.filter((c) => selecionados.has(c.id))
 
   return (
@@ -191,17 +217,28 @@ export function KanbanExecucao({
           </div>
 
           {commitmentHoje ? (
-            aFazer.length === 0 ? (
-              <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
-                A programação de hoje já foi fechada. Nenhum card intempestivo pendente.
-              </p>
-            ) : (
-              <div className="space-y-3 overflow-y-auto pr-1">
-                <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
-                  A programação de hoje já foi fechada. Estes cards surgiram depois — adicione à programação se for
-                  urgente, ou deixe pra amanhã.
+            <div className="space-y-3 overflow-y-auto pr-1">
+              <div className="space-y-2 rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
+                <p>
+                  A programação de hoje já foi fechada.
+                  {aFazer.length > 0 &&
+                    ' Estes cards surgiram depois — adicione à programação se for urgente, ou deixe pra amanhã.'}
                 </p>
-                {aFazer.map((card) => {
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full rounded-xl"
+                  disabled={!podeOperar || !podeReabrir}
+                  title={!podeReabrir ? 'Já existe item executado hoje — não é mais possível reabrir.' : undefined}
+                  onClick={() => setConfirmandoReabertura(true)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reabrir programação do dia
+                </Button>
+              </div>
+              {aFazer.length === 0 ? null : (
+                aFazer.map((card) => {
                   const expandido = selecionandoUrgente === card.id
                   return (
                     <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
@@ -277,9 +314,9 @@ export function KanbanExecucao({
                       )}
                     </div>
                   )
-                })}
-              </div>
-            )
+                })
+              )}
+            </div>
           ) : aFazer.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               Nenhum item pendente de UH selecionada pra hoje.
@@ -433,7 +470,8 @@ export function KanbanExecucao({
           <DialogHeader>
             <DialogTitle>Fechar programação do dia</DialogTitle>
             <DialogDescription>
-              Depois de fechada, não é possível reabrir a programação de hoje. Confirma os {selecionadosArr.length}{' '}
+              Os cards saem de &quot;A Fazer&quot; e entram em &quot;Planejadas&quot;. Dá pra reabrir depois em caso
+              de erro, mas só enquanto nenhum item tiver sido executado. Confirma os {selecionadosArr.length}{' '}
               {selecionadosArr.length === 1 ? 'item selecionado' : 'itens selecionados'}?
             </DialogDescription>
           </DialogHeader>
@@ -457,6 +495,27 @@ export function KanbanExecucao({
             </Button>
             <Button onClick={confirmarFechamento} disabled={fechando} className="rounded-xl">
               {fechando ? 'Fechando...' : 'Confirmar fechamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmandoReabertura} onOpenChange={(open) => !open && setConfirmandoReabertura(false)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reabrir programação do dia</DialogTitle>
+            <DialogDescription>
+              Os {planejadas.length} {planejadas.length === 1 ? 'item planejado' : 'itens planejados'} de hoje voltam
+              pra &quot;A Fazer&quot;, como se a programação ainda não tivesse sido fechada. Use só em caso de erro no
+              fechamento.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setConfirmandoReabertura(false)} disabled={reabrindo} className="rounded-xl">
+              Cancelar
+            </Button>
+            <Button onClick={confirmarReabertura} disabled={reabrindo} variant="destructive" className="rounded-xl">
+              {reabrindo ? 'Reabrindo...' : 'Confirmar reabertura'}
             </Button>
           </DialogFooter>
         </DialogContent>

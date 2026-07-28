@@ -288,6 +288,58 @@ async function fecharProgramacaoDiaImpl(input: {
 }
 export const fecharProgramacaoDiaAction = safeAction(fecharProgramacaoDiaImpl);
 
+// Pedido explícito do Felipe: "criar a função de reabrir programação do dia
+// (para casos de erro de fechamento da programação)". Só cobre esse cenário
+// de engano imediato — por isso os dois gates abaixo: nenhum card pode já
+// ter sido executado (senão teria trabalho real acontecendo em cima da
+// programação, não dá pra simplesmente desfazer) e o Resultado Diário ainda
+// não pode ter sido enviado (reportSentAt), que só acontece quando o último
+// card é executado ou o cron das 19h roda — ambos os casos já implicam
+// "não é mais só um erro de clique".
+//
+// `data = dataAtualSP()` no lookup já restringe isso à programação de HOJE
+// — não dá pra reabrir um fechamento de um dia anterior por aqui (fora do
+// escopo pedido: "erro de fechamento", não "desfazer histórico").
+//
+// De propósito NÃO mexe em UH.emManutencao: esse campo é de posse
+// compartilhada (ver comentário em ativarManutencaoUH/toggle_manutencao,
+// packages/core/src/maintenanceUrgente.ts) — desligá-lo aqui de volta
+// poderia liberar uma UH que ainda precisa de manutenção por outro motivo
+// (a não conformidade continua aberta, só a programação de hoje é desfeita).
+async function reabrirProgramacaoDiaImpl() {
+  const session = await requireModuleSession();
+  const data = dataAtualSP();
+
+  const commitment = await prisma.maintenanceDailyCommitment.findUnique({
+    where: { tenantId_data: { tenantId: session.tenantId, data } },
+    include: { cards: true },
+  });
+  if (!commitment) throw new Error("A programação de hoje ainda não foi fechada.");
+
+  if (commitment.reportSentAt) {
+    throw new Error("O Resultado Diário de hoje já foi enviado — não é mais possível reabrir a programação.");
+  }
+  if (commitment.cards.some((c) => c.executionStatus === "EXECUTADA")) {
+    throw new Error("Já existe item executado na programação de hoje — não é mais possível reabrir.");
+  }
+
+  await prisma.$transaction([
+    prisma.maintenanceCorrectionCard.updateMany({
+      where: { dailyCommitmentId: commitment.id },
+      data: {
+        dailyCommitmentId: null,
+        executionStatus: "A_FAZER",
+        blockForReservation: null,
+        previsto: true,
+      },
+    }),
+    prisma.maintenanceDailyCommitment.delete({ where: { id: commitment.id } }),
+  ]);
+
+  revalidatePath("/");
+}
+export const reabrirProgramacaoDiaAction = safeAction(reabrirProgramacaoDiaImpl);
+
 async function executarCardExecucaoImpl(input: { cardId: string; description: string; photos: string[] }) {
   const session = await requireModuleSession();
   const card = await getCardOrThrow(input.cardId, session.tenantId);
