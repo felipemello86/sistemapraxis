@@ -150,7 +150,7 @@ export default function PraxisLanding() {
         <div className={estilos.heroConteudo}>
           <div className={estilos.heroTexto}>
             <Sobrancelha>Operação hoteleira</Sobrancelha>
-            <h1 style={{ margin: "0 0 28px", fontSize: 58, lineHeight: 1.05, fontWeight: 300, letterSpacing: "-0.032em" }}>
+            <h1 className={estilos.h1Hero}>
               Simples.
               <br />
               Inteligente.
@@ -192,21 +192,19 @@ export default function PraxisLanding() {
       {/* ── O dia típico ─────────────────────────────────────────── */}
       <section style={{ borderBottom: FIO }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 32px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 56, marginBottom: 64 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 56, marginBottom: 64 }}>
             <div>
               <Sobrancelha>O ponto de partida</Sobrancelha>
-              <h2 style={{ margin: 0, fontSize: 36, fontWeight: 300, letterSpacing: "-0.022em", lineHeight: 1.25 }}>
-                O dia típico de uma pousada com 30 UHs
-              </h2>
+              <h2 className={estilos.h2Secao}>O dia típico de uma pousada com 30 UHs</h2>
             </div>
             <p style={{ margin: 0, fontSize: 17, lineHeight: 1.75, color: TINTA, fontWeight: 300, alignSelf: "center" }}>
               É volume demais para tratar numa planilha, num grupo de WhatsApp ou na memória do Hoteleiro.
             </p>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 0 }}>
-            {DIA_TIPICO.map((d, i) => (
-              <div key={d.rotulo} style={{ padding: "0 32px", borderLeft: i === 0 ? "none" : FIO }}>
-                <div style={{ fontSize: 54, fontWeight: 300, letterSpacing: "-0.035em", lineHeight: 1, marginBottom: 14 }}>{d.valor}</div>
+          <div className={estilos.colunas}>
+            {DIA_TIPICO.map((d) => (
+              <div key={d.rotulo}>
+                <div className={estilos.numGrande}>{d.valor}</div>
                 <p style={{ margin: 0, fontSize: 15.5, lineHeight: 1.6, color: TINTA, fontWeight: 300, maxWidth: 220 }}>{d.rotulo}</p>
               </div>
             ))}
@@ -218,22 +216,12 @@ export default function PraxisLanding() {
       <section style={{ borderBottom: FIO }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 32px" }}>
           <Sobrancelha>Pessoas e processos</Sobrancelha>
-          <h2 style={{ margin: "0 0 56px", fontSize: 36, fontWeight: 300, letterSpacing: "-0.022em", maxWidth: 560, lineHeight: 1.25 }}>
+          <h2 className={estilos.h2Secao} style={{ marginBottom: 56, maxWidth: 560 }}>
             O que a Praxis existe para sustentar, todo dia
           </h2>
           <div>
             {PESSOAS_PROCESSOS.map((p, i) => (
-              <div
-                key={p.titulo}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "44px minmax(240px, 1fr) minmax(240px, 1.1fr)",
-                  gap: 24,
-                  padding: "28px 0",
-                  borderTop: i === 0 ? "none" : FIO,
-                  alignItems: "baseline",
-                }}
-              >
+              <div key={p.titulo} className={`${estilos.itemLista} ${i === 0 ? estilos.semFioTopo : ""}`}>
                 <span style={{ fontSize: 13, color: DOURADO, fontWeight: 600, letterSpacing: "0.08em" }}>
                   {String(i + 1).padStart(2, "0")}
                 </span>
@@ -249,10 +237,10 @@ export default function PraxisLanding() {
       <section style={{ borderBottom: FIO }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 32px" }}>
           <Sobrancelha>Por dentro</Sobrancelha>
-          <h2 style={{ margin: "0 0 64px", fontSize: 36, fontWeight: 300, letterSpacing: "-0.022em", maxWidth: 560, lineHeight: 1.25 }}>
+          <h2 className={estilos.h2Secao} style={{ marginBottom: 64, maxWidth: 560 }}>
             A operação inteira, na palma da mão
           </h2>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 48 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 48 }}>
             {TELAS.map((t) => (
               <figure key={t.src} style={{ margin: 0 }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -275,25 +263,17 @@ export default function PraxisLanding() {
       <section id="resultados" style={{ background: NAVY, color: "#fff" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 32px" }}>
           <Sobrancelha claro>Case real</Sobrancelha>
-          <h2 style={{ margin: "0 0 20px", fontSize: 36, fontWeight: 300, letterSpacing: "-0.022em", lineHeight: 1.25 }}>BNB Flex</h2>
+          <h2 className={estilos.h2Secao} style={{ marginBottom: 20 }}>BNB Flex</h2>
           <p style={{ margin: "0 0 64px", fontSize: 17, lineHeight: 1.75, color: "rgba(255,255,255,0.62)", maxWidth: 520, fontWeight: 300 }}>
             Um ano de operação conduzida pela Praxis, medida pelos próprios indicadores do sistema.
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 0 }}>
-            <div style={{ padding: "0 40px 0 0" }}>
-              <div style={{ fontSize: 52, fontWeight: 300, letterSpacing: "-0.035em", color: DOURADO, lineHeight: 1, marginBottom: 16 }}>
-                46 → 93
-              </div>
-              <p style={{ margin: "0 0 6px", fontSize: 16.5, lineHeight: 1.6, color: "#fff", fontWeight: 300, maxWidth: 250 }}>
-                no índice de conservação das propriedades
-              </p>
-              <p style={{ margin: 0, fontSize: 14, color: "rgba(255,255,255,0.5)", fontWeight: 300 }}>em pontos percentuais</p>
-            </div>
-            {RESULTADOS.map((r) => (
-              <div key={r.texto} style={{ padding: "0 40px", borderLeft: "1px solid rgba(255,255,255,0.14)" }}>
-                <div style={{ fontSize: 52, fontWeight: 300, letterSpacing: "-0.035em", color: DOURADO, lineHeight: 1, marginBottom: 16 }}>
-                  {r.numero}
-                </div>
+          <div className={`${estilos.colunas} ${estilos.colunasClaras}`}>
+            {[
+              { numero: "46 → 93", texto: "no índice de conservação das propriedades", detalhe: "em pontos percentuais" },
+              ...RESULTADOS,
+            ].map((r) => (
+              <div key={r.texto}>
+                <div className={estilos.numCase}>{r.numero}</div>
                 <p style={{ margin: "0 0 6px", fontSize: 16.5, lineHeight: 1.6, color: "#fff", fontWeight: 300, maxWidth: 250 }}>{r.texto}</p>
                 <p style={{ margin: 0, fontSize: 14, color: "rgba(255,255,255,0.5)", fontWeight: 300 }}>{r.detalhe}</p>
               </div>
@@ -306,7 +286,7 @@ export default function PraxisLanding() {
       <section style={{ borderBottom: FIO }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 32px" }}>
           <Sobrancelha>A suíte</Sobrancelha>
-          <h2 style={{ margin: "0 0 20px", fontSize: 36, fontWeight: 300, letterSpacing: "-0.022em", maxWidth: 560, lineHeight: 1.25 }}>
+          <h2 className={estilos.h2Secao} style={{ marginBottom: 20, maxWidth: 560 }}>
             Seis módulos, uma operação
           </h2>
           <p style={{ margin: "0 0 56px", fontSize: 17, lineHeight: 1.75, color: TINTA, maxWidth: 520, fontWeight: 300 }}>
@@ -315,17 +295,7 @@ export default function PraxisLanding() {
           </p>
           <div>
             {MODULOS.map((m, i) => (
-              <div
-                key={m.nome}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(200px, 0.6fr) minmax(260px, 1.4fr)",
-                  gap: 32,
-                  padding: "26px 0",
-                  borderTop: i === 0 ? "none" : FIO,
-                  alignItems: "baseline",
-                }}
-              >
+              <div key={m.nome} className={`${estilos.itemModulo} ${i === 0 ? estilos.semFioTopo : ""}`}>
                 <h3 style={{ margin: 0, fontSize: 19, fontWeight: 600 }}>{m.nome}</h3>
                 <p style={{ margin: 0, fontSize: 16, lineHeight: 1.7, color: TINTA, fontWeight: 300 }}>{m.texto}</p>
               </div>
@@ -339,7 +309,7 @@ export default function PraxisLanding() {
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "96px 32px" }}>
           <div style={{ textAlign: "center", marginBottom: 44 }}>
             <Sobrancelha>Próximo passo</Sobrancelha>
-            <h2 style={{ margin: "0 0 16px", fontSize: 36, fontWeight: 300, letterSpacing: "-0.022em", lineHeight: 1.25 }}>
+            <h2 className={estilos.h2Secao} style={{ marginBottom: 16 }}>
               Veja a Praxis na sua operação
             </h2>
             <p style={{ margin: "0 auto", fontSize: 17, lineHeight: 1.75, color: TINTA, maxWidth: 480, fontWeight: 300 }}>

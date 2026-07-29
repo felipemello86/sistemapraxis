@@ -1,10 +1,17 @@
-/* Regras da landing pública que precisam de media query — o resto da página
-   é estilo inline (ver page.tsx). O hero é o único trecho que muda de
-   estrutura entre desktop e mobile: no desktop o gráfico de conformidade
-   ocupa a largura toda por trás do texto (ele é o protagonista da página, e
-   o esmaecimento forte à esquerda da própria imagem é o que mantém o texto
-   legível por cima); no mobile ele desce pra baixo do texto, porque
-   sobreposto ficaria ilegível numa tela estreita. */
+/* Regras da landing pública que precisam de media query — estilo inline não
+   aceita @media, então tudo que muda entre desktop e mobile mora aqui.
+   (O resto da página segue inline, ver page.tsx.)
+
+   O hero é o trecho que muda de estrutura: no desktop o gráfico de
+   conformidade ocupa a largura toda por trás do texto (ele é o protagonista
+   da página, e o esmaecimento forte à esquerda da própria imagem é o que
+   mantém o texto legível por cima); no mobile ele desce pra baixo do texto,
+   porque sobreposto ficaria ilegível numa tela estreita.
+
+   As listas e as colunas de números usam minmax(0, …) de propósito: com um
+   mínimo em pixels (minmax(240px, …)) as colunas não encolhem abaixo desse
+   valor e o conteúdo vaza pela lateral no celular — foi exatamente o bug de
+   texto cortado que apareceu no primeiro deploy. */
 
 .hero {
   position: relative;
@@ -40,6 +47,88 @@
   max-width: 460px;
 }
 
+.h1Hero {
+  margin: 0 0 28px;
+  font-size: 58px;
+  line-height: 1.05;
+  font-weight: 300;
+  letter-spacing: -0.032em;
+}
+
+.h2Secao {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 300;
+  letter-spacing: -0.022em;
+  line-height: 1.25;
+}
+
+.numGrande {
+  font-size: 54px;
+  font-weight: 300;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  margin-bottom: 14px;
+}
+
+.numCase {
+  font-size: 52px;
+  font-weight: 300;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  margin-bottom: 16px;
+  color: #d8a63a;
+}
+
+/* Colunas de números separadas por fio vertical (dia típico / case) */
+.colunas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 0;
+}
+
+.colunas > div {
+  padding: 0 32px;
+  border-left: 1px solid rgba(16, 40, 77, 0.11);
+}
+
+.colunas > div:first-child {
+  border-left: none;
+  padding-left: 0;
+}
+
+.colunasClaras > div {
+  border-left-color: rgba(255, 255, 255, 0.14);
+  padding: 0 40px;
+}
+
+.colunasClaras > div:first-child {
+  padding-left: 0;
+}
+
+/* Linhas editoriais: "Pessoas e processos" e a lista de módulos */
+.itemLista {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 24px;
+  padding: 28px 0;
+  border-top: 1px solid rgba(16, 40, 77, 0.11);
+  align-items: baseline;
+}
+
+.itemModulo {
+  display: grid;
+  grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.4fr);
+  gap: 32px;
+  padding: 26px 0;
+  border-top: 1px solid rgba(16, 40, 77, 0.11);
+  align-items: baseline;
+}
+
+.semFioTopo {
+  border-top: none;
+}
+
 @media (max-width: 1000px) {
   .heroConteudo {
     padding: 108px 32px 96px;
@@ -47,6 +136,38 @@
   .heroImg {
     width: 130%;
     right: -18%;
+  }
+}
+
+@media (max-width: 820px) {
+  .h1Hero {
+    font-size: 40px;
+  }
+  .h2Secao {
+    font-size: 27px;
+  }
+  .numGrande,
+  .numCase {
+    font-size: 40px;
+  }
+  .itemLista,
+  .itemModulo {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .colunas > div,
+  .colunasClaras > div {
+    padding: 24px 0;
+    border-left: none;
+    border-top: 1px solid rgba(16, 40, 77, 0.11);
+  }
+  .colunasClaras > div {
+    border-top-color: rgba(255, 255, 255, 0.14);
+  }
+  .colunas > div:first-child,
+  .colunasClaras > div:first-child {
+    border-top: none;
+    padding-top: 0;
   }
 }
 
@@ -66,7 +187,7 @@
     margin-left: -9%;
   }
   .heroConteudo {
-    padding: 72px 32px 24px;
+    padding: 72px 24px 24px;
   }
   .heroTexto {
     max-width: none;
