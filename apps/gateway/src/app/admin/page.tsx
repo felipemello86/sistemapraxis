@@ -1,6 +1,13 @@
 import { redirect } from "next/navigation";
 import { getAdminSession, prisma, MODULE_LABELS } from "@praxis/core";
-import { logoutAdminAction, criarPlanoAction, impersonarAction, atualizarPlanoAction, excluirPlanoAction } from "./actions";
+import {
+  logoutAdminAction,
+  criarPlanoAction,
+  impersonarAction,
+  atualizarPlanoAction,
+  excluirPlanoAction,
+  alternarLeadAtendidoAction,
+} from "./actions";
 import { NovoPlanoForm } from "./NovoPlanoForm";
 import { EditarPlanoForm } from "./EditarPlanoForm";
 
@@ -23,7 +30,7 @@ export default async function AdminDashboard() {
   const admin = await getAdminSession();
   if (!admin) redirect("/admin/login");
 
-  const [tenants, planos] = await Promise.all([
+  const [tenants, planos, leads] = await Promise.all([
     prisma.tenant.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -32,7 +39,11 @@ export default async function AdminDashboard() {
       },
     }),
     prisma.subscriptionPlan.findMany({ where: { ativo: true }, orderBy: { valorCentavos: "asc" } }),
+    // Pedidos de demonstração da landing page (src/app/page.tsx). Não
+    // atendidos primeiro — é a fila de trabalho de quem responde.
+    prisma.demoLead.findMany({ orderBy: [{ atendido: "asc" }, { createdAt: "desc" }], take: 100 }),
   ]);
+  const leadsPendentes = leads.filter((l) => !l.atendido).length;
 
   return (
     <main style={{ minHeight: "100svh", padding: "max(24px, env(safe-area-inset-top)) 24px 60px" }}>
@@ -151,6 +162,99 @@ export default async function AdminDashboard() {
                     </button>
                   </form>
                 </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Pedidos de demonstração ({leads.length})</h2>
+          {leadsPendentes > 0 && (
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#ff9500",
+                background: "#ff95001a",
+                padding: "2px 8px",
+                borderRadius: 999,
+              }}
+            >
+              {leadsPendentes} a responder
+            </span>
+          )}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 32 }}>
+          {leads.length === 0 && (
+            <p style={{ color: "#6e6e73", fontSize: 14 }}>
+              Nenhum pedido ainda — eles chegam pelo formulário da landing page (sistemaspraxis.com.br).
+            </p>
+          )}
+          {leads.map((l) => {
+            const boundAlternar = alternarLeadAtendidoAction.bind(null, l.id);
+            return (
+              <div
+                key={l.id}
+                style={{
+                  background: "#fff",
+                  borderRadius: 14,
+                  padding: 16,
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  opacity: l.atendido ? 0.6 : 1,
+                }}
+              >
+                <div style={{ minWidth: 240, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, fontSize: 15 }}>{l.hotel}</span>
+                    <span style={{ fontSize: 13, color: "#6e6e73" }}>{l.nome}</span>
+                    {l.atendido && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#34c759",
+                          background: "#34c7591a",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                        }}
+                      >
+                        Atendido
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: "4px 0 0", color: "#6e6e73", fontSize: 13 }}>
+                    <a href={`mailto:${l.email}`} style={{ color: "#0071e3" }}>
+                      {l.email}
+                    </a>{" "}
+                    · {l.telefone} ·{" "}
+                    {l.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                  </p>
+                  {l.mensagem && (
+                    <p style={{ margin: "8px 0 0", fontSize: 13.5, color: "#1d1d1f", lineHeight: 1.5 }}>
+                      “{l.mensagem}”
+                    </p>
+                  )}
+                </div>
+                <form action={boundAlternar}>
+                  <button
+                    type="submit"
+                    style={{
+                      padding: "7px 12px",
+                      borderRadius: 9,
+                      border: "1px solid #d2d2d7",
+                      background: "#fff",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {l.atendido ? "Reabrir" : "Marcar atendido"}
+                  </button>
+                </form>
               </div>
             );
           })}

@@ -1,0 +1,74 @@
+/* Regras da landing pública que precisam de media query — o resto da página
+   é estilo inline (ver page.tsx). O hero é o único trecho que muda de
+   estrutura entre desktop e mobile: no desktop o gráfico de conformidade
+   ocupa a largura toda por trás do texto (ele é o protagonista da página, e
+   o esmaecimento forte à esquerda da própria imagem é o que mantém o texto
+   legível por cima); no mobile ele desce pra baixo do texto, porque
+   sobreposto ficaria ilegível numa tela estreita. */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(16, 40, 77, 0.11);
+}
+
+.heroFundo {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.heroImg {
+  position: absolute;
+  right: -2%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 96%;
+  min-width: 900px;
+  height: auto;
+  display: block;
+}
+
+.heroConteudo {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 148px 32px;
+}
+
+.heroTexto {
+  max-width: 460px;
+}
+
+@media (max-width: 1000px) {
+  .heroConteudo {
+    padding: 108px 32px 96px;
+  }
+  .heroImg {
+    width: 130%;
+    right: -18%;
+  }
+}
+
+@media (max-width: 780px) {
+  .hero {
+    overflow: visible;
+  }
+  .heroFundo {
+    position: static;
+    margin: 8px 0 -8px;
+  }
+  .heroImg {
+    position: static;
+    transform: none;
+    width: 118%;
+    min-width: 0;
+    margin-left: -9%;
+  }
+  .heroConteudo {
+    padding: 72px 32px 24px;
+  }
+  .heroTexto {
+    max-width: none;
+  }
+}

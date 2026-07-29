@@ -252,3 +252,18 @@ export async function excluirPlanoAction(planId: string) {
   await prisma.subscriptionPlan.update({ where: { id: planId }, data: { ativo: false } });
   redirect("/admin");
 }
+
+// Marca/desmarca um pedido de demonstração (vindo da landing page pública,
+// ver src/app/page.tsx + api/demo) como já atendido — só pra quem acompanha
+// os pedidos saber o que já teve retorno. Não apaga nada: o histórico de
+// contatos fica todo no banco.
+export async function alternarLeadAtendidoAction(leadId: string) {
+  await requireAdminSession();
+  const lead = await prisma.demoLead.findUnique({ where: { id: leadId } });
+  if (!lead) redirect("/admin");
+  await prisma.demoLead.update({
+    where: { id: leadId },
+    data: { atendido: !lead.atendido, atendidoEm: lead.atendido ? null : new Date() },
+  });
+  redirect("/admin");
+}

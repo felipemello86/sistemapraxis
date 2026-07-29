@@ -2205,6 +2205,30 @@ model PlatformAdmin {
   updatedAt DateTime @updatedAt
 }
 
+// Pedido de demonstração vindo da landing page pública (apps/gateway,
+// src/app/page.tsx → POST /api/demo). Nada a ver com Tenant/User: é um
+// contato comercial de alguém que ainda NÃO é cliente — por isso não tem
+// tenantId nem relação com nenhuma tabela operacional. Listado no painel
+// admin (/admin) pra dar retorno.
+model DemoLead {
+  id       String  @id @default(cuid())
+  nome     String
+  hotel    String
+  email    String
+  telefone String
+  // Texto livre opcional ("quantas UHs", "o que mais dói hoje" etc).
+  mensagem String?
+
+  // Marcado no painel quando alguém já falou com o contato — evita retrabalho
+  // quando mais de uma pessoa acompanha os pedidos.
+  atendido   Boolean   @default(false)
+  atendidoEm DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // Catálogo de planos vendáveis — cadastrado no admin, espelhando um Price
 // já criado no dashboard do Stripe (stripePriceId). Não criamos Price via
 // API pra manter o valor/nome sempre visíveis e editáveis direto no Stripe
