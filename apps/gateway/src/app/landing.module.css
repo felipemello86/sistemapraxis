@@ -63,12 +63,15 @@
   line-height: 1.25;
 }
 
+/* white-space: nowrap porque "+1.200" e "46 → 93" quebravam no meio quando a
+   coluna apertava, desalinhando o número em relação aos vizinhos. */
 .numGrande {
   font-size: 54px;
   font-weight: 300;
   letter-spacing: -0.035em;
   line-height: 1;
   margin-bottom: 14px;
+  white-space: nowrap;
 }
 
 .numCase {
@@ -78,13 +81,19 @@
   line-height: 1;
   margin-bottom: 16px;
   color: #d8a63a;
+  white-space: nowrap;
 }
 
-/* Colunas de números separadas por fio vertical (dia típico / case) */
+/* Colunas de números separadas por fio vertical (dia típico / case).
+   3 colunas explícitas, não `auto-fit`: com minmax(0, 1fr) o auto-fit nunca
+   quebra linha (o mínimo é zero, então cabem sempre as três) e no celular os
+   números ficavam espremidos e desalinhados. O empilhamento vem da media
+   query lá embaixo, junto com a troca do fio lateral por fio no topo. */
 .colunas {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
+  align-items: start;
 }
 
 .colunas > div {
@@ -154,6 +163,9 @@
   .itemModulo {
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+  .colunas {
+    grid-template-columns: 1fr;
   }
   .colunas > div,
   .colunasClaras > div {
