@@ -89,6 +89,14 @@ export function NovoLeadForm({
         <input name="hotel" placeholder="Nome do hotel" required style={inputStyle} />
         <input name="telefone" placeholder="Telefone" required style={inputStyle} />
         <input name="email" placeholder="E-mail (opcional)" style={inputStyle} />
+        <input
+          name="valor"
+          type="number"
+          min={0}
+          step="0.01"
+          placeholder="Valor (R$)"
+          style={{ ...inputStyle, minWidth: 120, maxWidth: 140 }}
+        />
         <select name="fonte" required defaultValue="" style={{ ...inputStyle, maxWidth: 160 }}>
           <option value="" disabled>
             Fonte...

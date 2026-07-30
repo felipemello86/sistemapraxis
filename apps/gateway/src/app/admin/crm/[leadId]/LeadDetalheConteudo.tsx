@@ -3,6 +3,7 @@ import { getAdminSession, prisma } from "@praxis/core";
 import { garantirCrmPronto } from "../data";
 import { EtapaSelect } from "../EtapaSelect";
 import { FonteSelect } from "./FonteSelect";
+import { ValorInput } from "./ValorInput";
 import { NotaForm } from "./NotaForm";
 import { PerdidoForm } from "./PerdidoForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
@@ -10,6 +11,7 @@ import { ExcluirLeadButton } from "./ExcluirLeadButton";
 import {
   moverEtapaDetalheAction,
   atualizarFonteAction,
+  atualizarValorAction,
   criarNotaAction,
   marcarPerdidoAction,
   marcarGanhoDetalheAction,
@@ -122,6 +124,8 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, color: "#6e6e73" }}>Valor (R$):</span>
+          <ValorInput leadId={lead.id} valorAtual={lead.valor} action={atualizarValorAction} />
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Fonte:</span>
           <FonteSelect leadId={lead.id} fonteAtual={lead.fonte} action={atualizarFonteAction} />
           {lead.desfecho === "ABERTO" && (

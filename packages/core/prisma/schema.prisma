@@ -2301,6 +2301,13 @@ model DemoLead {
   // que não fechou, pra aprendizado do funil.
   motivoPerda String?
 
+  // Valor (R$) do negócio — campo padrão do sistema (30/07/2026, pedido do
+  // Felipe), não um LeadCampoPersonalizado, porque o board precisa somar
+  // isso por coluna (ver KanbanBoard.tsx) e um valor em EAV exigiria parsear
+  // string toda vez. @default(0) pra não quebrar leads antigos/sem valor
+  // informado — conta 0 na soma da coluna.
+  valor Float @default(0)
+
   createdAt DateTime @default(now())
 
   atividades           LeadActivity[]

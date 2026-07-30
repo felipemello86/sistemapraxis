@@ -428,6 +428,22 @@ export async function atualizarFonteAction(leadId: string, fonte: string) {
   redirect(`/admin/crm/${leadId}`);
 }
 
+// Atualiza o "Valor (R$)" do negócio a partir da tela de detalhe (ver
+// ValorInput.tsx) — mesmo padrão de atualizarFonteAction. Aceita string
+// solta (vem de um <input type="number">) em vez de FormData porque é
+// chamado direto no onBlur do input, sem <form>. Vírgula ou ponto como
+// separador decimal, negativo/lixo vira 0 em vez de quebrar.
+export async function atualizarValorAction(leadId: string, valorStr: string) {
+  await requireAdminSession();
+  const normalizado = valorStr.replace(",", ".").trim();
+  const valor = Number(normalizado);
+  await prisma.demoLead.update({
+    where: { id: leadId },
+    data: { valor: Number.isFinite(valor) && valor >= 0 ? valor : 0 },
+  });
+  redirect(`/admin/crm/${leadId}`);
+}
+
 // Cria um lead direto no CRM, sem passar pelo formulário público da landing
 // page — pra contatos que chegaram por telefone, indicação, evento etc.
 // E-mail é opcional aqui (diferente do POST /api/demo) porque nem sempre dá
@@ -447,6 +463,8 @@ export async function criarLeadManualAction(
   const telefone = String(formData.get("telefone") ?? "").trim().slice(0, 40);
   const mensagem = String(formData.get("mensagem") ?? "").trim().slice(0, 2000);
   const fonte = String(formData.get("fonte") ?? "").trim().slice(0, 60);
+  const valorStr = String(formData.get("valor") ?? "").replace(",", ".").trim();
+  const valor = valorStr ? Number(valorStr) : 0;
 
   if (!nome || !hotel || !telefone) {
     return { ok: false, error: "Preencha nome, hotel e telefone." };
@@ -457,11 +475,14 @@ export async function criarLeadManualAction(
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: "E-mail inválido (ou deixe em branco)." };
   }
+  if (!Number.isFinite(valor) || valor < 0) {
+    return { ok: false, error: "Valor (R$) inválido." };
+  }
 
   const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
 
   const lead = await prisma.demoLead.create({
-    data: { nome, hotel, email, telefone, mensagem: mensagem || null, fonte, stageId: primeiraEtapa?.id },
+    data: { nome, hotel, email, telefone, mensagem: mensagem || null, fonte, valor, stageId: primeiraEtapa?.id },
   });
 
   await prisma.leadActivity.create({

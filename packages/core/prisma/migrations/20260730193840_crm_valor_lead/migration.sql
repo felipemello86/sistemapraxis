@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "DemoLead" ADD COLUMN     "valor" DOUBLE PRECISION NOT NULL DEFAULT 0;

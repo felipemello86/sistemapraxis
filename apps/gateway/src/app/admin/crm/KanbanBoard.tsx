@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { formatValorBRL, formatValorBRLCompacto } from "./valorFormat";
 
 // SVG inline em vez de lucide-react (ou outra lib de ícone) — apps/gateway
 // não tem nenhuma lib de ícones instalada, e trazer uma só pra este botão
@@ -23,6 +24,7 @@ type Lead = {
   stageId: string | null;
   desfecho: "ABERTO" | "GANHO" | "PERDIDO";
   motivoPerda: string | null;
+  valor: number;
 };
 
 // Paleta cíclica de cores das colunas (30/07/2026) — ganho/perdido não são
@@ -128,6 +130,7 @@ export function KanbanBoard({
       <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12 }}>
         {etapas.map((etapa, index) => {
           const leadsDaEtapa = leadsPorEtapa.get(etapa.id) ?? [];
+          const somaValores = leadsDaEtapa.reduce((soma, l) => soma + l.valor, 0);
           const corBarra = PALETA_ETAPAS[index % PALETA_ETAPAS.length];
           const emFoco = sobreEtapaId === etapa.id;
           return (
@@ -155,9 +158,14 @@ export function KanbanBoard({
               }}
             >
               <div style={{ padding: "0 4px", marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <span style={{ fontWeight: 700, fontSize: 13, color: "#1d1d1f" }}>{etapa.nome}</span>
-                  <span style={{ fontSize: 12, color: "#6e6e73", fontWeight: 600 }}>{leadsDaEtapa.length}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <span style={{ fontSize: 11.5, color: "#6e6e73", fontWeight: 600 }}>
+                      {formatValorBRLCompacto(somaValores)}
+                    </span>
+                    <span style={{ fontSize: 12, color: "#6e6e73", fontWeight: 600 }}>{leadsDaEtapa.length}</span>
+                  </span>
                 </div>
                 <div style={{ height: 3, borderRadius: 999, background: corBarra, marginTop: 8 }} />
               </div>
@@ -195,6 +203,11 @@ export function KanbanBoard({
                       <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f", flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
                         <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
+                        {lead.valor > 0 && (
+                          <div style={{ fontSize: 12, color: "#1a7f37", fontWeight: 700, marginTop: 2 }}>
+                            {formatValorBRL(lead.valor)}
+                          </div>
+                        )}
                       </Link>
                       <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
                         <button
