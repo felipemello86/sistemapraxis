@@ -129,7 +129,7 @@ export function KanbanBoard({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, overflowX: "auto", paddingBottom: 12, flex: 1, minHeight: 0 }}>
         {etapas.map((etapa, index) => {
           const leadsDaEtapa = leadsPorEtapa.get(etapa.id) ?? [];
           const somaValores = leadsDaEtapa.reduce((soma, l) => soma + l.valor, 0);
@@ -153,9 +153,17 @@ export function KanbanBoard({
                 border: emFoco ? "1px dashed #0071e3" : "1px solid transparent",
                 borderRadius: 14,
                 padding: 12,
+                boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
                 minHeight: 0,
+                // maxHeight (não height fixo) — coluna com poucos cards
+                // encolhe pro tamanho do conteúdo em vez de esticar até o
+                // fim do espaço disponível (senão "Finalizados" fica colado
+                // na borda de baixo da tela à toa, mesmo com colunas
+                // curtas). Só quando o conteúdo passa desse teto que a
+                // rolagem interna dela entra em ação.
+                maxHeight: "100%",
                 transition: "background 0.1s, border-color 0.1s",
               }}
             >
