@@ -506,3 +506,95 @@ export async function excluirEtapaAction(
   await prisma.pipelineStage.delete({ where: { id: stageId } });
   redirect("/admin/crm/etapas");
 }
+
+// ─── Campos personalizados do lead (/admin/crm/campos) ──────────────────────
+// Ver LeadCampoPersonalizado/LeadCampoValor em schema.prisma — desenhado
+// como EAV de propósito pra suportar campo novo (ex: "Instagram" na Fase 2)
+// sem precisar de migration.
+
+export async function criarCampoAction(
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const nome = String(formData.get("nome") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "TEXTO");
+  const opcoes = String(formData.get("opcoes") ?? "").trim();
+  if (!nome) return { ok: false, error: "Dê um nome pro campo." };
+  if (tipo === "SELECAO" && !opcoes) {
+    return { ok: false, error: "Liste as opções (separadas por vírgula) pra um campo de seleção." };
+  }
+
+  const ultimo = await prisma.leadCampoPersonalizado.findFirst({ orderBy: { ordem: "desc" } });
+  await prisma.leadCampoPersonalizado.create({
+    data: {
+      nome,
+      tipo: tipo as "TEXTO" | "NUMERO" | "DATA" | "SELECAO",
+      ordem: (ultimo?.ordem ?? -1) + 1,
+      opcoes: tipo === "SELECAO" ? opcoes : null,
+    },
+  });
+
+  redirect("/admin/crm/campos");
+}
+
+export async function editarCampoAction(
+  campoId: string,
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const nome = String(formData.get("nome") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "TEXTO");
+  const opcoes = String(formData.get("opcoes") ?? "").trim();
+  if (!nome) return { ok: false, error: "Dê um nome pro campo." };
+  if (tipo === "SELECAO" && !opcoes) {
+    return { ok: false, error: "Liste as opções (separadas por vírgula) pra um campo de seleção." };
+  }
+
+  await prisma.leadCampoPersonalizado.update({
+    where: { id: campoId },
+    data: {
+      nome,
+      tipo: tipo as "TEXTO" | "NUMERO" | "DATA" | "SELECAO",
+      opcoes: tipo === "SELECAO" ? opcoes : null,
+    },
+  });
+
+  redirect("/admin/crm/campos");
+}
+
+// Sem bloqueio por "tem valor preenchido" (diferente de excluirEtapaAction):
+// campo personalizado é só um dado extra, não estrutural — apagar a
+// definição junto com os valores (onDelete: Cascade) não deixa nada quebrado.
+export async function excluirCampoAction(campoId: string) {
+  await requireAdminSession();
+  await prisma.leadCampoPersonalizado.delete({ where: { id: campoId } });
+  redirect("/admin/crm/campos");
+}
+
+// Salva todos os campos personalizados de um lead de uma vez só (um form,
+// um botão "Salvar" — mais simples que um botão por campo pro volume baixo
+// de leads/campos deste CRM). formData vem com uma chave `campo_<id>` por
+// campo cadastrado; upsert por (leadId, campoId).
+export async function salvarCamposLeadAction(
+  leadId: string,
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const campos = await prisma.leadCampoPersonalizado.findMany();
+
+  await Promise.all(
+    campos.map((campo) => {
+      const valor = String(formData.get(`campo_${campo.id}`) ?? "").trim();
+      return prisma.leadCampoValor.upsert({
+        where: { leadId_campoId: { leadId, campoId: campo.id } },
+        create: { leadId, campoId: campo.id, valor },
+        update: { valor },
+      });
+    })
+  );
+
+  redirect(`/admin/crm/${leadId}`);
+}

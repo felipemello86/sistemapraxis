@@ -2290,10 +2290,51 @@ model DemoLead {
 
   createdAt DateTime @default(now())
 
-  atividades LeadActivity[]
+  atividades           LeadActivity[]
+  camposPersonalizados LeadCampoValor[]
 
   @@index([createdAt])
   @@index([stageId])
+}
+
+enum LeadCampoTipo {
+  TEXTO
+  NUMERO
+  DATA
+  SELECAO
+}
+
+// CRM (Fase 1, 30/07/2026) — campos extras do lead, configuráveis em
+// /admin/crm/campos (criar/editar/excluir sem precisar de mim rodando
+// migration toda vez). Guardado como EAV (entidade-atributo-valor) de
+// propósito: com esse desenho, um campo tipo "Instagram" ou "WhatsApp" pra
+// Fase 2 é só configuração nova, não schema novo. "opcoes" só é usado
+// quando tipo = SELECAO (lista separada por vírgula).
+model LeadCampoPersonalizado {
+  id        String        @id @default(cuid())
+  nome      String
+  tipo      LeadCampoTipo @default(TEXTO)
+  ordem     Int
+  opcoes    String?
+  createdAt DateTime      @default(now())
+
+  valores LeadCampoValor[]
+
+  @@index([ordem])
+}
+
+// Valor de um campo personalizado pra um lead específico. Sempre guardado
+// como texto (mesmo NUMERO/DATA) — simplicidade em vez de tipagem forte,
+// dado o volume baixíssimo de leads (poucas dezenas por mês).
+model LeadCampoValor {
+  id      String                 @id @default(cuid())
+  leadId  String
+  lead    DemoLead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  campoId String
+  campo   LeadCampoPersonalizado @relation(fields: [campoId], references: [id], onDelete: Cascade)
+  valor   String
+
+  @@unique([leadId, campoId])
 }
 
 // Catálogo de planos vendáveis — cadastrado no admin, espelhando um Price

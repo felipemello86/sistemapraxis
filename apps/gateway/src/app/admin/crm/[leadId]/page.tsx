@@ -5,11 +5,13 @@ import { EtapaSelect } from "../EtapaSelect";
 import { ResponsavelSelect } from "./ResponsavelSelect";
 import { NotaForm } from "./NotaForm";
 import { PerdidoForm } from "./PerdidoForm";
+import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
 import {
   moverEtapaDetalheAction,
   atribuirResponsavelAction,
   criarNotaAction,
   marcarPerdidoAction,
+  salvarCamposLeadAction,
 } from "../../actions";
 
 const TIPO_LABEL: Record<string, string> = {
@@ -24,23 +26,27 @@ export default async function LeadDetalhe({ params }: { params: { leadId: string
 
   await garantirCrmPronto();
 
-  const [lead, etapas, admins] = await Promise.all([
+  const [lead, etapas, admins, campos] = await Promise.all([
     prisma.demoLead.findUnique({
       where: { id: params.leadId },
       include: {
         stage: true,
         responsavel: true,
         atividades: { orderBy: { createdAt: "desc" } },
+        camposPersonalizados: true,
       },
     }),
     prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } }),
     prisma.platformAdmin.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+    prisma.leadCampoPersonalizado.findMany({ orderBy: { ordem: "asc" } }),
   ]);
 
   if (!lead) notFound();
 
   const marcarPerdidoComId = marcarPerdidoAction.bind(null, lead.id);
   const criarNotaComId = criarNotaAction.bind(null, lead.id);
+  const salvarCamposComId = salvarCamposLeadAction.bind(null, lead.id);
+  const valoresCampos = Object.fromEntries(lead.camposPersonalizados.map((v) => [v.campoId, v.valor]));
 
   return (
     <main style={{ minHeight: "100svh", padding: "max(24px, env(safe-area-inset-top)) 24px 60px" }}>
@@ -91,6 +97,18 @@ export default async function LeadDetalhe({ params }: { params: { leadId: string
             {!lead.stage?.ehPerdido && <PerdidoForm action={marcarPerdidoComId} />}
           </div>
         </div>
+
+        {campos.length > 0 && (
+          <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginTop: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Campos personalizados</h2>
+              <a href="/admin/crm/campos" style={{ fontSize: 12, color: "#0071e3", textDecoration: "none" }}>
+                Gerenciar
+              </a>
+            </div>
+            <CamposPersonalizadosForm campos={campos} valores={valoresCampos} action={salvarCamposComId} />
+          </div>
+        )}
 
         <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginTop: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
           <h2 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Adicionar nota</h2>

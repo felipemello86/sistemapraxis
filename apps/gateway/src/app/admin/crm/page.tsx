@@ -40,8 +40,22 @@ export default async function CrmBoard() {
               Leads do formulário da landing page. Fase 1 do CRM — WhatsApp/Instagram vêm depois.
             </p>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <NovoLeadForm action={criarLeadManualAction} />
+          <div style={{ display: "flex", gap: 10, alignSelf: "flex-start" }}>
+            <a
+              href="/admin/crm/campos"
+              style={{
+                padding: "8px 14px",
+                borderRadius: 10,
+                border: "1px solid #d2d2d7",
+                background: "#fff",
+                color: "#1d1d1f",
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Gerenciar campos
+            </a>
             <a
               href="/admin/crm/etapas"
               style={{
@@ -58,6 +72,10 @@ export default async function CrmBoard() {
               Gerenciar etapas
             </a>
           </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <NovoLeadForm action={criarLeadManualAction} />
         </div>
 
         <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12 }}>
