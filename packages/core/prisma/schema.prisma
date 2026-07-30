@@ -2312,9 +2312,48 @@ model DemoLead {
 
   atividades           LeadActivity[]
   camposPersonalizados LeadCampoValor[]
+  whatsappMensagens    WhatsAppMensagem[]
 
   @@index([createdAt])
   @@index([stageId])
+}
+
+enum WhatsAppDirecao {
+  ENVIADA
+  RECEBIDA
+}
+
+enum WhatsAppMensagemStatus {
+  ENVIADA
+  ENTREGUE
+  LIDA
+  FALHOU
+}
+
+// CRM Fase 2 (30/07/2026) — mensagens de WhatsApp trocadas com o lead, via
+// WhatsApp Cloud API (Meta), número dedicado da Praxis. Guardado por lead
+// (DemoLead), não por número solto, pra aparecer na mesma timeline dele —
+// ver painel de chat em [leadId]/WhatsAppChat.tsx. waMessageId (wamid...) é
+// único pra dedupe: a Meta reentrega o mesmo webhook mais de uma vez
+// (at-least-once delivery), então o handler faz upsert por esse campo.
+model WhatsAppMensagem {
+  id     String   @id @default(cuid())
+  leadId String
+  lead   DemoLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  direcao  WhatsAppDirecao
+  conteudo String          @db.Text
+  tipo     String          @default("texto") // texto | imagem | audio | documento | video | figurinha
+  midiaUrl String? // URL já baixada da mídia (Cloudinary) — ver rota do webhook
+
+  // Nulo só pra mensagens enviadas que falharam antes de ir pra API (ex:
+  // erro de rede) — toda mensagem que a Meta aceitou tem um wamid.
+  waMessageId String?                @unique
+  status      WhatsAppMensagemStatus @default(ENVIADA)
+
+  createdAt DateTime @default(now())
+
+  @@index([leadId, createdAt])
 }
 
 enum LeadCampoTipo {

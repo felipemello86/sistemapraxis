@@ -1,4 +1,5 @@
 import { prisma } from "@praxis/core";
+import { normalizarTelefone } from "./telefone";
 
 // CRM (Fase 1, 30/07/2026) — helpers de dados compartilhados entre
 // /admin/crm, /admin/crm/[leadId] e /admin/crm/etapas, e também o endpoint
@@ -56,4 +57,40 @@ export async function backfillLeadsSemEtapa(): Promise<void> {
 export async function garantirCrmPronto(): Promise<void> {
   await garantirEtapasPadrao();
   await backfillLeadsSemEtapa();
+}
+
+// CRM Fase 2 (30/07/2026) — casa o número de quem manda mensagem no
+// WhatsApp (webhook da Meta, dígitos puros com DDI) com um DemoLead já
+// existente, comparando por normalizarTelefone (ver ./telefone.ts) — assim
+// um lead cadastrado como "(81) 98952-6361" bate com o "5581989526361" que
+// chega no webhook. Volume baixo (dezenas de leads/mês) então comparar tudo
+// em memória é suficiente; não vale a complexidade de manter uma coluna
+// normalizada indexada só por causa disso. Se ninguém bater, cria um lead
+// novo com fonte "WhatsApp" — mensagem espontânea de alguém que ainda não
+// existia no funil.
+export async function encontrarOuCriarLeadPorTelefone(
+  telefoneDigits: string,
+  nomeContato?: string
+): Promise<{ id: string }> {
+  const candidatos = await prisma.demoLead.findMany({
+    where: { telefone: { not: "" } },
+    select: { id: true, telefone: true },
+  });
+  const existente = candidatos.find((l) => normalizarTelefone(l.telefone) === telefoneDigits);
+  if (existente) return { id: existente.id };
+
+  await garantirEtapasPadrao();
+  const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
+
+  const novo = await prisma.demoLead.create({
+    data: {
+      nome: nomeContato?.trim() || "Contato WhatsApp",
+      hotel: "A identificar",
+      email: "",
+      telefone: telefoneDigits,
+      fonte: "WhatsApp",
+      stageId: primeiraEtapa?.id,
+    },
+  });
+  return { id: novo.id };
 }

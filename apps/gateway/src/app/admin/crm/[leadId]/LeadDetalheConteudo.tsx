@@ -8,6 +8,7 @@ import { NotaForm } from "./NotaForm";
 import { PerdidoForm } from "./PerdidoForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
 import { ExcluirLeadButton } from "./ExcluirLeadButton";
+import { WhatsAppChat } from "./WhatsAppChat";
 import {
   moverEtapaDetalheAction,
   atualizarFonteAction,
@@ -18,6 +19,7 @@ import {
   reabrirLeadDetalheAction,
   salvarCamposLeadAction,
   excluirLeadAction,
+  enviarMensagemWhatsAppAction,
 } from "../../actions";
 
 const TIPO_LABEL: Record<string, string> = {
@@ -43,6 +45,7 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
         stage: true,
         atividades: { orderBy: { createdAt: "desc" } },
         camposPersonalizados: true,
+        whatsappMensagens: { orderBy: { createdAt: "asc" } },
       },
     }),
     prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } }),
@@ -58,6 +61,17 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
   const salvarCamposComId = salvarCamposLeadAction.bind(null, lead.id);
   const excluirComId = excluirLeadAction.bind(null, lead.id);
   const valoresCampos = Object.fromEntries(lead.camposPersonalizados.map((v) => [v.campoId, v.valor]));
+  // Date não serializa 1:1 pro client component do jeito que a API de
+  // polling devolve (JSON.stringify vira ISO string) — normaliza aqui pra o
+  // shape inicial ficar idêntico ao que o polling traz depois.
+  const mensagensWhatsApp = lead.whatsappMensagens.map((m) => ({
+    id: m.id,
+    direcao: m.direcao,
+    conteudo: m.conteudo,
+    tipo: m.tipo,
+    status: m.status,
+    createdAt: m.createdAt.toISOString(),
+  }));
 
   const botaoAcaoStyle: React.CSSProperties = {
     padding: "8px 14px",
@@ -156,6 +170,11 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
           <CamposPersonalizadosForm campos={campos} valores={valoresCampos} action={salvarCamposComId} />
         </div>
       )}
+
+      <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginTop: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>WhatsApp</h2>
+        <WhatsAppChat leadId={lead.id} mensagensIniciais={mensagensWhatsApp} action={enviarMensagemWhatsAppAction} />
+      </div>
 
       <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginTop: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Adicionar nota</h2>

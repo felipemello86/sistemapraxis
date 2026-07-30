@@ -14,6 +14,8 @@ import {
   criarLinkDePortal,
   type SuiteModule,
 } from "@praxis/core";
+import { normalizarTelefone } from "./crm/telefone";
+import { enviarMensagemWhatsApp } from "./crm/whatsapp";
 
 export type AdminActionResult = { ok: true } | { ok: false; error: string };
 
@@ -383,6 +385,38 @@ export async function reabrirLeadDetalheAction(leadId: string) {
   const admin = await requireAdminSession();
   await marcarDesfecho(admin.nome, leadId, "ABERTO", { sufixoLog: " (reaberto)" });
   redirect(`/admin/crm/${leadId}`);
+}
+
+// CRM Fase 2 (30/07/2026) — envia uma mensagem de WhatsApp pro lead via
+// Cloud API (ver ./crm/whatsapp.ts). Deliberadamente NÃO termina em
+// redirect() como as outras actions desta tela: é chamada de dentro de um
+// painel de chat (WhatsAppChat.tsx) que precisa do resultado (sucesso/erro)
+// na hora, sem recarregar a página inteira a cada mensagem enviada.
+export async function enviarMensagemWhatsAppAction(leadId: string, texto: string): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const textoLimpo = texto.trim();
+  if (!textoLimpo) return { ok: false, error: "Mensagem vazia." };
+
+  const lead = await prisma.demoLead.findUnique({ where: { id: leadId } });
+  if (!lead) return { ok: false, error: "Lead não encontrado." };
+  if (!lead.telefone) return { ok: false, error: "Este lead não tem telefone cadastrado." };
+
+  const telefoneDigits = normalizarTelefone(lead.telefone);
+  const resultado = await enviarMensagemWhatsApp(telefoneDigits, textoLimpo);
+  if (!resultado.ok) return { ok: false, error: resultado.erro };
+
+  await prisma.whatsAppMensagem.create({
+    data: {
+      leadId,
+      direcao: "ENVIADA",
+      conteudo: textoLimpo,
+      tipo: "texto",
+      waMessageId: resultado.waMessageId,
+      status: "ENVIADA",
+    },
+  });
+
+  return { ok: true };
 }
 
 // Adiciona uma nota manual na linha do tempo do lead — anotação livre de
