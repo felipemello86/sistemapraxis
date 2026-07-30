@@ -128,8 +128,8 @@ export function KanbanBoard({
   }
 
   return (
-    <div>
-      <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, flex: 1, minHeight: 0 }}>
         {etapas.map((etapa, index) => {
           const leadsDaEtapa = leadsPorEtapa.get(etapa.id) ?? [];
           const somaValores = leadsDaEtapa.reduce((soma, l) => soma + l.valor, 0);
@@ -153,9 +153,9 @@ export function KanbanBoard({
                 border: emFoco ? "1px dashed #0071e3" : "1px solid transparent",
                 borderRadius: 14,
                 padding: 12,
-                height: "calc(100svh - 220px)",
                 display: "flex",
                 flexDirection: "column",
+                minHeight: 0,
                 transition: "background 0.1s, border-color 0.1s",
               }}
             >
@@ -255,7 +255,7 @@ export function KanbanBoard({
         })}
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 16, flexShrink: 0 }}>
         <button
           type="button"
           onClick={() => setMostrarFinalizados((v) => !v)}
@@ -305,7 +305,7 @@ export function KanbanBoard({
             {leadsFinalizados.length === 0 ? (
               <p style={{ fontSize: 12, color: "#a1a1a6", padding: "0 4px" }}>Nenhum lead finalizado aqui.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
                 {leadsFinalizados.map((lead) => (
                   <div
                     key={lead.id}

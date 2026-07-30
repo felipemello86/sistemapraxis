@@ -27,9 +27,24 @@ export default async function CrmBoard() {
   ]);
 
   return (
-    <main style={{ minHeight: "100svh", padding: "max(24px, env(safe-area-inset-top)) 24px 60px" }}>
-      <div style={{ maxWidth: "100%", margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+    // 30/07/2026: layout virou flex-column de altura fixa (100svh) em vez de
+    // minHeight + fluxo normal — era o que fazia o "Finalizados" precisar de
+    // scroll da página inteira pra aparecer quando uma coluna tinha muitos
+    // cards (o cálculo antigo, "calc(100svh - 220px)" num número fixo
+    // chutado, não batia com a altura real do cabeçalho). Com flex-column +
+    // flex:1 no board, cada pedaço ocupa exatamente o espaço que sobra, sem
+    // número mágico.
+    <main
+      style={{
+        height: "100svh",
+        boxSizing: "border-box",
+        padding: "max(24px, env(safe-area-inset-top)) 24px 24px",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{ maxWidth: "100%", margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10, flexShrink: 0 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <a href="/admin" style={{ color: "#6e6e73", fontSize: 13, textDecoration: "none" }}>
@@ -75,7 +90,7 @@ export default async function CrmBoard() {
           </div>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 16, flexShrink: 0 }}>
           <NovoLeadForm action={criarLeadManualAction} />
         </div>
 
