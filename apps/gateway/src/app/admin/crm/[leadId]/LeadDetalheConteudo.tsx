@@ -6,12 +6,14 @@ import { ResponsavelSelect } from "./ResponsavelSelect";
 import { NotaForm } from "./NotaForm";
 import { PerdidoForm } from "./PerdidoForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
+import { ExcluirLeadButton } from "./ExcluirLeadButton";
 import {
   moverEtapaDetalheAction,
   atribuirResponsavelAction,
   criarNotaAction,
   marcarPerdidoAction,
   salvarCamposLeadAction,
+  excluirLeadAction,
 } from "../../actions";
 
 const TIPO_LABEL: Record<string, string> = {
@@ -50,6 +52,7 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
   const marcarPerdidoComId = marcarPerdidoAction.bind(null, lead.id);
   const criarNotaComId = criarNotaAction.bind(null, lead.id);
   const salvarCamposComId = salvarCamposLeadAction.bind(null, lead.id);
+  const excluirComId = excluirLeadAction.bind(null, lead.id);
   const valoresCampos = Object.fromEntries(lead.camposPersonalizados.map((v) => [v.campoId, v.valor]));
 
   return (
@@ -94,6 +97,7 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
             action={atribuirResponsavelAction}
           />
           {!lead.stage?.ehPerdido && <PerdidoForm action={marcarPerdidoComId} />}
+          <ExcluirLeadButton nomeHotel={lead.hotel} action={excluirComId} />
         </div>
       </div>
 

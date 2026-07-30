@@ -384,6 +384,18 @@ export async function criarNotaAction(
   redirect(`/admin/crm/${leadId}`);
 }
 
+// Exclui o lead de vez — hard delete mesmo (não soft-delete como os planos):
+// diferente de um plano, que pode estar referenciado por uma assinatura
+// ativa, um lead não tem nada dependendo dele fora do próprio CRM.
+// LeadActivity e LeadCampoValor têm onDelete: Cascade no schema, então o
+// histórico e os campos personalizados desse lead somem junto — intencional,
+// já que "excluir o lead" deveria mesmo apagar tudo dele.
+export async function excluirLeadAction(leadId: string) {
+  await requireAdminSession();
+  await prisma.demoLead.delete({ where: { id: leadId } }).catch(() => {});
+  redirect("/admin/crm");
+}
+
 // Atribui (ou remove, se responsavelId vier vazio) o vendedor responsável
 // por este lead. Feito só na tela de detalhe — o board mostra o responsável
 // como badge somente leitura pra não poluir o card com mais um controle.

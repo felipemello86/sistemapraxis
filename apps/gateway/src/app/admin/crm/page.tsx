@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAdminSession, prisma } from "@praxis/core";
 import { garantirCrmPronto } from "./data";
-import { moverEtapaAction, criarLeadManualAction } from "../actions";
+import { moverEtapaAction, criarLeadManualAction, excluirLeadAction } from "../actions";
 import { NovoLeadForm } from "./NovoLeadForm";
 import { KanbanBoard } from "./KanbanBoard";
 
@@ -72,7 +72,12 @@ export default async function CrmBoard() {
           <NovoLeadForm action={criarLeadManualAction} />
         </div>
 
-        <KanbanBoard etapas={etapas} leadsIniciais={leads} moverEtapaAction={moverEtapaAction} />
+        <KanbanBoard
+          etapas={etapas}
+          leadsIniciais={leads}
+          moverEtapaAction={moverEtapaAction}
+          excluirLeadAction={excluirLeadAction}
+        />
       </div>
     </main>
   );

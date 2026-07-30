@@ -3,6 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
+// SVG inline em vez de lucide-react (ou outra lib de ícone) — apps/gateway
+// não tem nenhuma lib de ícones instalada, e trazer uma só pra este botão
+// exigiria rodar pnpm install e commitar o lockfile à toa.
+function IconeLixeira() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
 type Etapa = { id: string; nome: string; ehGanho: boolean; ehPerdido: boolean };
 type Lead = {
   id: string;
@@ -37,10 +49,12 @@ export function KanbanBoard({
   etapas,
   leadsIniciais,
   moverEtapaAction,
+  excluirLeadAction,
 }: {
   etapas: Etapa[];
   leadsIniciais: Lead[];
   moverEtapaAction: (leadId: string, novaEtapaId: string) => Promise<void>;
+  excluirLeadAction: (leadId: string) => Promise<void>;
 }) {
   const [leads, setLeads] = useState(leadsIniciais);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
@@ -67,6 +81,14 @@ export function KanbanBoard({
     setSobreEtapaId(null);
     setLeads((prev) => prev.map((l) => (l.id === leadId ? { ...l, stageId: etapaId } : l)));
     void moverEtapaAction(leadId, etapaId);
+  }
+
+  function excluir(lead: Lead) {
+    if (!confirm(`Excluir o lead "${lead.hotel}"? Isso apaga o histórico e os campos personalizados dele também. Não tem como desfazer.`)) {
+      return;
+    }
+    setLeads((prev) => prev.filter((l) => l.id !== lead.id));
+    void excluirLeadAction(lead.id);
   }
 
   return (
@@ -136,10 +158,30 @@ export function KanbanBoard({
                     opacity: arrastandoId === lead.id ? 0.4 : 1,
                   }}
                 >
-                  <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f" }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
-                    <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
-                  </Link>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
+                    <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f", flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
+                      <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
+                    </Link>
+                    <button
+                      type="button"
+                      title="Excluir lead"
+                      onClick={() => excluir(lead)}
+                      style={{
+                        border: "none",
+                        background: "none",
+                        color: "#a1a1a6",
+                        cursor: "pointer",
+                        padding: 2,
+                        flexShrink: 0,
+                        display: "flex",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = "#d70015")}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "#a1a1a6")}
+                    >
+                      <IconeLixeira />
+                    </button>
+                  </div>
                   {lead.responsavel && (
                     <span
                       style={{
