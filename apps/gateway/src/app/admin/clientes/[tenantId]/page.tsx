@@ -1,23 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 import { getAdminSession, prisma } from "@praxis/core";
 import { gerarLinkCheckoutAction, gerarLinkPortalAction, impersonarAction } from "../../actions";
+import { STATUS_LABEL, STATUS_COLOR } from "../../statusLabels";
 import { CheckoutForm } from "./CheckoutForm";
 import { PortalForm } from "./PortalForm";
-
-const STATUS_LABEL: Record<string, string> = {
-  SEM_ASSINATURA: "Sem assinatura",
-  INCOMPLETA: "Checkout pendente",
-  ATIVA: "Ativa",
-  INADIMPLENTE: "Inadimplente",
-  CANCELADA: "Cancelada",
-};
-const STATUS_COLOR: Record<string, string> = {
-  SEM_ASSINATURA: "#6e6e73",
-  INCOMPLETA: "#ff9500",
-  ATIVA: "#34c759",
-  INADIMPLENTE: "#d70015",
-  CANCELADA: "#8e8e93",
-};
 
 const EVENTO_LABEL: Record<string, string> = {
   CHECKOUT_CONCLUIDO: "Checkout concluído",
@@ -53,8 +39,8 @@ export default async function ClienteDetalhePage({ params }: { params: { tenantI
   return (
     <main style={{ minHeight: "100svh", padding: "max(24px, env(safe-area-inset-top)) 24px 60px" }}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <a href="/admin" style={{ color: "#0071e3", fontSize: 14, textDecoration: "none" }}>
-          ← Painel
+        <a href="/admin/clientes" style={{ color: "#0071e3", fontSize: 14, textDecoration: "none" }}>
+          ← Clientes
         </a>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 20px" }}>

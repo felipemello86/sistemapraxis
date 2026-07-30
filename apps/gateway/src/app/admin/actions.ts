@@ -74,7 +74,7 @@ export async function criarClienteAction(
 
   await createTenant({ nome, slug, email, senha, nomeUsuario, modules });
 
-  redirect("/admin");
+  redirect("/admin/clientes");
 }
 
 /**
@@ -200,7 +200,7 @@ export async function criarPlanoAction(
     data: { nome, stripePriceId, valorCentavos, intervalo },
   });
 
-  redirect("/admin");
+  redirect("/admin/planos");
 }
 
 export async function atualizarPlanoAction(
@@ -241,7 +241,7 @@ export async function atualizarPlanoAction(
     data: { nome, stripePriceId, valorCentavos, intervalo },
   });
 
-  redirect("/admin");
+  redirect("/admin/planos");
 }
 
 // "Excluir" é soft-delete (ativo: false) em vez de apagar a linha — planos já
@@ -252,7 +252,7 @@ export async function atualizarPlanoAction(
 export async function excluirPlanoAction(planId: string) {
   await requireAdminSession();
   await prisma.subscriptionPlan.update({ where: { id: planId }, data: { ativo: false } });
-  redirect("/admin");
+  redirect("/admin/planos");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
