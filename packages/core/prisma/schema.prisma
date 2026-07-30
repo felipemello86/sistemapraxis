@@ -2203,13 +2203,60 @@ model PlatformAdmin {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // CRM (Fase 1, 30/07/2026): leads da landing page atribuídos a este admin
+  // como responsável comercial. Ver PipelineStage/DemoLead/LeadActivity.
+  leadsResponsavel DemoLead[]
+}
+
+// CRM (Fase 1, 30/07/2026) — etapas do funil de vendas comercial da Praxis
+// (venda da própria suíte pra novos hotéis, não confundir com nenhum módulo
+// operacional de tenant). Editável em /admin/crm/etapas; "ordem" define a
+// coluna da esquerda pra direita no Kanban. ehGanho/ehPerdido marcam os dois
+// desfechos finais do funil — hoje só usados pra estilizar a coluna
+// diferente (verde/cinza) e pra exigir motivoPerda ao mover pra lá.
+model PipelineStage {
+  id        String   @id @default(cuid())
+  nome      String
+  ordem     Int
+  ehGanho   Boolean  @default(false)
+  ehPerdido Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  leads DemoLead[]
+
+  @@index([ordem])
+}
+
+enum LeadActivityTipo {
+  NOTA
+  MUDANCA_ETAPA
+  // Reservado pra Fase 2 (log de conversa de WhatsApp/Instagram) — já
+  // modelado agora pra não precisar de migration nova quando chegar lá.
+  MENSAGEM
+}
+
+// Linha do tempo de cada lead: notas manuais e mudanças de etapa por
+// enquanto (ver LeadActivityTipo). autorNome é uma cópia congelada do nome
+// do PlatformAdmin no momento do registro (mesmo padrão de outros campos
+// "PorNome" no schema) — sobrevive mesmo que o admin seja desativado depois.
+model LeadActivity {
+  id        String           @id @default(cuid())
+  leadId    String
+  lead      DemoLead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tipo      LeadActivityTipo
+  conteudo  String
+  autorNome String
+  createdAt DateTime         @default(now())
+
+  @@index([leadId, createdAt])
 }
 
 // Pedido de demonstração vindo da landing page pública (apps/gateway,
 // src/app/page.tsx → POST /api/demo). Nada a ver com Tenant/User: é um
 // contato comercial de alguém que ainda NÃO é cliente — por isso não tem
-// tenantId nem relação com nenhuma tabela operacional. Listado no painel
-// admin (/admin) pra dar retorno.
+// tenantId nem relação com nenhuma tabela operacional. A partir do CRM
+// (Fase 1) é também o registro de "lead"/"deal" do funil — ver /admin/crm.
 model DemoLead {
   id       String  @id @default(cuid())
   nome     String
@@ -2219,14 +2266,34 @@ model DemoLead {
   // Texto livre opcional ("quantas UHs", "o que mais dói hoje" etc).
   mensagem String?
 
-  // Marcado no painel quando alguém já falou com o contato — evita retrabalho
-  // quando mais de uma pessoa acompanha os pedidos.
+  // Campo legado (pré-CRM): marcado quando alguém já falou com o contato.
+  // Mantido só por compatibilidade com dados antigos — a tela nova
+  // (/admin/crm) usa stageId como fonte de verdade do progresso do lead.
   atendido   Boolean   @default(false)
   atendidoEm DateTime?
 
+  // CRM (Fase 1): etapa atual no funil de vendas. Nullable só por segurança
+  // de migração (leads criados antes desta feature) — /admin/crm faz
+  // backfill automático pra 1ª etapa na primeira carga da página; toda
+  // criação nova (POST /api/demo) também já entra direto na 1ª etapa.
+  stageId String?
+  stage   PipelineStage? @relation(fields: [stageId], references: [id])
+
+  // Vendedor responsável por este lead (PlatformAdmin) — opcional, um lead
+  // pode ficar sem dono até alguém "puxar" ele no board.
+  responsavelId String?
+  responsavel   PlatformAdmin? @relation(fields: [responsavelId], references: [id])
+
+  // Preenchido só quando o lead é movido pra etapa ehPerdido — motivo
+  // (texto livre) de por que não fechou, pra aprendizado do funil.
+  motivoPerda String?
+
   createdAt DateTime @default(now())
 
+  atividades LeadActivity[]
+
   @@index([createdAt])
+  @@index([stageId])
 }
 
 // Catálogo de planos vendáveis — cadastrado no admin, espelhando um Price

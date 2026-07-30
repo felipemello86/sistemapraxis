@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@praxis/core";
+import { garantirEtapasPadrao } from "../../admin/crm/data";
 
 export const runtime = "nodejs";
 
@@ -42,8 +43,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "E-mail inválido." }, { status: 400 });
   }
 
+  // CRM (Fase 1): garante que existe pelo menos a 1ª etapa do funil e já
+  // cria o lead direto nela — evita depender só do backfill de /admin/crm
+  // (que só rodaria na próxima vez que alguém abrisse o board).
+  await garantirEtapasPadrao();
+  const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
+
   await prisma.demoLead.create({
-    data: { nome, hotel, email, telefone, mensagem: mensagem || null },
+    data: { nome, hotel, email, telefone, mensagem: mensagem || null, stageId: primeiraEtapa?.id },
   });
 
   return NextResponse.json({ ok: true });

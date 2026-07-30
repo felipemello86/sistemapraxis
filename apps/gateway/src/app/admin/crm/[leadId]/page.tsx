@@ -1,0 +1,135 @@
+import { redirect, notFound } from "next/navigation";
+import { getAdminSession, prisma } from "@praxis/core";
+import { garantirCrmPronto } from "../data";
+import { EtapaSelect } from "../EtapaSelect";
+import { ResponsavelSelect } from "./ResponsavelSelect";
+import { NotaForm } from "./NotaForm";
+import { PerdidoForm } from "./PerdidoForm";
+import {
+  moverEtapaDetalheAction,
+  atribuirResponsavelAction,
+  criarNotaAction,
+  marcarPerdidoAction,
+} from "../../actions";
+
+const TIPO_LABEL: Record<string, string> = {
+  NOTA: "Nota",
+  MUDANCA_ETAPA: "Etapa",
+  MENSAGEM: "Mensagem",
+};
+
+export default async function LeadDetalhe({ params }: { params: { leadId: string } }) {
+  const admin = await getAdminSession();
+  if (!admin) redirect("/admin/login");
+
+  await garantirCrmPronto();
+
+  const [lead, etapas, admins] = await Promise.all([
+    prisma.demoLead.findUnique({
+      where: { id: params.leadId },
+      include: {
+        stage: true,
+        responsavel: true,
+        atividades: { orderBy: { createdAt: "desc" } },
+      },
+    }),
+    prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } }),
+    prisma.platformAdmin.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
+  ]);
+
+  if (!lead) notFound();
+
+  const marcarPerdidoComId = marcarPerdidoAction.bind(null, lead.id);
+  const criarNotaComId = criarNotaAction.bind(null, lead.id);
+
+  return (
+    <main style={{ minHeight: "100svh", padding: "max(24px, env(safe-area-inset-top)) 24px 60px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto" }}>
+        <a href="/admin/crm" style={{ color: "#6e6e73", fontSize: 13, textDecoration: "none" }}>
+          ← Funil
+        </a>
+
+        <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginTop: 12, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{lead.hotel}</h1>
+              <p style={{ margin: "4px 0 0", color: "#6e6e73", fontSize: 13 }}>{lead.nome}</p>
+            </div>
+            <EtapaSelect
+              leadId={lead.id}
+              etapaAtualId={lead.stageId}
+              etapas={etapas}
+              action={moverEtapaDetalheAction}
+            />
+          </div>
+
+          <p style={{ margin: "12px 0 0", fontSize: 13.5, color: "#1d1d1f" }}>
+            <a href={`mailto:${lead.email}`} style={{ color: "#0071e3" }}>
+              {lead.email}
+            </a>{" "}
+            · {lead.telefone} · lead desde {lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+          </p>
+
+          {lead.mensagem && (
+            <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "#1d1d1f", lineHeight: 1.5 }}>“{lead.mensagem}”</p>
+          )}
+
+          {lead.stage?.ehPerdido && lead.motivoPerda && (
+            <p style={{ margin: "10px 0 0", fontSize: 13, color: "#d70015" }}>
+              Motivo da perda: {lead.motivoPerda}
+            </p>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, color: "#6e6e73" }}>Responsável:</span>
+            <ResponsavelSelect
+              leadId={lead.id}
+              responsavelAtualId={lead.responsavelId}
+              admins={admins}
+              action={atribuirResponsavelAction}
+            />
+            {!lead.stage?.ehPerdido && <PerdidoForm action={marcarPerdidoComId} />}
+          </div>
+        </div>
+
+        <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginTop: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Adicionar nota</h2>
+          <NotaForm action={criarNotaComId} />
+        </div>
+
+        <div style={{ background: "#fff", borderRadius: 14, padding: 20, marginTop: 16, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: "0 0 12px" }}>Histórico ({lead.atividades.length})</h2>
+          {lead.atividades.length === 0 && (
+            <p style={{ color: "#6e6e73", fontSize: 13 }}>Nenhuma atividade registrada ainda.</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {lead.atividades.map((a) => (
+              <div key={a.id} style={{ borderLeft: "2px solid #d2d2d7", paddingLeft: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: "#6e6e73",
+                      background: "#f5f5f7",
+                      padding: "2px 7px",
+                      borderRadius: 999,
+                    }}
+                  >
+                    {TIPO_LABEL[a.tipo] ?? a.tipo}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: "#a1a1a6" }}>
+                    {a.autorNome} · {a.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                  </span>
+                </div>
+                <p style={{ margin: "4px 0 0", fontSize: 13.5, color: "#1d1d1f", whiteSpace: "pre-wrap" }}>
+                  {a.conteudo}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}

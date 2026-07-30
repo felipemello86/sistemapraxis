@@ -253,17 +253,219 @@ export async function excluirPlanoAction(planId: string) {
   redirect("/admin");
 }
 
-// Marca/desmarca um pedido de demonstração (vindo da landing page pública,
-// ver src/app/page.tsx + api/demo) como já atendido — só pra quem acompanha
-// os pedidos saber o que já teve retorno. Não apaga nada: o histórico de
-// contatos fica todo no banco.
-export async function alternarLeadAtendidoAction(leadId: string) {
+// ═══════════════════════════════════════════════════════════════════════════
+// CRM (Fase 1, 30/07/2026) — funil de vendas dos leads da landing page.
+// Ver PipelineStage/DemoLead/LeadActivity em schema.prisma. Substitui o
+// antigo alternarLeadAtendidoAction (flag binária "atendido") por um funil
+// com etapas de verdade + linha do tempo de atividades.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Move um lead pra outra etapa do funil — usado tanto no board (troca rápida
+// pelo <select> do card) quanto na tela de detalhe. Registra a mudança na
+// linha do tempo (LeadActivity) pra manter histórico de por onde o lead
+// passou. Sair da etapa "Perdido" limpa motivoPerda automaticamente (senão
+// ficaria um motivo de perda "fantasma" num lead reaberto).
+export async function moverEtapaAction(leadId: string, novaEtapaId: string) {
+  const admin = await requireAdminSession();
+  const [lead, novaEtapa] = await Promise.all([
+    prisma.demoLead.findUnique({ where: { id: leadId }, include: { stage: true } }),
+    prisma.pipelineStage.findUnique({ where: { id: novaEtapaId } }),
+  ]);
+  if (!lead || !novaEtapa) redirect("/admin/crm");
+
+  await prisma.$transaction([
+    prisma.demoLead.update({
+      where: { id: leadId },
+      data: {
+        stageId: novaEtapa.id,
+        motivoPerda: novaEtapa.ehPerdido ? lead.motivoPerda : null,
+      },
+    }),
+    prisma.leadActivity.create({
+      data: {
+        leadId,
+        tipo: "MUDANCA_ETAPA",
+        conteudo: lead.stage
+          ? `${lead.stage.nome} → ${novaEtapa.nome}`
+          : `→ ${novaEtapa.nome}`,
+        autorNome: admin.nome,
+      },
+    }),
+  ]);
+
+  redirect("/admin/crm");
+}
+
+// Mesma lógica de moverEtapaAction, mas chamada de dentro da tela de
+// detalhe do lead — redireciona de volta pra lá em vez de pro board.
+export async function moverEtapaDetalheAction(leadId: string, novaEtapaId: string) {
+  const admin = await requireAdminSession();
+  const [lead, novaEtapa] = await Promise.all([
+    prisma.demoLead.findUnique({ where: { id: leadId }, include: { stage: true } }),
+    prisma.pipelineStage.findUnique({ where: { id: novaEtapaId } }),
+  ]);
+  if (!lead || !novaEtapa) redirect("/admin/crm");
+
+  await prisma.$transaction([
+    prisma.demoLead.update({
+      where: { id: leadId },
+      data: {
+        stageId: novaEtapa.id,
+        motivoPerda: novaEtapa.ehPerdido ? lead.motivoPerda : null,
+      },
+    }),
+    prisma.leadActivity.create({
+      data: {
+        leadId,
+        tipo: "MUDANCA_ETAPA",
+        conteudo: lead.stage ? `${lead.stage.nome} → ${novaEtapa.nome}` : `→ ${novaEtapa.nome}`,
+        autorNome: admin.nome,
+      },
+    }),
+  ]);
+
+  redirect(`/admin/crm/${leadId}`);
+}
+
+// Marca o lead como perdido: move pra etapa ehPerdido (assume que existe
+// exatamente uma — garantida por garantirEtapasPadrao) e exige um motivo,
+// registrado tanto em DemoLead.motivoPerda (pra aparecer destacado no card)
+// quanto na linha do tempo (histórico, mesmo que o motivo seja editado depois).
+export async function marcarPerdidoAction(
+  leadId: string,
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  const admin = await requireAdminSession();
+  const motivo = String(formData.get("motivo") ?? "").trim();
+  if (!motivo) return { ok: false, error: "Descreva o motivo da perda." };
+
+  const [lead, etapaPerdido] = await Promise.all([
+    prisma.demoLead.findUnique({ where: { id: leadId }, include: { stage: true } }),
+    prisma.pipelineStage.findFirst({ where: { ehPerdido: true } }),
+  ]);
+  if (!lead) return { ok: false, error: "Lead não encontrado." };
+  if (!etapaPerdido) return { ok: false, error: "Nenhuma etapa de 'Perdido' configurada em /admin/crm/etapas." };
+
+  await prisma.$transaction([
+    prisma.demoLead.update({
+      where: { id: leadId },
+      data: { stageId: etapaPerdido.id, motivoPerda: motivo },
+    }),
+    prisma.leadActivity.create({
+      data: {
+        leadId,
+        tipo: "MUDANCA_ETAPA",
+        conteudo: `${lead.stage ? lead.stage.nome + " → " : ""}${etapaPerdido.nome} (${motivo})`,
+        autorNome: admin.nome,
+      },
+    }),
+  ]);
+
+  redirect(`/admin/crm/${leadId}`);
+}
+
+// Adiciona uma nota manual na linha do tempo do lead — anotação livre de
+// contato feito (ligação, WhatsApp, reunião etc). Fase 2 vai reusar essa
+// mesma tabela (LeadActivityTipo.MENSAGEM) pra log de conversa.
+export async function criarNotaAction(
+  leadId: string,
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  const admin = await requireAdminSession();
+  const conteudo = String(formData.get("conteudo") ?? "").trim();
+  if (!conteudo) return { ok: false, error: "Escreva alguma coisa antes de salvar." };
+
+  await prisma.leadActivity.create({
+    data: { leadId, tipo: "NOTA", conteudo, autorNome: admin.nome },
+  });
+
+  redirect(`/admin/crm/${leadId}`);
+}
+
+// Atribui (ou remove, se responsavelId vier vazio) o vendedor responsável
+// por este lead. Feito só na tela de detalhe — o board mostra o responsável
+// como badge somente leitura pra não poluir o card com mais um controle.
+export async function atribuirResponsavelAction(leadId: string, responsavelId: string) {
   await requireAdminSession();
-  const lead = await prisma.demoLead.findUnique({ where: { id: leadId } });
-  if (!lead) redirect("/admin");
   await prisma.demoLead.update({
     where: { id: leadId },
-    data: { atendido: !lead.atendido, atendidoEm: lead.atendido ? null : new Date() },
+    data: { responsavelId: responsavelId || null },
   });
-  redirect("/admin");
+  redirect(`/admin/crm/${leadId}`);
+}
+
+// ─── Gestão das etapas do funil (/admin/crm/etapas) ─────────────────────────
+
+export async function criarEtapaAction(
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const nome = String(formData.get("nome") ?? "").trim();
+  const ehGanho = formData.get("ehGanho") === "on";
+  const ehPerdido = formData.get("ehPerdido") === "on";
+  if (!nome) return { ok: false, error: "Dê um nome pra etapa." };
+
+  const ultima = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "desc" } });
+  await prisma.pipelineStage.create({
+    data: { nome, ordem: (ultima?.ordem ?? -1) + 1, ehGanho, ehPerdido },
+  });
+
+  redirect("/admin/crm/etapas");
+}
+
+export async function renomearEtapaAction(
+  stageId: string,
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const nome = String(formData.get("nome") ?? "").trim();
+  const ehGanho = formData.get("ehGanho") === "on";
+  const ehPerdido = formData.get("ehPerdido") === "on";
+  if (!nome) return { ok: false, error: "Dê um nome pra etapa." };
+
+  await prisma.pipelineStage.update({ where: { id: stageId }, data: { nome, ehGanho, ehPerdido } });
+  redirect("/admin/crm/etapas");
+}
+
+// Troca a "ordem" desta etapa com a da vizinha (anterior ou seguinte) —
+// reordenação simples de lista, sem drag-and-drop (baixo volume de etapas,
+// não compensa a complexidade de uma lib de DnD só pra isso).
+export async function moverOrdemEtapaAction(stageId: string, direcao: "up" | "down") {
+  await requireAdminSession();
+  const etapas = await prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } });
+  const idx = etapas.findIndex((e) => e.id === stageId);
+  if (idx === -1) redirect("/admin/crm/etapas");
+
+  const vizinhoIdx = direcao === "up" ? idx - 1 : idx + 1;
+  if (vizinhoIdx < 0 || vizinhoIdx >= etapas.length) redirect("/admin/crm/etapas");
+
+  const atual = etapas[idx];
+  const vizinho = etapas[vizinhoIdx];
+  await prisma.$transaction([
+    prisma.pipelineStage.update({ where: { id: atual.id }, data: { ordem: vizinho.ordem } }),
+    prisma.pipelineStage.update({ where: { id: vizinho.id }, data: { ordem: atual.ordem } }),
+  ]);
+
+  redirect("/admin/crm/etapas");
+}
+
+// Só permite excluir etapas sem nenhum lead — senão os leads ficariam com
+// stageId apontando pro vazio. Erro mostrado via useFormState em vez de só
+// redirecionar, pra ficar claro pro Felipe por que não excluiu.
+export async function excluirEtapaAction(
+  stageId: string,
+  _prevState: AdminActionResult | null,
+  _formData: FormData
+): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const qtdLeads = await prisma.demoLead.count({ where: { stageId } });
+  if (qtdLeads > 0) {
+    return { ok: false, error: `Essa etapa tem ${qtdLeads} lead(s). Mova-os pra outra etapa antes de excluir.` };
+  }
+  await prisma.pipelineStage.delete({ where: { id: stageId } });
+  redirect("/admin/crm/etapas");
 }
