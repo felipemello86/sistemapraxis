@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, Plus, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 type Movimento = {
@@ -14,7 +14,7 @@ type Movimento = {
   product: { id: string; nome: string; unidade: string };
 };
 
-type Produto = { id: string; nome: string };
+type Produto = { id: string; nome: string; unidade: string; quantidade: number };
 
 export function MovimentosView() {
   const [movimentos, setMovimentos] = useState<Movimento[]>([]);
@@ -22,6 +22,19 @@ export function MovimentosView() {
   const [loading, setLoading] = useState(true);
   const [filtroProduto, setFiltroProduto] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("");
+
+  // Registrar nova movimentação — mesmo POST /api/movimentos que o botão de
+  // entrada/saída em cada linha de /produtos já usa. Adicionado aqui também
+  // (30/07/2026) porque quem procura "lançar entrada/saída" naturalmente
+  // olha primeiro pra tela de Movimentações ou pro Dashboard, e antes só
+  // existia esse atalho escondido na tela de Produtos.
+  const [showForm, setShowForm] = useState(false);
+  const [novoProdutoId, setNovoProdutoId] = useState("");
+  const [novoTipo, setNovoTipo] = useState<"ENTRADA" | "SAIDA">("ENTRADA");
+  const [novoQtd, setNovoQtd] = useState("");
+  const [novoObs, setNovoObs] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
 
   async function carregar() {
     setLoading(true);
@@ -39,11 +52,52 @@ export function MovimentosView() {
 
   useEffect(() => { carregar(); }, [filtroProduto, filtroTipo]);
 
+  function abrirNova() {
+    setNovoProdutoId(produtos[0]?.id || "");
+    setNovoTipo("ENTRADA");
+    setNovoQtd("");
+    setNovoObs("");
+    setErro("");
+    setShowForm(true);
+  }
+
+  async function confirmarNova() {
+    if (!novoProdutoId || !novoQtd || Number(novoQtd) <= 0) {
+      setErro("Selecione o produto e uma quantidade maior que zero.");
+      return;
+    }
+    setSalvando(true);
+    setErro("");
+    try {
+      const res = await apiFetch("/api/movimentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: novoProdutoId, tipo: novoTipo, quantidade: novoQtd, observacao: novoObs }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErro(data.error || "Erro ao registrar movimentação.");
+        return;
+      }
+      setShowForm(false);
+      await carregar();
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const produtoSelecionado = produtos.find((p) => p.id === novoProdutoId);
+
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900">Movimentações</h1>
-        <p className="text-sm text-gray-500">Histórico de entradas e saídas de estoque</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Movimentações</h1>
+          <p className="text-sm text-gray-500">Histórico de entradas e saídas de estoque</p>
+        </div>
+        <button onClick={abrirNova} className="btn-primary flex items-center gap-2 justify-center">
+          <Plus className="w-4 h-4" /> Nova Movimentação
+        </button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -98,6 +152,68 @@ export function MovimentosView() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-gray-900">Nova Movimentação</h2>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="label">Produto</label>
+                <select className="input" value={novoProdutoId} onChange={(e) => setNovoProdutoId(e.target.value)}>
+                  {produtos.length === 0 && <option value="">Nenhum produto cadastrado</option>}
+                  {produtos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setNovoTipo("ENTRADA")}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-sm font-medium ${
+                    novoTipo === "ENTRADA" ? "border-green-600 bg-green-50 text-green-700" : "border-gray-200 text-gray-500"
+                  }`}
+                >
+                  <ArrowDownCircle className="w-4 h-4" /> Entrada
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNovoTipo("SAIDA")}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-sm font-medium ${
+                    novoTipo === "SAIDA" ? "border-red-600 bg-red-50 text-red-700" : "border-gray-200 text-gray-500"
+                  }`}
+                >
+                  <ArrowUpCircle className="w-4 h-4" /> Saída
+                </button>
+              </div>
+              {produtoSelecionado && (
+                <p className="text-sm text-gray-500">Saldo atual: {produtoSelecionado.quantidade} {produtoSelecionado.unidade}</p>
+              )}
+              <div>
+                <label className="label">Quantidade{produtoSelecionado ? ` (${produtoSelecionado.unidade})` : ""}</label>
+                <input className="input" type="number" min="0" step="0.01" autoFocus value={novoQtd} onChange={(e) => setNovoQtd(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Observação (opcional)</label>
+                <textarea className="input" rows={2} value={novoObs} onChange={(e) => setNovoObs(e.target.value)} />
+              </div>
+              {erro && <p className="text-sm text-red-600">{erro}</p>}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-secondary" onClick={() => setShowForm(false)}>Cancelar</button>
+              <button
+                className={novoTipo === "ENTRADA" ? "btn-success" : "btn-danger"}
+                onClick={confirmarNova}
+                disabled={salvando || !novoProdutoId || !novoQtd || Number(novoQtd) <= 0}
+              >
+                {salvando ? "Salvando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
