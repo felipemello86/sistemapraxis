@@ -24,8 +24,8 @@ export default async function EtapasPage() {
         </a>
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: "10px 0 4px" }}>Etapas do funil</h1>
         <p style={{ color: "#6e6e73", fontSize: 13, margin: "0 0 20px" }}>
-          A ordem aqui define a ordem das colunas no board. No máximo uma etapa deveria marcar "Ganho" e uma
-          "Perdido" — são os dois desfechos finais do funil.
+          A ordem aqui define a ordem das colunas no board. Ganho e perdido não são etapas — qualquer lead pode
+          ser marcado ✅ ou ❌ em qualquer coluna, sem precisar mudar de etapa.
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>

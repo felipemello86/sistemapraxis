@@ -260,49 +260,33 @@ export async function excluirPlanoAction(planId: string) {
 // com etapas de verdade + linha do tempo de atividades.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Núcleo compartilhado de toda troca de etapa (move o lead + registra a
-// mudança na linha do tempo). moverEtapaAction, moverEtapaDetalheAction,
-// marcarPerdidoAction, marcarGanhoAction e marcarPerdidoRapidoAction são
-// todos essa mesma operação com uma origem/motivo/redirect diferente — sem
-// esse helper cada um reimplementava a mesma transação. Sair da etapa
-// "Perdido" limpa motivoPerda automaticamente (senão ficaria um motivo de
-// perda "fantasma" num lead reaberto), a menos que motivoPerda seja passado
-// explicitamente (caso de marcar como perdido agora).
-async function moverLeadParaEtapa(
-  autorNome: string,
-  leadId: string,
-  novaEtapa: { id: string; nome: string; ehPerdido: boolean },
-  opts?: { motivoPerda?: string; sufixoLog?: string }
-): Promise<boolean> {
-  const lead = await prisma.demoLead.findUnique({ where: { id: leadId }, include: { stage: true } });
-  if (!lead) return false;
+// Move um lead pra outra etapa do funil — troca rápida pelo drag-and-drop do
+// board (ver KanbanBoard.tsx). Puramente sobre a coluna (stageId); não mexe
+// em desfecho (ganho/perdido é independente da etapa, ver marcarGanhoAction
+// /marcarPerdidoRapidoAction/reabrirLeadAction abaixo).
+async function moverEtapa(autorNome: string, leadId: string, novaEtapaId: string): Promise<void> {
+  const [lead, novaEtapa] = await Promise.all([
+    prisma.demoLead.findUnique({ where: { id: leadId }, include: { stage: true } }),
+    prisma.pipelineStage.findUnique({ where: { id: novaEtapaId } }),
+  ]);
+  if (!lead || !novaEtapa) return;
 
   await prisma.$transaction([
-    prisma.demoLead.update({
-      where: { id: leadId },
-      data: {
-        stageId: novaEtapa.id,
-        motivoPerda: novaEtapa.ehPerdido ? opts?.motivoPerda ?? lead.motivoPerda : null,
-      },
-    }),
+    prisma.demoLead.update({ where: { id: leadId }, data: { stageId: novaEtapa.id } }),
     prisma.leadActivity.create({
       data: {
         leadId,
         tipo: "MUDANCA_ETAPA",
-        conteudo: `${lead.stage ? lead.stage.nome + " → " : "→ "}${novaEtapa.nome}${opts?.sufixoLog ?? ""}`,
+        conteudo: `${lead.stage ? lead.stage.nome + " → " : "→ "}${novaEtapa.nome}`,
         autorNome,
       },
     }),
   ]);
-  return true;
 }
 
-// Move um lead pra outra etapa do funil — troca rápida pelo drag-and-drop do
-// board (ver KanbanBoard.tsx).
 export async function moverEtapaAction(leadId: string, novaEtapaId: string) {
   const admin = await requireAdminSession();
-  const novaEtapa = await prisma.pipelineStage.findUnique({ where: { id: novaEtapaId } });
-  if (novaEtapa) await moverLeadParaEtapa(admin.nome, leadId, novaEtapa);
+  await moverEtapa(admin.nome, leadId, novaEtapaId);
   redirect("/admin/crm");
 }
 
@@ -310,15 +294,41 @@ export async function moverEtapaAction(leadId: string, novaEtapaId: string) {
 // detalhe do lead — redireciona de volta pra lá em vez de pro board.
 export async function moverEtapaDetalheAction(leadId: string, novaEtapaId: string) {
   const admin = await requireAdminSession();
-  const novaEtapa = await prisma.pipelineStage.findUnique({ where: { id: novaEtapaId } });
-  if (novaEtapa) await moverLeadParaEtapa(admin.nome, leadId, novaEtapa);
+  await moverEtapa(admin.nome, leadId, novaEtapaId);
   redirect(`/admin/crm/${leadId}`);
 }
 
-// Marca o lead como perdido a partir da tela de detalhe: move pra etapa
-// ehPerdido (assume que existe exatamente uma — garantida por
-// garantirEtapasPadrao) e exige um motivo, registrado tanto em
-// DemoLead.motivoPerda (aparece destacado no card) quanto na linha do tempo.
+// Núcleo compartilhado de marcar um desfecho (ganho/perdido/reabrir) —
+// 30/07/2026: desfecho é independente da etapa (pedido do Felipe: "as
+// perdas ou ganhos devem poder existir em qualquer coluna"), então isso só
+// atualiza DemoLead.desfecho + motivoPerda, nunca stageId. O lead continua
+// na mesma coluna; o board (KanbanBoard.tsx) que decide escondê-lo da
+// coluna normal e mostrá-lo na área recolhível de "Finalizados".
+async function marcarDesfecho(
+  autorNome: string,
+  leadId: string,
+  desfecho: "GANHO" | "PERDIDO" | "ABERTO",
+  opts?: { motivoPerda?: string | null; sufixoLog?: string }
+): Promise<void> {
+  await prisma.$transaction([
+    prisma.demoLead.update({
+      where: { id: leadId },
+      data: { desfecho, motivoPerda: desfecho === "PERDIDO" ? opts?.motivoPerda ?? null : null },
+    }),
+    prisma.leadActivity.create({
+      data: {
+        leadId,
+        tipo: "MUDANCA_ETAPA",
+        conteudo: `Desfecho: ${desfecho}${opts?.sufixoLog ?? ""}`,
+        autorNome,
+      },
+    }),
+  ]);
+}
+
+// Marca o lead como perdido a partir da tela de detalhe — exige um motivo,
+// registrado tanto em DemoLead.motivoPerda (aparece destacado no card)
+// quanto na linha do tempo.
 export async function marcarPerdidoAction(
   leadId: string,
   _prevState: AdminActionResult | null,
@@ -328,38 +338,51 @@ export async function marcarPerdidoAction(
   const motivo = String(formData.get("motivo") ?? "").trim();
   if (!motivo) return { ok: false, error: "Descreva o motivo da perda." };
 
-  const etapaPerdido = await prisma.pipelineStage.findFirst({ where: { ehPerdido: true } });
-  if (!etapaPerdido) return { ok: false, error: "Nenhuma etapa de 'Perdido' configurada em /admin/crm/etapas." };
-
-  await moverLeadParaEtapa(admin.nome, leadId, etapaPerdido, { motivoPerda: motivo, sufixoLog: ` (${motivo})` });
+  await marcarDesfecho(admin.nome, leadId, "PERDIDO", { motivoPerda: motivo, sufixoLog: ` (${motivo})` });
   redirect(`/admin/crm/${leadId}`);
 }
 
-// Atalho do board (botão ✅): marca o lead como ganho direto do card, sem
-// abrir o detalhe. Move pra etapa ehGanho (assume que existe exatamente uma).
+// Atalho do board (botão ✅) e da tela de detalhe: marca o lead como ganho
+// sem mudar de coluna.
 export async function marcarGanhoAction(leadId: string) {
   const admin = await requireAdminSession();
-  const etapaGanho = await prisma.pipelineStage.findFirst({ where: { ehGanho: true } });
-  if (etapaGanho) await moverLeadParaEtapa(admin.nome, leadId, etapaGanho, { sufixoLog: " 🎉" });
+  await marcarDesfecho(admin.nome, leadId, "GANHO", { sufixoLog: " 🎉" });
   redirect("/admin/crm");
 }
 
-// Atalho do board (botão ❌): marca o lead como perdido direto do card. O
-// motivo vem de um prompt() simples no client (ver KanbanBoard.tsx) em vez
-// do form da tela de detalhe — por isso aceita string solta em vez de
-// FormData, e cai pra "Não informado" se vier vazio (motivo continua editável
-// depois, abrindo o lead e reeditando).
+// Mesma lógica de marcarGanhoAction, mas chamada de dentro da tela de
+// detalhe — redireciona de volta pra lá.
+export async function marcarGanhoDetalheAction(leadId: string) {
+  const admin = await requireAdminSession();
+  await marcarDesfecho(admin.nome, leadId, "GANHO", { sufixoLog: " 🎉" });
+  redirect(`/admin/crm/${leadId}`);
+}
+
+// Atalho do board (botão ❌): marca o lead como perdido direto do card, sem
+// mudar de coluna. O motivo vem de um prompt() simples no client (ver
+// KanbanBoard.tsx) em vez do form da tela de detalhe — por isso aceita
+// string solta em vez de FormData, e cai pra "Não informado" se vier vazio
+// (motivo continua editável depois, abrindo o lead e reeditando).
 export async function marcarPerdidoRapidoAction(leadId: string, motivo: string) {
   const admin = await requireAdminSession();
-  const etapaPerdido = await prisma.pipelineStage.findFirst({ where: { ehPerdido: true } });
   const motivoFinal = motivo.trim() || "Não informado";
-  if (etapaPerdido) {
-    await moverLeadParaEtapa(admin.nome, leadId, etapaPerdido, {
-      motivoPerda: motivoFinal,
-      sufixoLog: ` (${motivoFinal})`,
-    });
-  }
+  await marcarDesfecho(admin.nome, leadId, "PERDIDO", { motivoPerda: motivoFinal, sufixoLog: ` (${motivoFinal})` });
   redirect("/admin/crm");
+}
+
+// Desfaz um desfecho (ganho ou perdido) — volta o lead pra "ABERTO",
+// limpando motivoPerda, sem mexer na etapa/coluna atual. Usado tanto na área
+// de "Finalizados" do board quanto na tela de detalhe.
+export async function reabrirLeadAction(leadId: string) {
+  const admin = await requireAdminSession();
+  await marcarDesfecho(admin.nome, leadId, "ABERTO", { sufixoLog: " (reaberto)" });
+  redirect("/admin/crm");
+}
+
+export async function reabrirLeadDetalheAction(leadId: string) {
+  const admin = await requireAdminSession();
+  await marcarDesfecho(admin.nome, leadId, "ABERTO", { sufixoLog: " (reaberto)" });
+  redirect(`/admin/crm/${leadId}`);
 }
 
 // Adiciona uma nota manual na linha do tempo do lead — anotação livre de
@@ -456,13 +479,11 @@ export async function criarEtapaAction(
 ): Promise<AdminActionResult> {
   await requireAdminSession();
   const nome = String(formData.get("nome") ?? "").trim();
-  const ehGanho = formData.get("ehGanho") === "on";
-  const ehPerdido = formData.get("ehPerdido") === "on";
   if (!nome) return { ok: false, error: "Dê um nome pra etapa." };
 
   const ultima = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "desc" } });
   await prisma.pipelineStage.create({
-    data: { nome, ordem: (ultima?.ordem ?? -1) + 1, ehGanho, ehPerdido },
+    data: { nome, ordem: (ultima?.ordem ?? -1) + 1 },
   });
 
   redirect("/admin/crm/etapas");
@@ -475,11 +496,9 @@ export async function renomearEtapaAction(
 ): Promise<AdminActionResult> {
   await requireAdminSession();
   const nome = String(formData.get("nome") ?? "").trim();
-  const ehGanho = formData.get("ehGanho") === "on";
-  const ehPerdido = formData.get("ehPerdido") === "on";
   if (!nome) return { ok: false, error: "Dê um nome pra etapa." };
 
-  await prisma.pipelineStage.update({ where: { id: stageId }, data: { nome, ehGanho, ehPerdido } });
+  await prisma.pipelineStage.update({ where: { id: stageId }, data: { nome } });
   redirect("/admin/crm/etapas");
 }
 

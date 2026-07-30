@@ -12,6 +12,8 @@ import {
   atualizarFonteAction,
   criarNotaAction,
   marcarPerdidoAction,
+  marcarGanhoDetalheAction,
+  reabrirLeadDetalheAction,
   salvarCamposLeadAction,
   excluirLeadAction,
 } from "../../actions";
@@ -48,10 +50,23 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
   if (!lead) notFound();
 
   const marcarPerdidoComId = marcarPerdidoAction.bind(null, lead.id);
+  const marcarGanhoComId = marcarGanhoDetalheAction.bind(null, lead.id);
+  const reabrirComId = reabrirLeadDetalheAction.bind(null, lead.id);
   const criarNotaComId = criarNotaAction.bind(null, lead.id);
   const salvarCamposComId = salvarCamposLeadAction.bind(null, lead.id);
   const excluirComId = excluirLeadAction.bind(null, lead.id);
   const valoresCampos = Object.fromEntries(lead.camposPersonalizados.map((v) => [v.campoId, v.valor]));
+
+  const botaoAcaoStyle: React.CSSProperties = {
+    padding: "8px 14px",
+    borderRadius: 9,
+    border: "1px solid #d2d2d7",
+    background: "#fff",
+    color: "#1d1d1f",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
 
   return (
     <>
@@ -91,19 +106,37 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
         </div>
 
         {lead.mensagem && (
-          <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "#1d1d1f", lineHeight: 1.5 }}>“{lead.mensagem}”</p>
+          <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "#1d1d1f", lineHeight: 1.5 }}>
+            <span style={{ color: "#6e6e73" }}>Mensagem: </span>“{lead.mensagem}”
+          </p>
         )}
 
-        {lead.stage?.ehPerdido && lead.motivoPerda && (
+        {lead.desfecho === "GANHO" && (
+          <p style={{ margin: "10px 0 0", fontSize: 13, fontWeight: 700, color: "#1a7f37" }}>✅ Lead ganho</p>
+        )}
+        {lead.desfecho === "PERDIDO" && (
           <p style={{ margin: "10px 0 0", fontSize: 13, color: "#d70015" }}>
-            Motivo da perda: {lead.motivoPerda}
+            <strong>❌ Lead perdido.</strong>
+            {lead.motivoPerda ? ` Motivo: ${lead.motivoPerda}` : ""}
           </p>
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Fonte:</span>
           <FonteSelect leadId={lead.id} fonteAtual={lead.fonte} action={atualizarFonteAction} />
-          {!lead.stage?.ehPerdido && <PerdidoForm action={marcarPerdidoComId} />}
+          {lead.desfecho === "ABERTO" && (
+            <>
+              <form action={marcarGanhoComId}>
+                <button type="submit" style={botaoAcaoStyle}>✅ Marcar ganho</button>
+              </form>
+              <PerdidoForm action={marcarPerdidoComId} />
+            </>
+          )}
+          {lead.desfecho !== "ABERTO" && (
+            <form action={reabrirComId}>
+              <button type="submit" style={botaoAcaoStyle}>↩ Reabrir</button>
+            </form>
+          )}
           <ExcluirLeadButton nomeHotel={lead.hotel} action={excluirComId} />
         </div>
       </div>

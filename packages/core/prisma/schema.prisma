@@ -2208,20 +2208,30 @@ model PlatformAdmin {
 // CRM (Fase 1, 30/07/2026) — etapas do funil de vendas comercial da Praxis
 // (venda da própria suíte pra novos hotéis, não confundir com nenhum módulo
 // operacional de tenant). Editável em /admin/crm/etapas; "ordem" define a
-// coluna da esquerda pra direita no Kanban. ehGanho/ehPerdido marcam os dois
-// desfechos finais do funil — hoje só usados pra estilizar a coluna
-// diferente (verde/cinza) e pra exigir motivoPerda ao mover pra lá.
+// coluna da esquerda pra direita no Kanban. Só representa progresso no
+// funil — ganho/perdido é um desfecho independente da etapa (ver
+// DemoLead.desfecho), não existe mais etapa especial de "Fechado"/"Perdido"
+// (removido em 30/07/2026: um lead pode ser marcado ganho ou perdido em
+// QUALQUER etapa, sem precisar mudar de coluna).
 model PipelineStage {
   id        String   @id @default(cuid())
   nome      String
   ordem     Int
-  ehGanho   Boolean  @default(false)
-  ehPerdido Boolean  @default(false)
   createdAt DateTime @default(now())
 
   leads DemoLead[]
 
   @@index([ordem])
+}
+
+// Desfecho do lead — independente da etapa do funil (PipelineStage). Um
+// lead em qualquer coluna pode ser marcado GANHO ou PERDIDO sem precisar
+// mudar de etapa; leads ABERTO aparecem no board normal, GANHO/PERDIDO saem
+// pra área recolhível de "Finalizados" (ver KanbanBoard.tsx).
+enum LeadDesfecho {
+  ABERTO
+  GANHO
+  PERDIDO
 }
 
 enum LeadActivityTipo {
@@ -2283,8 +2293,12 @@ model DemoLead {
   // criadas antes desta migration, não pra uso em código novo.
   fonte String @default("Site")
 
-  // Preenchido só quando o lead é movido pra etapa ehPerdido — motivo
-  // (texto livre) de por que não fechou, pra aprendizado do funil.
+  // Desfecho do lead — ver LeadDesfecho. Independente de stageId: marcar
+  // como ganho/perdido não move o lead de coluna.
+  desfecho LeadDesfecho @default(ABERTO)
+
+  // Preenchido só quando desfecho = PERDIDO — motivo (texto livre) de por
+  // que não fechou, pra aprendizado do funil.
   motivoPerda String?
 
   createdAt DateTime @default(now())

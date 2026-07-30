@@ -58,7 +58,7 @@ function ExcluirButton() {
   );
 }
 
-type Etapa = { id: string; nome: string; ordem: number; ehGanho: boolean; ehPerdido: boolean };
+type Etapa = { id: string; nome: string; ordem: number };
 
 export function EtapaCard({
   etapa,
@@ -109,14 +109,6 @@ export function EtapaCard({
       >
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input name="nome" defaultValue={etapa.nome} placeholder="Nome da etapa" required style={inputStyle} />
-        </div>
-        <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" name="ehGanho" defaultChecked={etapa.ehGanho} /> Marca fechamento (ganho)
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" name="ehPerdido" defaultChecked={etapa.ehPerdido} /> Marca perda
-          </label>
         </div>
         {state && !state.ok && <p style={{ color: "#d70015", fontSize: 13, margin: 0 }}>{state.error}</p>}
         <div style={{ display: "flex", gap: 8 }}>
@@ -194,16 +186,6 @@ export function EtapaCard({
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 700, fontSize: 14 }}>{etapa.nome}</span>
-            {etapa.ehGanho && (
-              <span style={{ fontSize: 10.5, fontWeight: 600, color: "#34c759", background: "#34c7591a", padding: "2px 7px", borderRadius: 999 }}>
-                Ganho
-              </span>
-            )}
-            {etapa.ehPerdido && (
-              <span style={{ fontSize: 10.5, fontWeight: 600, color: "#8e8e93", background: "#8e8e931a", padding: "2px 7px", borderRadius: 999 }}>
-                Perdido
-              </span>
-            )}
           </div>
           <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6e6e73" }}>{qtdLeads} lead(s) nesta etapa</p>
         </div>

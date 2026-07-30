@@ -10,26 +10,15 @@ import { prisma } from "@praxis/core";
 // migration — mesmo tipo de passo manual esquecido que já causou um outage
 // nesta suíte (28/07/2026, migration da Manutenção). Idempotente: só cria
 // se count === 0.
-const ETAPAS_PADRAO: Array<{ nome: string; ehGanho?: boolean; ehPerdido?: boolean }> = [
-  { nome: "Novo" },
-  { nome: "Contatado" },
-  { nome: "Agendado" },
-  { nome: "Apresentado" },
-  { nome: "Em Negociação" },
-  { nome: "Fechado", ehGanho: true },
-  { nome: "Perdido", ehPerdido: true },
-];
+// Ganho/Perdido não são mais etapas (30/07/2026) — viraram um desfecho
+// independente (DemoLead.desfecho), marcável em qualquer uma destas.
+const ETAPAS_PADRAO = ["Novo", "Contatado", "Agendado", "Apresentado", "Em Negociação"];
 
 export async function garantirEtapasPadrao(): Promise<void> {
   const total = await prisma.pipelineStage.count();
   if (total > 0) return;
   await prisma.pipelineStage.createMany({
-    data: ETAPAS_PADRAO.map((e, i) => ({
-      nome: e.nome,
-      ordem: i,
-      ehGanho: e.ehGanho ?? false,
-      ehPerdido: e.ehPerdido ?? false,
-    })),
+    data: ETAPAS_PADRAO.map((nome, i) => ({ nome, ordem: i })),
   });
 }
 

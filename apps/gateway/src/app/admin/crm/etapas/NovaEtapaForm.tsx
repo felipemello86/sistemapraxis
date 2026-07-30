@@ -47,14 +47,6 @@ export function NovaEtapaForm({
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input name="nome" placeholder="Nome da etapa (ex: Contrato enviado)" required style={inputStyle} />
       </div>
-      <div style={{ display: "flex", gap: 16, fontSize: 13 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" name="ehGanho" /> Marca fechamento (ganho)
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input type="checkbox" name="ehPerdido" /> Marca perda
-        </label>
-      </div>
       {state && !state.ok && <p style={{ color: "#d70015", fontSize: 13, margin: 0 }}>{state.error}</p>}
       <div>
         <SubmitButton />

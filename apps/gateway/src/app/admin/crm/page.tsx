@@ -7,6 +7,7 @@ import {
   excluirLeadAction,
   marcarGanhoAction,
   marcarPerdidoRapidoAction,
+  reabrirLeadAction,
 } from "../actions";
 import { NovoLeadForm } from "./NovoLeadForm";
 import { KanbanBoard } from "./KanbanBoard";
@@ -85,6 +86,7 @@ export default async function CrmBoard() {
           excluirLeadAction={excluirLeadAction}
           marcarGanhoAction={marcarGanhoAction}
           marcarPerdidoRapidoAction={marcarPerdidoRapidoAction}
+          reabrirLeadAction={reabrirLeadAction}
         />
       </div>
     </main>
