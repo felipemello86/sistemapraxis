@@ -153,7 +153,7 @@ export function KanbanBoard({
                 border: emFoco ? "1px dashed #0071e3" : "1px solid transparent",
                 borderRadius: 14,
                 padding: 12,
-                maxHeight: "calc(100svh - 220px)",
+                height: "calc(100svh - 220px)",
                 display: "flex",
                 flexDirection: "column",
                 transition: "background 0.1s, border-color 0.1s",
@@ -171,7 +171,7 @@ export function KanbanBoard({
                 </div>
                 <div style={{ height: 3, borderRadius: 999, background: corBarra, marginTop: 8 }} />
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", minHeight: 0, flex: 1 }}>
                 {leadsDaEtapa.length === 0 && (
                   <p style={{ fontSize: 12, color: "#a1a1a6", padding: "0 4px" }}>
                     {emFoco ? "Solte aqui" : "Nenhum lead aqui."}
