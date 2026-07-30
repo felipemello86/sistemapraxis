@@ -6,6 +6,19 @@ import { moverEtapaAction, criarLeadManualAction } from "../actions";
 import { EtapaSelect } from "./EtapaSelect";
 import { NovoLeadForm } from "./NovoLeadForm";
 
+// Barra colorida embaixo do título de cada coluna do board — cada etapa
+// "do meio" pega uma cor diferente da paleta (mesma ideia visual do
+// Kommo/referência do Felipe, 30/07/2026), ciclando se houver mais etapas
+// que cores. Ganho/Perdido são sempre verde/cinza — são os dois desfechos
+// do funil, não faz sentido eles competirem por cor com as etapas do meio.
+const PALETA_ETAPAS = ["#F2C94C", "#BB6BD9", "#2F80ED", "#56CCF2", "#F2994A", "#EB5757", "#9B51E0"];
+
+function corDaEtapa(etapa: { ehGanho: boolean; ehPerdido: boolean }, index: number): string {
+  if (etapa.ehGanho) return "#27AE60";
+  if (etapa.ehPerdido) return "#828282";
+  return PALETA_ETAPAS[index % PALETA_ETAPAS.length];
+}
+
 export default async function CrmBoard() {
   const admin = await getAdminSession();
   if (!admin) redirect("/admin/login");
@@ -80,9 +93,9 @@ export default async function CrmBoard() {
         </div>
 
         <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12 }}>
-          {etapas.map((etapa) => {
+          {etapas.map((etapa, index) => {
             const leadsDaEtapa = leadsPorEtapa.get(etapa.id) ?? [];
-            const corHeader = etapa.ehGanho ? "#34c759" : etapa.ehPerdido ? "#8e8e93" : "#1d1d1f";
+            const corBarra = corDaEtapa(etapa, index);
             return (
               <div
                 key={etapa.id}
@@ -96,9 +109,12 @@ export default async function CrmBoard() {
                   flexDirection: "column",
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
-                  <span style={{ fontWeight: 700, fontSize: 13, color: corHeader }}>{etapa.nome}</span>
-                  <span style={{ fontSize: 12, color: "#6e6e73", fontWeight: 600 }}>{leadsDaEtapa.length}</span>
+                <div style={{ padding: "0 4px", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: "#1d1d1f" }}>{etapa.nome}</span>
+                    <span style={{ fontSize: 12, color: "#6e6e73", fontWeight: 600 }}>{leadsDaEtapa.length}</span>
+                  </div>
+                  <div style={{ height: 3, borderRadius: 999, background: corBarra, marginTop: 8 }} />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
                   {leadsDaEtapa.length === 0 && (
