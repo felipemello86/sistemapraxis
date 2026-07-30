@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { getAdminSession, prisma } from "@praxis/core";
 import { garantirCrmPronto } from "./data";
-import { moverEtapaAction } from "../actions";
+import { moverEtapaAction, criarLeadManualAction } from "../actions";
 import { EtapaSelect } from "./EtapaSelect";
+import { NovoLeadForm } from "./NovoLeadForm";
 
 export default async function CrmBoard() {
   const admin = await getAdminSession();
@@ -39,21 +40,24 @@ export default async function CrmBoard() {
               Leads do formulário da landing page. Fase 1 do CRM — WhatsApp/Instagram vêm depois.
             </p>
           </div>
-          <a
-            href="/admin/crm/etapas"
-            style={{
-              padding: "8px 14px",
-              borderRadius: 10,
-              border: "1px solid #d2d2d7",
-              background: "#fff",
-              color: "#1d1d1f",
-              fontSize: 13,
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
-            Gerenciar etapas
-          </a>
+          <div style={{ display: "flex", gap: 10 }}>
+            <NovoLeadForm action={criarLeadManualAction} />
+            <a
+              href="/admin/crm/etapas"
+              style={{
+                padding: "8px 14px",
+                borderRadius: 10,
+                border: "1px solid #d2d2d7",
+                background: "#fff",
+                color: "#1d1d1f",
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Gerenciar etapas
+            </a>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12 }}>

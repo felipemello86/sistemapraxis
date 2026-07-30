@@ -396,6 +396,43 @@ export async function atribuirResponsavelAction(leadId: string, responsavelId: s
   redirect(`/admin/crm/${leadId}`);
 }
 
+// Cria um lead direto no CRM, sem passar pelo formulário público da landing
+// page — pra contatos que chegaram por telefone, indicação, evento etc.
+// E-mail é opcional aqui (diferente do POST /api/demo) porque nem sempre dá
+// pra saber o e-mail de quem ligou; entra em branco e pode ser completado
+// depois. Já registra uma primeira nota na linha do tempo pra distinguir de
+// um lead que veio do site.
+export async function criarLeadManualAction(
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  const admin = await requireAdminSession();
+  const nome = String(formData.get("nome") ?? "").trim().slice(0, 120);
+  const hotel = String(formData.get("hotel") ?? "").trim().slice(0, 120);
+  const email = String(formData.get("email") ?? "").trim().slice(0, 160);
+  const telefone = String(formData.get("telefone") ?? "").trim().slice(0, 40);
+  const mensagem = String(formData.get("mensagem") ?? "").trim().slice(0, 2000);
+
+  if (!nome || !hotel || !telefone) {
+    return { ok: false, error: "Preencha nome, hotel e telefone." };
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "E-mail inválido (ou deixe em branco)." };
+  }
+
+  const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
+
+  const lead = await prisma.demoLead.create({
+    data: { nome, hotel, email, telefone, mensagem: mensagem || null, stageId: primeiraEtapa?.id },
+  });
+
+  await prisma.leadActivity.create({
+    data: { leadId: lead.id, tipo: "NOTA", conteudo: "Lead criado manualmente no Admin.", autorNome: admin.nome },
+  });
+
+  redirect("/admin/crm");
+}
+
 // ─── Gestão das etapas do funil (/admin/crm/etapas) ─────────────────────────
 
 export async function criarEtapaAction(
