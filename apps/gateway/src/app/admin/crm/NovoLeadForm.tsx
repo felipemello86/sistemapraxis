@@ -87,7 +87,7 @@ export function NovoLeadForm({
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input name="nome" placeholder="Nome do contato" required style={inputStyle} />
         <input name="hotel" placeholder="Nome do hotel" required style={inputStyle} />
-        <input name="telefone" placeholder="Telefone" required style={inputStyle} />
+        <input name="telefone" type="tel" placeholder="Telefone com DDD, ex: (81) 98952-6361" required style={inputStyle} />
         <input name="email" placeholder="E-mail (opcional)" style={inputStyle} />
         <input
           name="valor"

@@ -14,7 +14,7 @@ import {
   criarLinkDePortal,
   type SuiteModule,
 } from "@praxis/core";
-import { normalizarTelefone } from "./crm/telefone";
+import { normalizarTelefone, telefoneValido, formatarTelefoneExibicao } from "./crm/telefone";
 import { enviarMensagemWhatsApp } from "./crm/whatsapp";
 
 export type AdminActionResult = { ok: true } | { ok: false; error: string };
@@ -462,6 +462,20 @@ export async function atualizarFonteAction(leadId: string, fonte: string) {
   redirect(`/admin/crm/${leadId}`);
 }
 
+// Corrige o telefone de um lead já criado (30/07/2026, pedido do Felipe) —
+// mesma validação de criarLeadManualAction: sem DDD+número completo, a
+// integração de WhatsApp quebra (envio falha, mensagem recebida não casa
+// com o lead). Silenciosamente ignora se inválido em vez de travar a tela
+// com erro — ValorInput/FonteSelect seguem o mesmo padrão de "sem <form>",
+// então não tem onde exibir uma mensagem de erro aqui; a validação real que
+// importa é a de criarLeadManualAction (que bloqueia a criação).
+export async function atualizarTelefoneAction(leadId: string, telefone: string) {
+  await requireAdminSession();
+  if (!telefoneValido(telefone)) redirect(`/admin/crm/${leadId}`);
+  await prisma.demoLead.update({ where: { id: leadId }, data: { telefone: formatarTelefoneExibicao(telefone) } });
+  redirect(`/admin/crm/${leadId}`);
+}
+
 // Atualiza o "Valor (R$)" do negócio a partir da tela de detalhe (ver
 // ValorInput.tsx) — mesmo padrão de atualizarFonteAction. Aceita string
 // solta (vem de um <input type="number">) em vez de FormData porque é
@@ -512,11 +526,20 @@ export async function criarLeadManualAction(
   if (!Number.isFinite(valor) || valor < 0) {
     return { ok: false, error: "Valor (R$) inválido." };
   }
+  // Telefone precisa estar completo (DDD + número) pra integração de
+  // WhatsApp funcionar — sem isso, o envio falha e mensagens recebidas não
+  // casam com o lead certo (ver ./crm/data.ts,
+  // encontrarOuCriarLeadPorTelefone). Grava já formatado/normalizado, não
+  // do jeito solto que a pessoa digitou.
+  if (!telefoneValido(telefone)) {
+    return { ok: false, error: "Telefone incompleto — inclua DDD e número (ex: (81) 98952-6361)." };
+  }
+  const telefoneFormatado = formatarTelefoneExibicao(telefone);
 
   const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
 
   const lead = await prisma.demoLead.create({
-    data: { nome, hotel, email, telefone, mensagem: mensagem || null, fonte, valor, stageId: primeiraEtapa?.id },
+    data: { nome, hotel, email, telefone: telefoneFormatado, mensagem: mensagem || null, fonte, valor, stageId: primeiraEtapa?.id },
   });
 
   await prisma.leadActivity.create({

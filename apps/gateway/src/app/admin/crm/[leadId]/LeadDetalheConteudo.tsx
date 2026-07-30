@@ -4,6 +4,7 @@ import { garantirCrmPronto } from "../data";
 import { EtapaSelect } from "../EtapaSelect";
 import { FonteSelect } from "./FonteSelect";
 import { ValorInput } from "./ValorInput";
+import { TelefoneInput } from "./TelefoneInput";
 import { NotaForm } from "./NotaForm";
 import { PerdidoForm } from "./PerdidoForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
@@ -13,6 +14,7 @@ import {
   moverEtapaDetalheAction,
   atualizarFonteAction,
   atualizarValorAction,
+  atualizarTelefoneAction,
   criarNotaAction,
   marcarPerdidoAction,
   marcarGanhoDetalheAction,
@@ -111,10 +113,10 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
               "—"
             )}
           </p>
-          <p style={{ margin: 0, fontSize: 13.5, color: "#1d1d1f" }}>
-            <span style={{ color: "#6e6e73" }}>Telefone: </span>
-            {lead.telefone || "—"}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "#1d1d1f" }}>
+            <span style={{ color: "#6e6e73" }}>Telefone:</span>
+            <TelefoneInput leadId={lead.id} telefoneAtual={lead.telefone} action={atualizarTelefoneAction} />
+          </div>
           <p style={{ margin: 0, fontSize: 13.5, color: "#1d1d1f" }}>
             <span style={{ color: "#6e6e73" }}>Criado em: </span>
             {lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
