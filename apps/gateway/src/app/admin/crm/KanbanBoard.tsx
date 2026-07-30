@@ -50,12 +50,18 @@ export function KanbanBoard({
   leadsIniciais,
   moverEtapaAction,
   excluirLeadAction,
+  marcarGanhoAction,
+  marcarPerdidoRapidoAction,
 }: {
   etapas: Etapa[];
   leadsIniciais: Lead[];
   moverEtapaAction: (leadId: string, novaEtapaId: string) => Promise<void>;
   excluirLeadAction: (leadId: string) => Promise<void>;
+  marcarGanhoAction: (leadId: string) => Promise<void>;
+  marcarPerdidoRapidoAction: (leadId: string, motivo: string) => Promise<void>;
 }) {
+  const etapaGanho = etapas.find((e) => e.ehGanho);
+  const etapaPerdido = etapas.find((e) => e.ehPerdido);
   const [leads, setLeads] = useState(leadsIniciais);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [sobreEtapaId, setSobreEtapaId] = useState<string | null>(null);
@@ -89,6 +95,22 @@ export function KanbanBoard({
     }
     setLeads((prev) => prev.filter((l) => l.id !== lead.id));
     void excluirLeadAction(lead.id);
+  }
+
+  function marcarGanho(lead: Lead) {
+    if (!etapaGanho) return;
+    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, stageId: etapaGanho.id, motivoPerda: null } : l)));
+    void marcarGanhoAction(lead.id);
+  }
+
+  function marcarPerdido(lead: Lead) {
+    if (!etapaPerdido) return;
+    const motivo = prompt(`Motivo da perda de "${lead.hotel}" (opcional, Cancelar desiste):`);
+    if (motivo === null) return; // usuário clicou Cancelar — não marca nada
+    setLeads((prev) =>
+      prev.map((l) => (l.id === lead.id ? { ...l, stageId: etapaPerdido.id, motivoPerda: motivo.trim() || "Não informado" } : l))
+    );
+    void marcarPerdidoRapidoAction(lead.id, motivo);
   }
 
   return (
@@ -163,24 +185,45 @@ export function KanbanBoard({
                       <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
                       <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
                     </Link>
-                    <button
-                      type="button"
-                      title="Excluir lead"
-                      onClick={() => excluir(lead)}
-                      style={{
-                        border: "none",
-                        background: "none",
-                        color: "#a1a1a6",
-                        cursor: "pointer",
-                        padding: 2,
-                        flexShrink: 0,
-                        display: "flex",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.color = "#d70015")}
-                      onMouseLeave={(e) => (e.currentTarget.style.color = "#a1a1a6")}
-                    >
-                      <IconeLixeira />
-                    </button>
+                    <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                      {!etapa.ehGanho && etapaGanho && (
+                        <button
+                          type="button"
+                          title="Marcar como ganho"
+                          onClick={() => marcarGanho(lead)}
+                          style={{ border: "none", background: "none", cursor: "pointer", padding: 2, fontSize: 13, lineHeight: 1 }}
+                        >
+                          ✅
+                        </button>
+                      )}
+                      {!etapa.ehPerdido && etapaPerdido && (
+                        <button
+                          type="button"
+                          title="Marcar como perdido"
+                          onClick={() => marcarPerdido(lead)}
+                          style={{ border: "none", background: "none", cursor: "pointer", padding: 2, fontSize: 13, lineHeight: 1 }}
+                        >
+                          ❌
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        title="Excluir lead"
+                        onClick={() => excluir(lead)}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          color: "#a1a1a6",
+                          cursor: "pointer",
+                          padding: 2,
+                          display: "flex",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = "#d70015")}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = "#a1a1a6")}
+                      >
+                        <IconeLixeira />
+                      </button>
+                    </div>
                   </div>
                   {lead.responsavel && (
                     <span
