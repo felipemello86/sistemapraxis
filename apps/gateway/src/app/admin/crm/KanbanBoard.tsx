@@ -22,7 +22,6 @@ type Lead = {
   nome: string;
   stageId: string | null;
   motivoPerda: string | null;
-  responsavel: { nome: string } | null;
 };
 
 // Mesma paleta de ../crm/page.tsx (30/07/2026) — mantida aqui porque este
@@ -225,21 +224,6 @@ export function KanbanBoard({
                       </button>
                     </div>
                   </div>
-                  {lead.responsavel && (
-                    <span
-                      style={{
-                        alignSelf: "flex-start",
-                        fontSize: 10.5,
-                        fontWeight: 600,
-                        color: "#0071e3",
-                        background: "#0071e31a",
-                        padding: "2px 7px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      {lead.responsavel.nome}
-                    </span>
-                  )}
                   {etapa.ehPerdido && lead.motivoPerda && (
                     <p style={{ fontSize: 11.5, color: "#8e8e93", margin: 0, fontStyle: "italic" }}>
                       “{lead.motivoPerda}”

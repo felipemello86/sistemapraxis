@@ -69,12 +69,26 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
           />
         </div>
 
-        <p style={{ margin: "12px 0 0", fontSize: 13.5, color: "#1d1d1f" }}>
-          <a href={`mailto:${lead.email}`} style={{ color: "#0071e3" }}>
-            {lead.email}
-          </a>{" "}
-          · {lead.telefone} · lead desde {lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-        </p>
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 3 }}>
+          <p style={{ margin: 0, fontSize: 13.5, color: "#1d1d1f" }}>
+            <span style={{ color: "#6e6e73" }}>E-mail: </span>
+            {lead.email ? (
+              <a href={`mailto:${lead.email}`} style={{ color: "#0071e3" }}>
+                {lead.email}
+              </a>
+            ) : (
+              "—"
+            )}
+          </p>
+          <p style={{ margin: 0, fontSize: 13.5, color: "#1d1d1f" }}>
+            <span style={{ color: "#6e6e73" }}>Telefone: </span>
+            {lead.telefone || "—"}
+          </p>
+          <p style={{ margin: 0, fontSize: 13.5, color: "#1d1d1f" }}>
+            <span style={{ color: "#6e6e73" }}>Criado em: </span>
+            {lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+          </p>
+        </div>
 
         {lead.mensagem && (
           <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "#1d1d1f", lineHeight: 1.5 }}>“{lead.mensagem}”</p>
@@ -87,13 +101,8 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
         )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, color: "#6e6e73" }}>Responsável:</span>
-          <ResponsavelSelect
-            leadId={lead.id}
-            responsavelAtualId={lead.responsavelId}
-            admins={admins}
-            action={atribuirResponsavelAction}
-          />
+          <span style={{ fontSize: 13, color: "#6e6e73" }}>Fonte:</span>
+          <FonteSelect leadId={lead.id} fonteAtual={lead.fonte} action={atualizarFonteAction} />
           {!lead.stage?.ehPerdido && <PerdidoForm action={marcarPerdidoComId} />}
           <ExcluirLeadButton nomeHotel={lead.hotel} action={excluirComId} />
         </div>

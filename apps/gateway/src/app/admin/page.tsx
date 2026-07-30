@@ -29,7 +29,7 @@ export default async function AdminDashboard() {
   const admin = await getAdminSession();
   if (!admin) redirect("/admin/login");
 
-  const [tenants, planos, totalLeads, leadsSemDono, stageNovo] = await Promise.all([
+  const [tenants, planos, totalLeads, leadsDoSite, stageNovo] = await Promise.all([
     prisma.tenant.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -39,7 +39,7 @@ export default async function AdminDashboard() {
     }),
     prisma.subscriptionPlan.findMany({ where: { ativo: true }, orderBy: { valorCentavos: "asc" } }),
     prisma.demoLead.count(),
-    prisma.demoLead.count({ where: { responsavelId: null } }),
+    prisma.demoLead.count({ where: { fonte: "Site" } }),
     prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } }),
   ]);
   const leadsNaPrimeiraEtapa = stageNovo
@@ -201,7 +201,7 @@ export default async function AdminDashboard() {
           <p style={{ margin: 0, fontSize: 13.5 }}>
             {totalLeads === 0
               ? "Nenhum lead ainda — eles chegam pelo formulário da landing page (sistemaspraxis.com.br)."
-              : `${leadsSemDono} lead(s) sem responsável atribuído.`}
+              : `${leadsDoSite} de ${totalLeads} lead(s) vieram do site.`}
           </p>
           <p style={{ margin: "6px 0 0", fontSize: 13, color: "#0071e3", fontWeight: 600 }}>Abrir o board do funil →</p>
         </a>

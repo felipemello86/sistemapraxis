@@ -21,7 +21,7 @@ export default async function CrmBoard() {
     prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } }),
     prisma.demoLead.findMany({
       orderBy: { createdAt: "desc" },
-      include: { stage: true, responsavel: true },
+      include: { stage: true },
     }),
   ]);
 

@@ -393,9 +393,6 @@ export async function excluirLeadAction(leadId: string) {
   redirect("/admin/crm");
 }
 
-// Atribui (ou remove, se responsavelId vier vazio) o vendedor responsável
-// por este lead. Feito só na tela de detalhe — o board mostra o responsável
-// como badge somente leitura pra não poluir o card com mais um controle.
 // Atualiza a fonte do lead (de onde ele veio) — campo obrigatório, mas
 // editável depois caso alguém escolha errado na hora de criar manualmente.
 // Sem opção "vazio": se vier string vazia, simplesmente não atualiza (evita
