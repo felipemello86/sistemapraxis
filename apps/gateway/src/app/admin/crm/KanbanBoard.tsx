@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatValorBRL, formatValorBRLCompacto } from "./valorFormat";
+import { tocarSomGanho } from "./somSucesso";
 
 // SVG inline em vez de lucide-react (ou outra lib de ícone) — apps/gateway
 // não tem nenhuma lib de ícones instalada, e trazer uma só pra este botão
@@ -107,6 +108,7 @@ export function KanbanBoard({
   }
 
   function marcarGanho(lead: Lead) {
+    tocarSomGanho();
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, desfecho: "GANHO", motivoPerda: null } : l)));
     void marcarGanhoAction(lead.id);
   }
