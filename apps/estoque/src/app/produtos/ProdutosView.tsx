@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Pencil, ArrowDownCircle, ArrowUpCircle, AlertTriangle, X, Archive, ArchiveRestore } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { NovaMovimentacaoButton } from "@/components/NovaMovimentacaoButton";
 
 type Produto = {
   id: string;
@@ -152,9 +153,12 @@ export function ProdutosView() {
           <h1 className="text-xl font-bold text-gray-900">Produtos</h1>
           <p className="text-sm text-gray-500">Estoque de insumos — {produtos.length} produto{produtos.length === 1 ? "" : "s"}</p>
         </div>
-        <button onClick={abrirNovo} className="btn-primary flex items-center gap-2 justify-center">
-          <Plus className="w-4 h-4" /> Novo Produto
-        </button>
+        <div className="flex gap-2">
+          <NovaMovimentacaoButton onRegistrada={carregar} />
+          <button onClick={abrirNovo} className="btn-primary flex items-center gap-2 justify-center">
+            <Plus className="w-4 h-4" /> Novo Produto
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">

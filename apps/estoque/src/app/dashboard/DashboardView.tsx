@@ -4,6 +4,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { Package, AlertTriangle, ArrowLeftRight, Send, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { NovaMovimentacaoButton } from "@/components/NovaMovimentacaoButton";
 
 type Produto = { id: string; nome: string; categoria: string; unidade: string; quantidade: number; estoqueMinimo: number };
 type Movimento = {
@@ -27,11 +28,13 @@ export function DashboardView() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  async function carregar() {
+    const res = await apiFetch("/api/dashboard");
+    setData(res.ok ? await res.json() : null);
+  }
+
   useEffect(() => {
-    apiFetch("/api/dashboard")
-      .then((res) => (res.ok ? res.json() : null))
-      .then(setData)
-      .finally(() => setLoading(false));
+    carregar().finally(() => setLoading(false));
   }, []);
 
   if (loading) return <p className="text-gray-500 text-sm">Carregando...</p>;
@@ -39,9 +42,12 @@ export function DashboardView() {
 
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500">Visão geral do estoque</p>
+      <div className="flex items-center justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-sm text-gray-500">Visão geral do estoque</p>
+        </div>
+        <NovaMovimentacaoButton onRegistrada={carregar} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
