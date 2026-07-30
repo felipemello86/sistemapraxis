@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getAdminSession, prisma } from "@praxis/core";
 import { garantirCrmPronto } from "./data";
 import { moverEtapaAction, criarLeadManualAction } from "../actions";
@@ -116,10 +117,10 @@ export default async function CrmBoard() {
                         gap: 6,
                       }}
                     >
-                      <a href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f" }}>
+                      <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f" }}>
                         <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
                         <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
-                      </a>
+                      </Link>
                       {lead.responsavel && (
                         <span
                           style={{
