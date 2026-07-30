@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import type { AdminActionResult } from "../actions";
+import { FONTE_OPCOES } from "./fonteOpcoes";
 
 const initialState: AdminActionResult | null = null;
 
@@ -88,6 +89,16 @@ export function NovoLeadForm({
         <input name="hotel" placeholder="Nome do hotel" required style={inputStyle} />
         <input name="telefone" placeholder="Telefone" required style={inputStyle} />
         <input name="email" placeholder="E-mail (opcional)" style={inputStyle} />
+        <select name="fonte" required defaultValue="" style={{ ...inputStyle, maxWidth: 160 }}>
+          <option value="" disabled>
+            Fonte...
+          </option>
+          {FONTE_OPCOES.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
       </div>
       <textarea
         name="mensagem"

@@ -49,8 +49,10 @@ export async function POST(req: NextRequest) {
   await garantirEtapasPadrao();
   const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
 
+  // fonte é sempre "Site" aqui — é o único ponto de entrada que representa
+  // o formulário público da landing page (ver DemoLead.fonte no schema).
   await prisma.demoLead.create({
-    data: { nome, hotel, email, telefone, mensagem: mensagem || null, stageId: primeiraEtapa?.id },
+    data: { nome, hotel, email, telefone, mensagem: mensagem || null, fonte: "Site", stageId: primeiraEtapa?.id },
   });
 
   return NextResponse.json({ ok: true });

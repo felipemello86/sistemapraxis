@@ -2203,10 +2203,6 @@ model PlatformAdmin {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // CRM (Fase 1, 30/07/2026): leads da landing page atribuídos a este admin
-  // como responsável comercial. Ver PipelineStage/DemoLead/LeadActivity.
-  leadsResponsavel DemoLead[]
 }
 
 // CRM (Fase 1, 30/07/2026) — etapas do funil de vendas comercial da Praxis
@@ -2279,10 +2275,13 @@ model DemoLead {
   stageId String?
   stage   PipelineStage? @relation(fields: [stageId], references: [id])
 
-  // Vendedor responsável por este lead (PlatformAdmin) — opcional, um lead
-  // pode ficar sem dono até alguém "puxar" ele no board.
-  responsavelId String?
-  responsavel   PlatformAdmin? @relation(fields: [responsavelId], references: [id])
+  // De onde veio o lead — obrigatório (30/07/2026, pedido do Felipe;
+  // substituiu o campo "responsável", removido). POST /api/demo (formulário
+  // da landing page) sempre grava "Site" automaticamente; leads criados
+  // manualmente no Admin exigem a escolha na hora da criação (ver
+  // NovoLeadForm.tsx). @default("Site") existe só pra backfill de linhas
+  // criadas antes desta migration, não pra uso em código novo.
+  fonte String @default("Site")
 
   // Preenchido só quando o lead é movido pra etapa ehPerdido — motivo
   // (texto livre) de por que não fechou, pra aprendizado do funil.

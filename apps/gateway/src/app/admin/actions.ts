@@ -396,12 +396,15 @@ export async function excluirLeadAction(leadId: string) {
 // Atribui (ou remove, se responsavelId vier vazio) o vendedor responsável
 // por este lead. Feito só na tela de detalhe — o board mostra o responsável
 // como badge somente leitura pra não poluir o card com mais um controle.
-export async function atribuirResponsavelAction(leadId: string, responsavelId: string) {
+// Atualiza a fonte do lead (de onde ele veio) — campo obrigatório, mas
+// editável depois caso alguém escolha errado na hora de criar manualmente.
+// Sem opção "vazio": se vier string vazia, simplesmente não atualiza (evita
+// um lead ficar sem fonte por um clique acidental num <select> parcialmente
+// carregado).
+export async function atualizarFonteAction(leadId: string, fonte: string) {
   await requireAdminSession();
-  await prisma.demoLead.update({
-    where: { id: leadId },
-    data: { responsavelId: responsavelId || null },
-  });
+  if (!fonte.trim()) redirect(`/admin/crm/${leadId}`);
+  await prisma.demoLead.update({ where: { id: leadId }, data: { fonte: fonte.trim() } });
   redirect(`/admin/crm/${leadId}`);
 }
 
@@ -410,7 +413,9 @@ export async function atribuirResponsavelAction(leadId: string, responsavelId: s
 // E-mail é opcional aqui (diferente do POST /api/demo) porque nem sempre dá
 // pra saber o e-mail de quem ligou; entra em branco e pode ser completado
 // depois. Já registra uma primeira nota na linha do tempo pra distinguir de
-// um lead que veio do site.
+// um lead que veio do site. "fonte" é obrigatório (pedido do Felipe,
+// 30/07/2026) — diferente do POST /api/demo, que sempre grava "Site"
+// automaticamente, aqui quem cria escolhe, já que passou por fora do site.
 export async function criarLeadManualAction(
   _prevState: AdminActionResult | null,
   formData: FormData
@@ -421,9 +426,13 @@ export async function criarLeadManualAction(
   const email = String(formData.get("email") ?? "").trim().slice(0, 160);
   const telefone = String(formData.get("telefone") ?? "").trim().slice(0, 40);
   const mensagem = String(formData.get("mensagem") ?? "").trim().slice(0, 2000);
+  const fonte = String(formData.get("fonte") ?? "").trim().slice(0, 60);
 
   if (!nome || !hotel || !telefone) {
     return { ok: false, error: "Preencha nome, hotel e telefone." };
+  }
+  if (!fonte) {
+    return { ok: false, error: "Selecione a fonte do lead." };
   }
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: "E-mail inválido (ou deixe em branco)." };
@@ -432,7 +441,7 @@ export async function criarLeadManualAction(
   const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
 
   const lead = await prisma.demoLead.create({
-    data: { nome, hotel, email, telefone, mensagem: mensagem || null, stageId: primeiraEtapa?.id },
+    data: { nome, hotel, email, telefone, mensagem: mensagem || null, fonte, stageId: primeiraEtapa?.id },
   });
 
   await prisma.leadActivity.create({

@@ -2,14 +2,14 @@ import { notFound } from "next/navigation";
 import { getAdminSession, prisma } from "@praxis/core";
 import { garantirCrmPronto } from "../data";
 import { EtapaSelect } from "../EtapaSelect";
-import { ResponsavelSelect } from "./ResponsavelSelect";
+import { FonteSelect } from "./FonteSelect";
 import { NotaForm } from "./NotaForm";
 import { PerdidoForm } from "./PerdidoForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
 import { ExcluirLeadButton } from "./ExcluirLeadButton";
 import {
   moverEtapaDetalheAction,
-  atribuirResponsavelAction,
+  atualizarFonteAction,
   criarNotaAction,
   marcarPerdidoAction,
   salvarCamposLeadAction,
@@ -32,18 +32,16 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
 
   await garantirCrmPronto();
 
-  const [lead, etapas, admins, campos] = await Promise.all([
+  const [lead, etapas, campos] = await Promise.all([
     prisma.demoLead.findUnique({
       where: { id: leadId },
       include: {
         stage: true,
-        responsavel: true,
         atividades: { orderBy: { createdAt: "desc" } },
         camposPersonalizados: true,
       },
     }),
     prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } }),
-    prisma.platformAdmin.findMany({ where: { ativo: true }, orderBy: { nome: "asc" } }),
     prisma.leadCampoPersonalizado.findMany({ orderBy: { ordem: "asc" } }),
   ]);
 
