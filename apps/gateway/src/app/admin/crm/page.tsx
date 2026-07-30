@@ -44,30 +44,35 @@ export default async function CrmBoard() {
       }}
     >
       <div style={{ maxWidth: "100%", margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10, flexShrink: 0 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <a href="/admin" style={{ color: "#6e6e73", fontSize: 13, textDecoration: "none" }}>
-                ← Painel
-              </a>
-            </div>
-            <h1 style={{ fontSize: 24, fontWeight: 700, margin: "6px 0 0" }}>Funil de vendas ({leads.length})</h1>
-            <p style={{ color: "#6e6e73", fontSize: 13, margin: "4px 0 0" }}>
-              Leads do formulário da landing page. Fase 1 do CRM — WhatsApp/Instagram vêm depois.
-            </p>
+        {/* 30/07/2026: header condensado numa linha só (pedido do Felipe —
+            "prioridade dessa tela é o kanban", muito espaço perdido em
+            breadcrumb/título/subtítulo/botão cada um na sua própria linha).
+            "+ Novo lead" mora aqui dentro também: colapsado é só um botão
+            (cabe na linha); quando expande vira o form completo e quebra
+            linha sozinho (a linha já é flexWrap). */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 10, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+            <a href="/admin" style={{ color: "#6e6e73", fontSize: 13, textDecoration: "none", flexShrink: 0 }}>
+              ← Painel
+            </a>
+            <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, whiteSpace: "nowrap" }}>
+              Funil de vendas ({leads.length})
+            </h1>
           </div>
-          <div style={{ display: "flex", gap: 10, alignSelf: "flex-start" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <NovoLeadForm action={criarLeadManualAction} />
             <a
               href="/admin/crm/campos"
               style={{
-                padding: "8px 14px",
-                borderRadius: 10,
+                padding: "7px 12px",
+                borderRadius: 9,
                 border: "1px solid #d2d2d7",
                 background: "#fff",
                 color: "#1d1d1f",
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: 600,
                 textDecoration: "none",
+                whiteSpace: "nowrap",
               }}
             >
               Gerenciar campos
@@ -75,23 +80,20 @@ export default async function CrmBoard() {
             <a
               href="/admin/crm/etapas"
               style={{
-                padding: "8px 14px",
-                borderRadius: 10,
+                padding: "7px 12px",
+                borderRadius: 9,
                 border: "1px solid #d2d2d7",
                 background: "#fff",
                 color: "#1d1d1f",
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: 600,
                 textDecoration: "none",
+                whiteSpace: "nowrap",
               }}
             >
               Gerenciar etapas
             </a>
           </div>
-        </div>
-
-        <div style={{ marginBottom: 16, flexShrink: 0 }}>
-          <NovoLeadForm action={criarLeadManualAction} />
         </div>
 
         <KanbanBoard

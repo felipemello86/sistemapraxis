@@ -55,14 +55,15 @@ export function NovoLeadForm({
         type="button"
         onClick={() => setAberto(true)}
         style={{
-          padding: "8px 14px",
-          borderRadius: 10,
+          padding: "7px 13px",
+          borderRadius: 9,
           border: "none",
           background: "#1d1d1f",
           color: "#fff",
-          fontSize: 13,
+          fontSize: 12.5,
           fontWeight: 600,
           cursor: "pointer",
+          whiteSpace: "nowrap",
         }}
       >
         + Novo lead
@@ -82,6 +83,11 @@ export function NovoLeadForm({
         flexDirection: "column",
         gap: 8,
         marginBottom: 16,
+        // Formulário mora dentro da linha de cabeçalho junto com "Gerenciar
+        // campos"/"Gerenciar etapas" (30/07/2026) — sem isso, o flexbox
+        // tenta espremer o form numa coluna estreita ao lado dos outros
+        // botões em vez de quebrar pra própria linha inteira.
+        flexBasis: "100%",
       }}
     >
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
