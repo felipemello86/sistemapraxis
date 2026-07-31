@@ -63,6 +63,12 @@ const CANAL_BADGE: Record<string, { bg: string; letra: string }> = {
   BOOKING: { bg: "bg-blue-700", letra: "B" },
   OUTRO: { bg: "bg-gray-500", letra: "O" },
 };
+// Abreviação manual (não via date-fns "EEE") porque o locale pt-BR do
+// date-fns não tem uma forma abreviada de verdade pra dia da semana — cai
+// pro nome cheio ("QUINTA", "SÁBADO"...) mesmo pedindo EEE. Índice bate com
+// Date.getDay() (0 = domingo).
+const DIAS_SEMANA_ABREV = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
 const MOTIVO_LABEL: Record<string, string> = {
   MANUTENCAO: "Bloqueio de manutenção",
   USO_INTERNO: "Bloqueio — uso interno",
@@ -242,7 +248,7 @@ export function CalendarioView() {
                     }`}
                     style={{ gridColumn: i + 2, gridRow: 2, position: "sticky", top: ROW1_H, zIndex: 20, height: ROW2_H }}
                   >
-                    <span className="uppercase">{format(dt, "EEE", { locale: ptBR })}</span>
+                    <span className="uppercase">{DIAS_SEMANA_ABREV[dt.getDay()]}</span>
                     <span className="text-sm">{format(dt, "dd")}</span>
                   </div>
                 );
