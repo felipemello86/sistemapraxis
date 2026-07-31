@@ -53,29 +53,88 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH só edita latitude/longitude por enquanto (nome não tem UI de
-// renomear ainda). null explícito limpa a coordenada (volta a desativar o
-// check-in de geo pra essa property).
+// PATCH aceita nome e/ou latitude+longitude, cada um só é tocado se vier no
+// corpo (checagem "in body", não desestruturação direta) — assim o form de
+// renomear (só manda nome) não pisa nas coordenadas já salvas, e o form de
+// coordenadas (só manda latitude/longitude) não pisa no nome. null explícito
+// em latitude/longitude limpa a coordenada (volta a desativar o check-in de
+// geo pra essa property) — não vale pra nome, que é sempre obrigatório.
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   const bloqueado = bloqueadoParaGerenciarCadastros(session);
   if (bloqueado) return bloqueado;
 
-  const { id, latitude, longitude } = await req.json();
+  const body = await req.json();
+  const { id } = body;
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
-  if (
-    (latitude !== null && (typeof latitude !== "number" || Number.isNaN(latitude))) ||
-    (longitude !== null && (typeof longitude !== "number" || Number.isNaN(longitude)))
-  ) {
-    return NextResponse.json({ error: "Coordenadas inválidas" }, { status: 400 });
+  const data: { nome?: string; latitude?: number | null; longitude?: number | null } = {};
+
+  if ("nome" in body) {
+    const trimmed = (body.nome ?? "").trim();
+    if (!trimmed) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
+    data.nome = trimmed;
   }
 
-  const property = await prisma.property.updateMany({
-    where: { id, tenantId: session!.tenantId },
-    data: { latitude, longitude },
-  });
-  if (property.count === 0) {
+  if ("latitude" in body || "longitude" in body) {
+    const { latitude, longitude } = body;
+    if (
+      (latitude !== null && (typeof latitude !== "number" || Number.isNaN(latitude))) ||
+      (longitude !== null && (typeof longitude !== "number" || Number.isNaN(longitude)))
+    ) {
+      return NextResponse.json({ error: "Coordenadas inválidas" }, { status: 400 });
+    }
+    data.latitude = latitude;
+    data.longitude = longitude;
+  }
+
+  try {
+    const property = await prisma.property.updateMany({
+      where: { id, tenantId: session!.tenantId },
+      data,
+    });
+    if (property.count === 0) {
+      return NextResponse.json({ error: "Propriedade não encontrada" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Já existe uma propriedade com esse nome" }, { status: 409 });
+  }
+}
+
+// Exclusão bloqueada se ainda houver UH ou Review apontando pra essa
+// property — nas duas relações o FK é obrigatório sem onDelete: Cascade no
+// schema (ver ChannexRoomMapping/UH/Review), então um DELETE direto quebraria
+// com erro cru do Postgres; aqui devolve uma mensagem que explica o que
+// fazer antes. GeoArrival tem onDelete: Cascade (é só um registro de
+// check-in por GPS, ok perder junto).
+export async function DELETE(req: NextRequest) {
+  const session = await getSession();
+  const bloqueado = bloqueadoParaGerenciarCadastros(session);
+  if (bloqueado) return bloqueado;
+
+  const { id } = await req.json();
+  if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+
+  const [uhsCount, reviewsCount] = await Promise.all([
+    prisma.uH.count({ where: { propertyId: id, tenantId: session!.tenantId } }),
+    prisma.review.count({ where: { propertyId: id, tenantId: session!.tenantId } }),
+  ]);
+  if (uhsCount > 0) {
+    return NextResponse.json(
+      { error: `Essa propriedade ainda tem ${uhsCount} UH(s) cadastrada(s). Mova ou exclua as UHs antes.` },
+      { status: 409 }
+    );
+  }
+  if (reviewsCount > 0) {
+    return NextResponse.json(
+      { error: `Essa propriedade ainda tem ${reviewsCount} avaliação(ões) associada(s) — não pode ser excluída.` },
+      { status: 409 }
+    );
+  }
+
+  const result = await prisma.property.deleteMany({ where: { id, tenantId: session!.tenantId } });
+  if (result.count === 0) {
     return NextResponse.json({ error: "Propriedade não encontrada" }, { status: 404 });
   }
   return NextResponse.json({ ok: true });

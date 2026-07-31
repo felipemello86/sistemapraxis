@@ -97,6 +97,29 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
   const [erroGeo, setErroGeo] = useState<string | null>(null);
   const [ascending, setAscending] = useState(true);
 
+  // Renomear propriedade — inline, mesmo padrão visual da edição de UH.
+  const [editPropId, setEditPropId] = useState<string | null>(null);
+  const [editPropNome, setEditPropNome] = useState("");
+  const [salvandoPropNome, setSalvandoPropNome] = useState(false);
+  const [erroPropNome, setErroPropNome] = useState<string | null>(null);
+
+  // Excluir propriedade — a API bloqueia se ainda tiver UH/Review (ver
+  // comentário em api/properties/route.ts), erro amarrado ao id certo pra
+  // não aparecer embaixo da propriedade errada quando há mais de uma na tela.
+  const [excluindoPropId, setExcluindoPropId] = useState<string | null>(null);
+  const [erroExclusaoPropId, setErroExclusaoPropId] = useState<string | null>(null);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+
+  // Lista expansível de categorias por propriedade (pedido do Felipe) — cada
+  // categoria aqui é só um agrupamento client-side das UHs já carregadas por
+  // propertyId+tipo, não um cadastro à parte (ver comentário em
+  // api/categorias/route.ts). "Editar" faz um rename em lote via essa rota.
+  const [expandidas, setExpandidas] = useState<Record<string, boolean>>({});
+  const [editCategoria, setEditCategoria] = useState<{ propertyId: string; tipoAtual: string } | null>(null);
+  const [novoNomeCategoria, setNovoNomeCategoria] = useState("");
+  const [salvandoCategoria, setSalvandoCategoria] = useState(false);
+  const [erroCategoria, setErroCategoria] = useState<string | null>(null);
+
   useEffect(() => {
     carregar();
   }, []);
@@ -135,6 +158,106 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
       setErroPropriedade(e.message || "Erro ao adicionar propriedade");
     }
     setSalvandoPropriedade(false);
+  }
+
+  function abrirEdicaoNomeProp(p: Property) {
+    setEditPropId(p.id);
+    setEditPropNome(p.nome);
+    setErroPropNome(null);
+  }
+
+  async function salvarNomeProp() {
+    if (!editPropId || !editPropNome.trim()) return;
+    setSalvandoPropNome(true);
+    setErroPropNome(null);
+    try {
+      const r = await fetch("/api/properties", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editPropId, nome: editPropNome.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setErroPropNome(data.error || `Erro ${r.status}`);
+      } else {
+        setEditPropId(null);
+        carregar();
+      }
+    } catch (e: any) {
+      setErroPropNome(e.message || "Erro ao salvar");
+    }
+    setSalvandoPropNome(false);
+  }
+
+  async function excluirProperty(p: Property) {
+    if (!confirm(`Excluir a propriedade "${p.nome}"?`)) return;
+    setExcluindoPropId(p.id);
+    setErroExclusao(null);
+    setErroExclusaoPropId(null);
+    try {
+      const r = await fetch("/api/properties", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: p.id }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) {
+        setErroExclusao(data?.error || `Erro ${r.status}`);
+        setErroExclusaoPropId(p.id);
+      } else {
+        carregar();
+      }
+    } catch (e: any) {
+      setErroExclusao(e.message || "Erro ao excluir");
+      setErroExclusaoPropId(p.id);
+    }
+    setExcluindoPropId(null);
+  }
+
+  function toggleExpandida(id: string) {
+    setExpandidas((e) => ({ ...e, [id]: !e[id] }));
+  }
+
+  function categoriasDaProperty(propertyId: string): [string, number][] {
+    const porTipo = new Map<string, number>();
+    for (const u of uhs) {
+      if (u.propertyId !== propertyId) continue;
+      porTipo.set(u.tipo, (porTipo.get(u.tipo) ?? 0) + 1);
+    }
+    return Array.from(porTipo.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }
+
+  function abrirEdicaoCategoria(propertyId: string, tipoAtual: string) {
+    setEditCategoria({ propertyId, tipoAtual });
+    setNovoNomeCategoria(tipoAtual);
+    setErroCategoria(null);
+  }
+
+  async function salvarCategoria() {
+    if (!editCategoria || !novoNomeCategoria.trim()) return;
+    setSalvandoCategoria(true);
+    setErroCategoria(null);
+    try {
+      const r = await fetch("/api/categorias", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: editCategoria.propertyId,
+          tipoAtual: editCategoria.tipoAtual,
+          tipoNovo: novoNomeCategoria.trim(),
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        setErroCategoria(data.error || `Erro ${r.status}`);
+      } else {
+        setEditCategoria(null);
+        carregar();
+      }
+    } catch (e: any) {
+      setErroCategoria(e.message || "Erro ao salvar categoria");
+    }
+    setSalvandoCategoria(false);
   }
 
   function abrirEdicaoGeo(p: Property) {
@@ -258,10 +381,41 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
             <ul style={{ margin: "0 0 14px", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
               {properties.map((p) => (
                 <li key={p.id} style={{ fontSize: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span>{p.nome}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                    {editPropId === p.id ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flex: 1, minWidth: 160 }}>
+                        <input
+                          style={{ ...inputStyle, flex: 1 }}
+                          value={editPropNome}
+                          onChange={(e) => setEditPropNome(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && salvarNomeProp()}
+                          autoFocus
+                        />
+                        <button
+                          onClick={salvarNomeProp}
+                          disabled={salvandoPropNome || !editPropNome.trim()}
+                          style={{ background: "none", border: "none", color: "#1d8a3e", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => setEditPropId(null)}
+                          style={{ background: "none", border: "none", color: "#6e6e73", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <span>{p.nome}</span>
+                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                       <span style={{ color: "#6e6e73" }}>{p._count.uhs} UH(s)</span>
+                      <button
+                        onClick={() => toggleExpandida(p.id)}
+                        style={{ background: "none", border: "none", color: "#0071e3", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                      >
+                        {expandidas[p.id] ? "▾ Categorias" : "▸ Categorias"}
+                      </button>
                       {editGeoId !== p.id && (
                         <button
                           onClick={() => abrirEdicaoGeo(p)}
@@ -270,8 +424,94 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
                           {p.latitude != null ? "Editar coordenadas" : "Adicionar coordenadas"}
                         </button>
                       )}
+                      {editPropId !== p.id && (
+                        <button
+                          onClick={() => abrirEdicaoNomeProp(p)}
+                          style={{ background: "none", border: "none", color: "#0071e3", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          Renomear
+                        </button>
+                      )}
+                      <button
+                        onClick={() => excluirProperty(p)}
+                        disabled={excluindoPropId === p.id}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#d70015",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: excluindoPropId === p.id ? "default" : "pointer",
+                        }}
+                      >
+                        Excluir
+                      </button>
                     </div>
                   </div>
+
+                  {erroPropNome && editPropId === p.id && <p style={{ color: "#d70015", fontSize: 12, marginTop: 4 }}>{erroPropNome}</p>}
+                  {erroExclusao && erroExclusaoPropId === p.id && <p style={{ color: "#d70015", fontSize: 12, marginTop: 4 }}>{erroExclusao}</p>}
+
+                  {expandidas[p.id] && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        paddingLeft: 12,
+                        borderLeft: "2px solid #e5e5e7",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
+                    >
+                      {categoriasDaProperty(p.id).length === 0 && (
+                        <p style={{ color: "#6e6e73", fontSize: 12, margin: 0 }}>Nenhuma UH cadastrada ainda nessa propriedade.</p>
+                      )}
+                      {categoriasDaProperty(p.id).map(([tipoCategoria, count]) => (
+                        <div key={tipoCategoria} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                          {editCategoria?.propertyId === p.id && editCategoria?.tipoAtual === tipoCategoria ? (
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flex: 1 }}>
+                              <input
+                                style={{ ...inputStyle, flex: 1 }}
+                                value={novoNomeCategoria}
+                                onChange={(e) => setNovoNomeCategoria(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && salvarCategoria()}
+                                autoFocus
+                              />
+                              <button
+                                onClick={salvarCategoria}
+                                disabled={salvandoCategoria || !novoNomeCategoria.trim()}
+                                style={{ background: "none", border: "none", color: "#1d8a3e", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                              >
+                                Salvar
+                              </button>
+                              <button
+                                onClick={() => setEditCategoria(null)}
+                                style={{ background: "none", border: "none", color: "#6e6e73", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <span style={{ fontSize: 13 }}>
+                                {tipoCategoria} <span style={{ color: "#a1a1a6" }}>({count} UH{count === 1 ? "" : "s"})</span>
+                              </span>
+                              <button
+                                onClick={() => abrirEdicaoCategoria(p.id, tipoCategoria)}
+                                style={{ background: "none", border: "none", color: "#0071e3", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                              >
+                                Editar
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                      {editCategoria?.propertyId === p.id && erroCategoria && (
+                        <p style={{ color: "#d70015", fontSize: 12, margin: 0 }}>{erroCategoria}</p>
+                      )}
+                    </div>
+                  )}
+
                   {p.latitude != null && p.longitude != null && editGeoId !== p.id && (
                     <div style={{ color: "#6e6e73", fontSize: 11, marginTop: 2 }}>
                       {p.latitude.toFixed(6)}, {p.longitude.toFixed(6)}
