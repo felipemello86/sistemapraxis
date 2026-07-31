@@ -11,6 +11,7 @@ export * from "./notify";
 export * from "./maintenanceUrgente";
 export * from "./aiEvents";
 export * from "./stripe";
+export * from "./channel-manager";
 export type {
   SuiteModule,
   User,

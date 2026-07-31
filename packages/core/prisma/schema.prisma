@@ -61,6 +61,15 @@ model Tenant {
   hkManagerialFailureCards HkManagerialFailureCard[]
   hkBlockRequests     HkBlockRequest[]
 
+  // PMS / Channel Manager — Fase 0 (fundação de domínio) + Fase 1 (Channex)
+  hospedes                 Hospede[]
+  reservas                 Reserva[]
+  tarifasDiarias           TarifaDiaria[]
+  bloqueiosDisponibilidade BloqueioDisponibilidade[]
+  folios                   Folio[]
+  channexPropertyMapping   ChannexPropertyMapping?
+  channexRoomMappings      ChannexRoomMapping[]
+
   // Avaliações (Booking-Reviews)
   reviewsConfig        ReviewsConfig?
   reviewCategories     Category[]
@@ -442,7 +451,250 @@ model UH {
   maintenanceItemInfoLogs       MaintenanceItemInfoLog[]
   maintenanceCorrectionCards    MaintenanceCorrectionCard[]
 
+  // PMS / Channel Manager — Fase 0 (fundação de domínio, ver plano de
+  // implementação "praxis-pms-channel-manager-plano.md"). Reserva é o
+  // modelo que, a partir daqui, deveria virar a fonte de verdade por trás
+  // de UH.status — hoje esse campo ainda é setado manualmente em vários
+  // lugares (ver DailyUHSelection.temReserva, um boolean solto sem UH real
+  // por trás). Migração desse acoplamento é trabalho de fase futura, não
+  // deste commit — os dois convivem até lá.
+  reservas                 Reserva[]
+  tarifasDiarias           TarifaDiaria[]
+  bloqueiosDisponibilidade BloqueioDisponibilidade[]
+
   @@unique([tenantId, numero])
+}
+
+// ============================================================================
+// PMS / Channel Manager — Fase 0: fundação de domínio
+// ============================================================================
+// Modelos novos, ainda não conectados a nenhuma rota/tela. Existem pra dar
+// um lugar real pra reserva/tarifa/disponibilidade/conta de hóspede
+// morarem, em vez do que existe hoje (DailyUHSelection.temReserva, um
+// boolean sem hóspede, data de estadia ou origem). Nenhum desses models
+// tem UI ainda — a Fase 1 do plano (importação de reserva via webhook do
+// channel manager) é o próximo passo que efetivamente popula Reserva.
+//
+// Princípio seguido (ver plano): o Praxis é dono do dado. Nenhum desses
+// models usa vocabulário específico de um fornecedor de channel manager
+// (Beds24/Channex/Rentals United) — o campo `canal` e `canalReservaId` em
+// Reserva são o único ponto de contato com o mundo externo, e ficam
+// isolados atrás de um adaptador (packages/core/src/channel-manager/,
+// ainda não criado) quando a Fase 1 começar.
+
+model Hospede {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome          String
+  documento     String? // CPF ou passaporte — opcional: reserva vinda de OTA às vezes chega sem isso
+  documentoTipo String? // CPF | PASSAPORTE | RG
+  email         String?
+  telefone      String?
+  nacionalidade String?
+
+  reservas Reserva[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, documento])
+}
+
+model Reserva {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Nulo até a alocação física acontecer. Reserva vinda de OTA (Fase 1)
+  // chega associada a um TIPO de quarto (ver uhTipoSolicitado), nunca a uma
+  // UH específica — a OTA não sabe (nem deveria saber) qual UH exata vai
+  // ser ocupada, isso é decisão interna do hotel, feita na recepção antes
+  // ou no check-in (Fase 4). Reserva DIRETO já pode nascer com uhId
+  // preenchido se o motor de reserva própria (Fase 5) permitir escolher a
+  // UH exata.
+  uhId String?
+  uh   UH?     @relation(fields: [uhId], references: [id])
+  // Tipo de quarto pedido (equivalente a UH.tipo, ex.: "Standard") — vem
+  // resolvido a partir do room_type_id do canal via ChannexRoomMapping (ou
+  // equivalente de outro fornecedor) no momento da importação. Preenchido
+  // mesmo depois da alocação, como registro do que foi originalmente
+  // vendido.
+  uhTipoSolicitado String?
+
+  hospedeId String
+  hospede   Hospede @relation(fields: [hospedeId], references: [id])
+
+  checkInData  String // YYYY-MM-DD previsto
+  checkOutData String // YYYY-MM-DD previsto (exclusivo, como em toda tabela diária da suíte)
+
+  checkInRealizadoEm  DateTime?
+  checkOutRealizadoEm DateTime?
+
+  status String @default("CONFIRMADA") // CONFIRMADA | CHECK_IN | CHECK_OUT | CANCELADA | NO_SHOW
+
+  adultos  Int @default(1)
+  criancas Int @default(0)
+
+  // Origem: DIRETO = criada pelo próprio Praxis (recepção, ou motor de
+  // reserva direta na Fase 5). Qualquer outro valor chega via webhook do
+  // intermediário de channel manager (Fase 1) — nunca digitada por
+  // ninguém do hotel.
+  canal          String // DIRETO | AIRBNB | BOOKING | OUTRO
+  // Id da reserva no lado do canal/intermediário. Chave de idempotência:
+  // reprocessar o mesmo webhook (retry, replay) não pode criar reserva
+  // duplicada — ver @@unique abaixo. Nulo pra canal=DIRETO.
+  canalReservaId String?
+
+  valorTotal Decimal? @db.Decimal(10, 2)
+  moeda      String   @default("BRL")
+
+  observacoes String?
+
+  folio Folio?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, canal, canalReservaId])
+  @@index([tenantId, uhId, checkInData])
+}
+
+// Mapeamento tenant → property da Channex. Isolado de propósito (ver
+// princípio arquitetural, seção 2 do plano de implementação): é o único
+// lugar do schema onde um ID da Channex aparece. Se um dia trocarmos de
+// fornecedor, só essas duas tabelas (ChannexPropertyMapping e
+// ChannexRoomMapping) mudam — Reserva/Hospede/Tarifa nunca sabem que a
+// Channex existe.
+model ChannexPropertyMapping {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  channexPropertyId String @unique // UUID da property no lado da Channex
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Room Type da Channex → tipo de UH do Praxis. Mapeia pra um TIPO
+// (uhTipo, equivalente a UH.tipo), não pra uma UH específica — ver
+// comentário em Reserva.uhId sobre por que a alocação física é sempre
+// posterior à importação da reserva.
+model ChannexRoomMapping {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  channexRoomTypeId String @unique // UUID do room type na Channex
+  uhTipo             String // equivalente a UH.tipo (ex.: "Standard")
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// Bloqueio manual de disponibilidade — período em que uma UH não deve ser
+// oferecida pro channel manager, sem que exista uma Reserva por trás
+// (manutenção prolongada, uso interno, etc.). Junto com Reserva (que já
+// ocupa suas próprias datas), é a base do cálculo de disponibilidade que a
+// Fase 2 do plano vai publicar pro intermediário — disponibilidade nunca é
+// armazenada como uma tabela própria "UH X está livre no dia Y": é sempre
+// computada a partir de Reserva + BloqueioDisponibilidade, pra nunca
+// divergir da fonte de verdade.
+model BloqueioDisponibilidade {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  dataInicio String // YYYY-MM-DD (inclusivo)
+  dataFim    String // YYYY-MM-DD (exclusivo, como checkout)
+
+  motivo        String // MANUTENCAO | USO_INTERNO | OUTRO
+  descricao     String?
+  criadoPorNome String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, uhId, dataInicio])
+}
+
+// Tarifa por UH e por dia. Escopo MVP (Fase 0): um preço só por UH/data,
+// sem plano tarifário múltiplo (reembolsável vs não-reembolsável, etc.) —
+// isso é extensão prevista pra Fase 3 (gestão de tarifa), não retrabalho:
+// dá pra adicionar um PlanoTarifario opcional depois sem quebrar quem já
+// usa TarifaDiaria direto.
+model TarifaDiaria {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  uhId String
+  uh   UH     @relation(fields: [uhId], references: [id], onDelete: Cascade)
+
+  data  String  // YYYY-MM-DD
+  preco Decimal @db.Decimal(10, 2)
+  moeda String  @default("BRL")
+
+  estadiaMinima Int @default(1) // noites
+
+  // "Stop sell" independente de bloqueio físico — ex.: UH disponível mas
+  // hotel não quer vender pra essa data específica via canal nenhum.
+  fechadoParaVenda Boolean @default(false)
+
+  atualizadoPorNome String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, uhId, data])
+}
+
+// Conta do hóspede durante a estadia — reúne diária + consumo de outros
+// módulos que já existem (café da manhã em BreakfastOrder, cobrança de
+// dano/correção em MaintenanceCorrection) num único lugar, sem duplicar
+// esses dados: FolioItem só referencia a origem via origemTipo/origemId
+// quando aplicável (ver comentário em FolioItem).
+model Folio {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  reservaId String  @unique
+  reserva   Reserva @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  status String @default("ABERTO") // ABERTO | FECHADO | PAGO
+
+  itens FolioItem[]
+
+  fechadoEm DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FolioItem {
+  id      String @id @default(cuid())
+  folioId String
+  folio   Folio  @relation(fields: [folioId], references: [id], onDelete: Cascade)
+
+  tipo      String // DIARIA | CAFE | EXTRA | DANO | DESCONTO
+  descricao String
+  valor     Decimal @db.Decimal(10, 2)
+  data      String // YYYY-MM-DD
+
+  // Rastreabilidade opcional pra item que já nasceu em outro módulo (ex.:
+  // BreakfastOrder, MaintenanceCorrection) — evita duplicar o dado, só
+  // referencia o registro original.
+  origemTipo String? // BREAKFAST_ORDER | MAINTENANCE_CORRECTION | MANUAL
+  origemId   String?
+
+  createdAt DateTime @default(now())
 }
 
 model DailyUHSelection {
