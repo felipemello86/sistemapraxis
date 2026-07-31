@@ -176,7 +176,7 @@ export function CalendarioView() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
+      <div className="mb-3 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Calendário</h1>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -202,7 +202,7 @@ export function CalendarioView() {
 
       {dados && (
         <>
-          <div className="card p-0 overflow-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
+          <div className="card p-0 overflow-auto" style={{ maxHeight: "calc(100vh - 155px)" }}>
             <div style={{ display: "grid", gridTemplateColumns, gridAutoRows: "min-content" }}>
               {/* Canto superior esquerdo — cobre as duas linhas de cabeçalho */}
               <div
@@ -374,7 +374,7 @@ export function CalendarioView() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 mt-3 text-xs text-gray-500 flex-wrap">
+          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 flex-wrap">
             {Object.entries(CANAL_BADGE).map(([canal, b]) => (
               <span key={canal} className="flex items-center gap-1.5">
                 <span className={`w-3 h-3 rounded ${b.bg}`} />
