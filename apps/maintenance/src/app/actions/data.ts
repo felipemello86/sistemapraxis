@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   aplicarBloqueioPorUrgencia,
   createCorrectionCardForItem,
+  emitEvent,
   getSession,
   hasModuleAccess,
   prisma,
@@ -36,7 +37,7 @@ async function requireModuleSession() {
 
 async function createItemImpl(input: { name: string; category: string; subDescription?: string }) {
   const session = await requireModuleSession();
-  await prisma.maintenanceChecklistItem.create({
+  const item = await prisma.maintenanceChecklistItem.create({
     data: {
       tenantId: session.tenantId,
       name: input.name,
@@ -44,6 +45,19 @@ async function createItemImpl(input: { name: string; category: string; subDescri
       subDescription: input.subDescription ?? null,
     },
   });
+
+  // Menos crítico que editar/excluir (pedido do Felipe focou nesses dois),
+  // mas entra no mesmo tipo "item_catalogo_editado" da timeline por
+  // completude e simetria com os outros dois — payload.acao distingue.
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.item_catalogo_criado",
+    entityType: "MaintenanceChecklistItem",
+    entityId: item.id,
+    payload: { itemNome: item.name, atorNome: session.nome, acao: "criado" },
+  });
+
   revalidatePath("/");
 }
 export const createItemAction = safeAction(createItemImpl);
@@ -53,19 +67,67 @@ async function updateItemImpl(
   input: Partial<{ name: string; category: string; subDescription: string }>,
 ) {
   const session = await requireModuleSession();
+
+  // Lido ANTES do updateMany só pra ter o nome pro log mesmo quando `input`
+  // não inclui `name` (ex.: só categoria mudou) — não interfere na lógica de
+  // update em si.
+  const existente = await prisma.maintenanceChecklistItem.findUnique({
+    where: { id },
+    select: { tenantId: true, name: true },
+  });
+
   await prisma.maintenanceChecklistItem.updateMany({
     where: { id, tenantId: session.tenantId },
     data: input,
   });
+
+  if (existente && existente.tenantId === session.tenantId) {
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "MAINTENANCE",
+      eventType: "maintenance.log.item_catalogo_editado",
+      entityType: "MaintenanceChecklistItem",
+      entityId: id,
+      payload: {
+        itemNome: input.name ?? existente.name,
+        atorNome: session.nome,
+        acao: "editado",
+        alteracoes: input,
+      },
+    });
+  }
+
   revalidatePath("/");
 }
 export const updateItemAction = safeAction(updateItemImpl);
 
 async function deleteItemImpl(id: string) {
   const session = await requireModuleSession();
+
+  // Lido ANTES do deleteMany — depois de excluído não tem mais como saber o
+  // nome do item pro log (pedido explícito do Felipe: exclusão de item do
+  // catálogo é justamente o ponto cego que motivou essa tela, ver comentário
+  // no topo de components/views/logs.tsx).
+  const existente = await prisma.maintenanceChecklistItem.findUnique({
+    where: { id },
+    select: { tenantId: true, name: true },
+  });
+
   await prisma.maintenanceChecklistItem.deleteMany({
     where: { id, tenantId: session.tenantId },
   });
+
+  if (existente && existente.tenantId === session.tenantId) {
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "MAINTENANCE",
+      eventType: "maintenance.log.item_catalogo_excluido",
+      entityType: "MaintenanceChecklistItem",
+      entityId: id,
+      payload: { itemNome: existente.name, atorNome: session.nome, acao: "excluído" },
+    });
+  }
+
   revalidatePath("/");
 }
 export const deleteItemAction = safeAction(deleteItemImpl);
@@ -322,7 +384,7 @@ export const triarCorrecaoCardAction = safeAction(triarCorrecaoCardImpl);
 async function setAtribuicaoUnidadeImpl(input: { uhId: string; checklistItemIds: string[] }) {
   const session = await requireModuleSession();
 
-  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
+  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true, numero: true } });
   if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
 
   await prisma.$transaction([
@@ -342,6 +404,27 @@ async function setAtribuicaoUnidadeImpl(input: { uhId: string; checklistItemIds:
       : []),
   ]);
 
+  const itens =
+    input.checklistItemIds.length > 0
+      ? await prisma.maintenanceChecklistItem.findMany({
+          where: { id: { in: input.checklistItemIds } },
+          select: { name: true },
+        })
+      : [];
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.atribuicao_editada",
+    entityType: "UH",
+    entityId: input.uhId,
+    payload: {
+      uhNumero: uh.numero,
+      atorNome: session.nome,
+      totalItens: input.checklistItemIds.length,
+      itemNomes: itens.map((i) => i.name),
+    },
+  });
+
   revalidatePath("/");
 }
 export const setAtribuicaoUnidadeAction = safeAction(setAtribuicaoUnidadeImpl);
@@ -357,7 +440,7 @@ export const setAtribuicaoUnidadeAction = safeAction(setAtribuicaoUnidadeImpl);
 async function removerItemIncompativelImpl(input: { uhId: string; checklistItemId: string }) {
   const session = await requireModuleSession();
 
-  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
+  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true, numero: true } });
   if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
 
   const [catalogo, atuais] = await Promise.all([
@@ -401,6 +484,24 @@ async function removerItemIncompativelImpl(input: { uhId: string; checklistItemI
     }),
   ]);
 
+  const itemRemovido = await prisma.maintenanceChecklistItem.findUnique({
+    where: { id: input.checklistItemId },
+    select: { name: true },
+  });
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.atribuicao_editada",
+    entityType: "UH",
+    entityId: input.uhId,
+    payload: {
+      uhNumero: uh.numero,
+      atorNome: session.nome,
+      acao: "item_removido",
+      itemRemovidoNome: itemRemovido?.name ?? null,
+    },
+  });
+
   revalidatePath("/");
 }
 export const removerItemIncompativelAction = safeAction(removerItemIncompativelImpl);
@@ -419,6 +520,11 @@ async function updateConfigImpl(input: { maxDaysBetweenInspections: number; goal
     throw new Error("Meta deve estar entre 0 e 100%.");
   }
 
+  const anterior = await prisma.maintenanceConfig.findUnique({
+    where: { tenantId: session.tenantId },
+    select: { maxDaysBetweenInspections: true, goal: true },
+  });
+
   await prisma.maintenanceConfig.upsert({
     where: { tenantId: session.tenantId },
     create: {
@@ -429,6 +535,21 @@ async function updateConfigImpl(input: { maxDaysBetweenInspections: number; goal
     update: {
       maxDaysBetweenInspections: input.maxDaysBetweenInspections,
       goal: input.goal,
+    },
+  });
+
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.config_editada",
+    entityType: "MaintenanceConfig",
+    entityId: session.tenantId,
+    payload: {
+      atorNome: session.nome,
+      maxDaysBetweenInspectionsAntes: anterior?.maxDaysBetweenInspections ?? null,
+      maxDaysBetweenInspectionsDepois: input.maxDaysBetweenInspections,
+      goalAntes: anterior?.goal ?? null,
+      goalDepois: input.goal,
     },
   });
 
@@ -449,7 +570,7 @@ export const updateConfigAction = safeAction(updateConfigImpl);
 async function salvarUhImagemImpl(input: { uhId: string; tipo: string; imageUrl: string }) {
   const session = await requireModuleSession();
 
-  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true } });
+  const uh = await prisma.uH.findUnique({ where: { id: input.uhId }, select: { tenantId: true, numero: true } });
   if (!uh || uh.tenantId !== session.tenantId) throw new Error("Unidade não encontrada.");
 
   const img = await prisma.maintenanceUhImage.create({
@@ -461,6 +582,15 @@ async function salvarUhImagemImpl(input: { uhId: string; tipo: string; imageUrl:
     },
   });
 
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.uh3d_imagem_criada",
+    entityType: "MaintenanceUhImage",
+    entityId: img.id,
+    payload: { uhNumero: uh.numero, tipo: input.tipo, atorNome: session.nome, acao: "criada" },
+  });
+
   revalidatePath("/");
   return img.id;
 }
@@ -468,10 +598,30 @@ export const salvarUhImagemAction = safeAction(salvarUhImagemImpl);
 
 async function deleteUhImagemImpl(id: string) {
   const session = await requireModuleSession();
+
+  // Lido ANTES do delete — depois não tem mais como saber UH/cômodo pro log
+  // (mesmo motivo dos outros deletes deste arquivo).
+  const img = await prisma.maintenanceUhImage.findUnique({
+    where: { id },
+    select: { tenantId: true, tipo: true, uh: { select: { numero: true } } },
+  });
+
   // Cascade no schema já apaga os spots dessa imagem junto.
   await prisma.maintenanceUhImage.deleteMany({
     where: { id, tenantId: session.tenantId },
   });
+
+  if (img && img.tenantId === session.tenantId) {
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "MAINTENANCE",
+      eventType: "maintenance.log.uh3d_imagem_excluida",
+      entityType: "MaintenanceUhImage",
+      entityId: id,
+      payload: { uhNumero: img.uh.numero, tipo: img.tipo, atorNome: session.nome, acao: "excluída" },
+    });
+  }
+
   revalidatePath("/");
 }
 export const deleteUhImagemAction = safeAction(deleteUhImagemImpl);
@@ -481,7 +631,7 @@ async function createUhSpotImpl(input: { imageId: string; checklistItemId: strin
 
   const img = await prisma.maintenanceUhImage.findUnique({
     where: { id: input.imageId },
-    select: { tenantId: true },
+    select: { tenantId: true, uh: { select: { numero: true } } },
   });
   if (!img || img.tenantId !== session.tenantId) throw new Error("Imagem não encontrada.");
 
@@ -498,6 +648,24 @@ async function createUhSpotImpl(input: { imageId: string; checklistItemId: strin
     },
   });
 
+  const checklistItem = await prisma.maintenanceChecklistItem.findUnique({
+    where: { id: input.checklistItemId },
+    select: { name: true },
+  });
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.uh3d_spot_criado",
+    entityType: "MaintenanceUhSpot",
+    entityId: spot.id,
+    payload: {
+      uhNumero: img.uh.numero,
+      itemNome: checklistItem?.name ?? null,
+      atorNome: session.nome,
+      acao: "criado",
+    },
+  });
+
   revalidatePath("/");
   return spot.id;
 }
@@ -505,6 +673,16 @@ export const createUhSpotAction = safeAction(createUhSpotImpl);
 
 async function updateUhSpotImpl(id: string, input: { x: number; y: number }) {
   const session = await requireModuleSession();
+
+  const existente = await prisma.maintenanceUhSpot.findUnique({
+    where: { id },
+    select: {
+      tenantId: true,
+      image: { select: { uh: { select: { numero: true } } } },
+      checklistItem: { select: { name: true } },
+    },
+  });
+
   await prisma.maintenanceUhSpot.updateMany({
     where: { id, tenantId: session.tenantId },
     data: {
@@ -512,15 +690,59 @@ async function updateUhSpotImpl(id: string, input: { x: number; y: number }) {
       y: Math.min(100, Math.max(0, input.y)),
     },
   });
+
+  if (existente && existente.tenantId === session.tenantId) {
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "MAINTENANCE",
+      eventType: "maintenance.log.uh3d_spot_movido",
+      entityType: "MaintenanceUhSpot",
+      entityId: id,
+      payload: {
+        uhNumero: existente.image.uh.numero,
+        itemNome: existente.checklistItem?.name ?? null,
+        atorNome: session.nome,
+        acao: "movido",
+      },
+    });
+  }
+
   revalidatePath("/");
 }
 export const updateUhSpotAction = safeAction(updateUhSpotImpl);
 
 async function deleteUhSpotImpl(id: string) {
   const session = await requireModuleSession();
+
+  const existente = await prisma.maintenanceUhSpot.findUnique({
+    where: { id },
+    select: {
+      tenantId: true,
+      image: { select: { uh: { select: { numero: true } } } },
+      checklistItem: { select: { name: true } },
+    },
+  });
+
   await prisma.maintenanceUhSpot.deleteMany({
     where: { id, tenantId: session.tenantId },
   });
+
+  if (existente && existente.tenantId === session.tenantId) {
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "MAINTENANCE",
+      eventType: "maintenance.log.uh3d_spot_excluido",
+      entityType: "MaintenanceUhSpot",
+      entityId: id,
+      payload: {
+        uhNumero: existente.image.uh.numero,
+        itemNome: existente.checklistItem?.name ?? null,
+        atorNome: session.nome,
+        acao: "excluído",
+      },
+    });
+  }
+
   revalidatePath("/");
 }
 export const deleteUhSpotAction = safeAction(deleteUhSpotImpl);
@@ -550,7 +772,10 @@ async function editarSpotInspecaoImpl(input: {
 
   const item = await prisma.maintenanceInspectionItem.findUnique({
     where: { id: input.inspectionItemId },
-    include: { inspection: { select: { tenantId: true, uhId: true } } },
+    include: {
+      inspection: { select: { tenantId: true, uhId: true, uh: { select: { numero: true } } } },
+      checklistItem: { select: { name: true } },
+    },
   });
   if (!item || item.inspection.tenantId !== session.tenantId) {
     throw new Error("Item de inspeção não encontrado.");
@@ -603,6 +828,14 @@ async function editarSpotInspecaoImpl(input: {
     // CONFORME → NAO_CONFORME (marcar como quebrado agora).
     const eraNovoRegistro = input.status === "NAO_CONFORME" && item.status === "CONFORME";
     const urgenteAntes = item.urgente;
+    // Terceiro caso possível aqui (além de "nova NC" acima e "resolução" no
+    // if de cima): edição de descrição/fotos de um item que JÁ era
+    // NAO_CONFORME, sem mudar esse status — não cria card novo (já existe) e
+    // não gera MaintenanceCorrection (não resolveu nada), então sem isto
+    // esse tipo de edição não deixava nenhum rastro na tela "Log do
+    // Sistema" (pedido explícito do Felipe).
+    const eraEdicaoDeNcExistente =
+      !eraNovoRegistro && input.status === "NAO_CONFORME" && item.status === "NAO_CONFORME";
 
     await prisma.maintenanceInspectionItem.update({
       where: { id: item.id },
@@ -639,6 +872,22 @@ async function editarSpotInspecaoImpl(input: {
       } else if (input.urgente !== true && urgenteAntes === true) {
         await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: session.tenantId, uhId: item.inspection.uhId });
       }
+    }
+
+    if (eraEdicaoDeNcExistente) {
+      await emitEvent({
+        tenantId: session.tenantId,
+        module: "MAINTENANCE",
+        eventType: "maintenance.log.spot_editado",
+        entityType: "MaintenanceInspectionItem",
+        entityId: item.id,
+        payload: {
+          uhNumero: item.inspection.uh.numero,
+          itemNome: item.checklistItem?.name ?? null,
+          atorNome: session.nome,
+          comment,
+        },
+      });
     }
   }
 

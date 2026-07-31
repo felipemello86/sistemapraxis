@@ -12,6 +12,18 @@ import {
   Pencil,
   Siren,
   History,
+  Lock,
+  LockOpen,
+  Zap,
+  ShoppingCart,
+  FileText,
+  CalendarCheck,
+  PencilLine,
+  Image,
+  MapPin,
+  ClipboardPenLine,
+  ListChecks,
+  Settings,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -36,10 +48,14 @@ import type { LogEvento } from '@/lib/types'
 // Informações do Item). Isso já cobre o histórico completo desde sempre
 // (não é preciso "esperar" novos eventos pra aparecer aqui).
 //
-// Limitação conhecida e comunicada ao Felipe: exclusão de item do catálogo
-// (MaintenanceChecklistItem) nunca foi registrada em lugar nenhum — não tem
-// como esse tipo de evento aparecer aqui retroativamente. Se um dia isso for
-// logado de verdade, esta tela já está pronta pra exibir o tipo novo.
+// Cobertura ampliada (pedido explícito do Felipe: "TODAS as ações
+// relevantes", não só um subconjunto) — os 12 tipos abaixo, a partir de
+// "programacao_fechada", vêm de AiEvent (ver emitEvent em @praxis/core),
+// instrumentado direto nas Server Actions de apps/maintenance/src/app/
+// actions/correcao.ts e data.ts. A extinta "limitação conhecida" de
+// exclusão de item do catálogo nunca aparecer aqui não existe mais —
+// updateItemAction/deleteItemAction (e createItemAction) já emitem
+// "item_catalogo_editado" desde essa cobertura.
 
 const TIPO_INFO: Record<
   LogEvento['tipo'],
@@ -52,6 +68,18 @@ const TIPO_INFO: Record<
   correcao_executada: { label: 'Reparo concluído', icon: CheckCircle2, className: 'text-[var(--success)] bg-[var(--success)]/10' },
   reagendamento: { label: 'Reagendamento', icon: CalendarClock, className: 'text-purple-600 bg-purple-100' },
   info_editada: { label: 'Informações do item', icon: Pencil, className: 'text-muted-foreground bg-accent' },
+  programacao_fechada: { label: 'Programação fechada', icon: Lock, className: 'text-slate-700 bg-slate-200' },
+  programacao_reaberta: { label: 'Programação reaberta', icon: LockOpen, className: 'text-amber-700 bg-amber-100' },
+  card_urgente_adicionado: { label: 'Card urgente adicionado', icon: Zap, className: 'text-[var(--destructive)] bg-[var(--destructive)]/10' },
+  material_comprado: { label: 'Material comprado', icon: ShoppingCart, className: 'text-blue-600 bg-blue-100' },
+  cotacao_registrada: { label: 'Cotação registrada', icon: FileText, className: 'text-blue-600 bg-blue-100' },
+  servico_agendado: { label: 'Serviço agendado', icon: CalendarCheck, className: 'text-purple-600 bg-purple-100' },
+  spot_editado: { label: 'Spot editado', icon: PencilLine, className: 'text-muted-foreground bg-accent' },
+  uh3d_imagem: { label: 'Imagem UH 3D', icon: Image, className: 'text-teal-600 bg-teal-100' },
+  uh3d_spot: { label: 'Spot UH 3D', icon: MapPin, className: 'text-teal-600 bg-teal-100' },
+  item_catalogo_editado: { label: 'Item de catálogo editado', icon: ClipboardPenLine, className: 'text-muted-foreground bg-accent' },
+  atribuicao_editada: { label: 'Atribuição editada', icon: ListChecks, className: 'text-blue-600 bg-blue-100' },
+  config_editada: { label: 'Configuração alterada', icon: Settings, className: 'text-muted-foreground bg-accent' },
 }
 
 const TIPO_FILTRO_OPCOES: { value: 'todos' | LogEvento['tipo']; label: string }[] = [
@@ -63,6 +91,18 @@ const TIPO_FILTRO_OPCOES: { value: 'todos' | LogEvento['tipo']; label: string }[
   { value: 'correcao_executada', label: 'Reparo concluído' },
   { value: 'reagendamento', label: 'Reagendamento' },
   { value: 'info_editada', label: 'Informações do item' },
+  { value: 'programacao_fechada', label: 'Programação fechada' },
+  { value: 'programacao_reaberta', label: 'Programação reaberta' },
+  { value: 'card_urgente_adicionado', label: 'Card urgente adicionado' },
+  { value: 'material_comprado', label: 'Material comprado' },
+  { value: 'cotacao_registrada', label: 'Cotação registrada' },
+  { value: 'servico_agendado', label: 'Serviço agendado' },
+  { value: 'spot_editado', label: 'Spot editado' },
+  { value: 'uh3d_imagem', label: 'Imagem UH 3D' },
+  { value: 'uh3d_spot', label: 'Spot UH 3D' },
+  { value: 'item_catalogo_editado', label: 'Item de catálogo editado' },
+  { value: 'atribuicao_editada', label: 'Atribuição editada' },
+  { value: 'config_editada', label: 'Configuração alterada' },
 ]
 
 // Sempre fuso America/Sao_Paulo, explícito — mesmo padrão já usado em
@@ -137,7 +177,7 @@ export function Logs({ eventos }: { eventos: LogEvento[] }) {
 
       <Panel
         title="Log do Sistema"
-        description="Histórico completo — Inspeções, não conformidades, triagens, reparos, reagendamentos e edições de Informações do Item. Reconstruído a partir dos próprios registros do sistema, sem apagar nada."
+        description="Histórico completo — Inspeções, não conformidades, triagens, reparos, reagendamentos, programação do dia, compras, cotações, agendamentos, UH 3D, catálogo, atribuições e configurações. Reconstruído a partir dos próprios registros do sistema, sem apagar nada."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Select value={tipoFiltro} onValueChange={(v) => { setTipoFiltro((v as typeof tipoFiltro) ?? 'todos'); setLimite(PAGINA) }}>

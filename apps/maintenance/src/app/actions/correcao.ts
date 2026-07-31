@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   aplicarBloqueioPorUrgencia,
   corrigirItemDireto,
+  emitEvent,
   getSession,
   hasModuleAccess,
   prisma,
@@ -39,6 +40,23 @@ async function getCardOrThrow(cardId: string, tenantId: string) {
   return card;
 }
 
+// getCardOrThrow acima devolve só os campos escalares do card (uhId,
+// checklistItemId) — os pontos de log abaixo (pedido explícito do Felipe:
+// cobertura completa de auditoria) precisam de nomes legíveis (UH/item) pro
+// payload do AiEvent, pra tela "Log do Sistema" não precisar re-hidratar
+// nada depois. Helper pequeno em vez de estender getCardOrThrow (usado por
+// todo o arquivo, mudar o shape dele exigiria tocar em mais lugares que o
+// necessário).
+async function nomesDoCard(card: { uhId: string; checklistItemId: string | null }) {
+  const [uh, item] = await Promise.all([
+    prisma.uH.findUnique({ where: { id: card.uhId }, select: { numero: true } }),
+    card.checklistItemId
+      ? prisma.maintenanceChecklistItem.findUnique({ where: { id: card.checklistItemId }, select: { name: true } })
+      : Promise.resolve(null),
+  ]);
+  return { uhNumero: uh?.numero ?? "—", itemNome: item?.name ?? null };
+}
+
 /* ------------------------------ Aquisição -------------------------------- */
 
 async function comprarMaterialImpl(input: { cardId: string; receiptPhotoUrl: string }) {
@@ -59,6 +77,16 @@ async function comprarMaterialImpl(input: { cardId: string; receiptPhotoUrl: str
     },
   });
 
+  const { uhNumero, itemNome } = await nomesDoCard(card);
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.material_comprado",
+    entityType: "MaintenanceCorrectionCard",
+    entityId: card.id,
+    payload: { uhNumero, itemNome, atorNome: session.nome },
+  });
+
   revalidatePath("/");
 }
 export const comprarMaterialAction = safeAction(comprarMaterialImpl);
@@ -75,6 +103,7 @@ async function registrarCotacaoImpl(input: {
   if (!card.needsExternalService) throw new Error("Este card não precisa de serviço externo.");
 
   let supplierId = input.supplierId ?? null;
+  let supplierNome: string;
 
   if (!supplierId) {
     const nome = input.novoFornecedor?.nome?.trim();
@@ -88,12 +117,14 @@ async function registrarCotacaoImpl(input: {
       },
     });
     supplierId = novo.id;
+    supplierNome = nome;
   } else {
     const s = await prisma.maintenanceSupplier.findUnique({
       where: { id: supplierId },
-      select: { tenantId: true },
+      select: { tenantId: true, nome: true },
     });
     if (!s || s.tenantId !== session.tenantId) throw new Error("Fornecedor não encontrado.");
+    supplierNome = s.nome;
   }
 
   if (card.checklistItemId) {
@@ -115,6 +146,16 @@ async function registrarCotacaoImpl(input: {
       },
     }),
   ]);
+
+  const { uhNumero, itemNome } = await nomesDoCard(card);
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.cotacao_registrada",
+    entityType: "MaintenanceCorrectionCard",
+    entityId: card.id,
+    payload: { uhNumero, itemNome, atorNome: session.nome, fornecedorNome: supplierNome },
+  });
 
   revalidatePath("/");
 }
@@ -142,6 +183,12 @@ async function agendarServicoImpl(input: { cardId: string; supplierId: string; d
   if (!input.date) throw new Error("Selecione a data do serviço.");
 
   const novaData = new Date(`${input.date}T00:00:00.000Z`);
+
+  // Log da tela "Log do Sistema" só cobre o PRIMEIRO agendamento — a partir
+  // do segundo, o branch de reagendamento logo abaixo já cria um
+  // MaintenanceSchedulingLog (tipo "reagendamento"), então logar os dois
+  // duplicaria o mesmo evento na timeline (pedido explícito: não duplicar).
+  const primeiroAgendamento = !card.hiredSupplierId && !card.scheduledDate;
 
   // Reagendamento — gera log (pedido explícito: "pode ser editado depois,
   // gerando um log de edição").
@@ -173,6 +220,24 @@ async function agendarServicoImpl(input: { cardId: string; supplierId: string; d
       externalServiceStatus: "AGENDADO",
     },
   });
+
+  if (primeiroAgendamento) {
+    const { uhNumero, itemNome } = await nomesDoCard(card);
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "MAINTENANCE",
+      eventType: "maintenance.log.servico_agendado",
+      entityType: "MaintenanceCorrectionCard",
+      entityId: card.id,
+      payload: {
+        uhNumero,
+        itemNome,
+        atorNome: session.nome,
+        fornecedorNome: escolhido.supplier.nome,
+        data: input.date,
+      },
+    });
+  }
 
   revalidatePath("/");
 }
@@ -226,7 +291,11 @@ async function fecharProgramacaoDiaImpl(input: {
 
   const cards = await prisma.maintenanceCorrectionCard.findMany({
     where: { id: { in: input.cardIds }, tenantId: session.tenantId },
-    include: { uh: { select: { id: true } }, inspectionItem: { select: { comment: true } } },
+    include: {
+      uh: { select: { id: true, numero: true } },
+      checklistItem: { select: { name: true } },
+      inspectionItem: { select: { comment: true } },
+    },
   });
   if (cards.length !== input.cardIds.length) throw new Error("Algum card selecionado não foi encontrado.");
 
@@ -306,6 +375,23 @@ async function fecharProgramacaoDiaImpl(input: {
     });
   }
 
+  // Pedido mais explícito do Felipe pra essa tela: registrar quais cards
+  // (UH + item) entraram no fechamento — 1 evento com N cards dentro, não 1
+  // evento por card, pra não poluir a timeline.
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.programacao_fechada",
+    entityType: "MaintenanceDailyCommitment",
+    entityId: commitment.id,
+    payload: {
+      data,
+      totalCards: cards.length,
+      fechadoPor: session.nome,
+      cards: cards.map((c) => ({ uhNumero: c.uh.numero, itemNome: c.checklistItem?.name ?? null })),
+    },
+  });
+
   revalidatePath("/");
 }
 export const fecharProgramacaoDiaAction = safeAction(fecharProgramacaoDiaImpl);
@@ -334,7 +420,15 @@ async function reabrirProgramacaoDiaImpl() {
 
   const commitment = await prisma.maintenanceDailyCommitment.findUnique({
     where: { tenantId_data: { tenantId: session.tenantId, data } },
-    include: { cards: true },
+    include: {
+      closedBy: { select: { nome: true } },
+      cards: {
+        include: {
+          uh: { select: { numero: true } },
+          checklistItem: { select: { name: true } },
+        },
+      },
+    },
   });
   if (!commitment) throw new Error("A programação de hoje ainda não foi fechada.");
 
@@ -344,6 +438,26 @@ async function reabrirProgramacaoDiaImpl() {
   if (commitment.cards.some((c) => c.executionStatus === "EXECUTADA")) {
     throw new Error("Já existe item executado na programação de hoje — não é mais possível reabrir.");
   }
+
+  // Emitido ANTES do delete abaixo, de propósito: o MaintenanceDailyCommitment
+  // some do banco na sequência, então este AiEvent é o único rastro que
+  // sobra de "o que tinha sido fechado e foi desfeito" (pedido explícito do
+  // Felipe — sem isso a informação se perde pra sempre).
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.programacao_reaberta",
+    entityType: "MaintenanceDailyCommitment",
+    entityId: commitment.id,
+    payload: {
+      data,
+      totalCards: commitment.cards.length,
+      reabertoPor: session.nome,
+      fechadoOriginalmenteEm: commitment.closedAt.toISOString(),
+      fechadoPor: commitment.closedBy?.nome ?? null,
+      cards: commitment.cards.map((c) => ({ uhNumero: c.uh.numero, itemNome: c.checklistItem?.name ?? null })),
+    },
+  });
 
   await prisma.$transaction([
     prisma.maintenanceCorrectionCard.updateMany({
@@ -484,6 +598,16 @@ async function adicionarCardUrgenteImpl(input: { cardId: string; block?: boolean
       solicitanteNome: session.nome,
     });
   }
+
+  const { uhNumero, itemNome } = await nomesDoCard(card);
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.card_urgente_adicionado",
+    entityType: "MaintenanceCorrectionCard",
+    entityId: card.id,
+    payload: { uhNumero, itemNome, atorNome: session.nome, bloqueado: Boolean(input.block) },
+  });
 
   revalidatePath("/");
 }

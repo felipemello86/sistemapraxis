@@ -241,7 +241,25 @@ export type LogEvento = {
     | "correcao_triada" // needsMaterial/needsExternalService respondidos
     | "correcao_executada" // reparo concluído, item voltou a CONFORME
     | "reagendamento" // MaintenanceSchedulingLog — fornecedor/data trocados
-    | "info_editada"; // MaintenanceItemInfo editado (IV-UH)
+    | "info_editada" // MaintenanceItemInfo editado (IV-UH)
+    // A partir daqui, os tipos abaixo NÃO são reconstruídos ad-hoc de uma
+    // tabela de domínio (como os de cima) — vêm de AiEvent (ver emitEvent em
+    // @praxis/core), instrumentado direto nas Server Actions correspondentes
+    // (apps/maintenance/src/app/actions/correcao.ts e data.ts). Pedido
+    // explícito do Felipe: cobertura completa de auditoria na tela "Log do
+    // Sistema", não só o subconjunto que já tinha uma tabela de origem óbvia.
+    | "programacao_fechada" // fecharProgramacaoDiaImpl — quais cards entraram no fechamento do dia
+    | "programacao_reaberta" // reabrirProgramacaoDiaImpl — commitment é deletado, evento é o único rastro que sobra
+    | "card_urgente_adicionado" // adicionarCardUrgenteImpl — card intempestivo anexado após o fechamento
+    | "material_comprado" // comprarMaterialImpl
+    | "cotacao_registrada" // registrarCotacaoImpl
+    | "servico_agendado" // agendarServicoImpl — só a 1ª vez (reagendamentos seguintes já viram "reagendamento")
+    | "spot_editado" // editarSpotInspecaoImpl — edição de descrição/fotos de um item já NAO_CONFORME (sem virar CONFORME nem nascer agora)
+    | "uh3d_imagem" // salvarUhImagemImpl / deleteUhImagemImpl
+    | "uh3d_spot" // createUhSpotImpl / updateUhSpotImpl / deleteUhSpotImpl
+    | "item_catalogo_editado" // createItemImpl / updateItemImpl / deleteItemImpl (MaintenanceChecklistItem)
+    | "atribuicao_editada" // setAtribuicaoUnidadeImpl / removerItemIncompativelImpl
+    | "config_editada"; // updateConfigImpl
   timestamp: string; // ISO
   uhNumero: string;
   itemNome: string | null;

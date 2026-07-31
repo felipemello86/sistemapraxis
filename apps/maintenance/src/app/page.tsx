@@ -61,6 +61,7 @@ export default async function Home() {
     commitments,
     conformitySnapshots,
     allCardsForLog,
+    auditEvents,
   ] = await Promise.all([
     prisma.uH.findMany({
       where: { tenantId: session.tenantId, ativo: true },
@@ -235,6 +236,26 @@ export default async function Home() {
           },
         },
       },
+      orderBy: { createdAt: "desc" },
+    }),
+    // Tela "Log do Sistema" — segunda fonte, complementar aos fetches acima.
+    // Cobre os pontos que NÃO tinham tabela de origem óbvia pra reconstruir
+    // (fechamento/reabertura de programação, compra de material, cotação,
+    // 1º agendamento, card intempestivo, edição de spot já não-conforme,
+    // CRUD de UH 3D, CRUD de item de catálogo, atribuição de itens por UH,
+    // config) — pedido explícito do Felipe: cobertura completa de auditoria.
+    // Instrumentado via emitEvent() direto nas Server Actions (ver
+    // apps/maintenance/src/app/actions/correcao.ts e data.ts). Sem filtro de
+    // data — mesmo critério "sem janela" das outras queries desta tela
+    // (inspections, allCardsForLog, itemInfoLogs), pra não "esconder"
+    // eventos antigos da timeline. Eventos de outros eventTypes (ex.:
+    // "maintenance.nc.created", "maintenance.uh.solicitacao_bloqueio" —
+    // emitidos por packages/core pra alimentar a IA, não pra esta tela) são
+    // ignorados no mapeamento abaixo (aiLogTipoPorEventType não os lista),
+    // pra não duplicar o que os 7 tipos "clássicos" já cobrem.
+    prisma.aiEvent.findMany({
+      where: { tenantId: session.tenantId, module: "MAINTENANCE" },
+      select: { id: true, eventType: true, payload: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     }),
   ]);
@@ -556,6 +577,137 @@ export default async function Home() {
       itemNome: itemNomePorId.get(l.checklistItemId) ?? null,
       atorNome: l.author?.nome ?? null,
       detalhe: l.newInfo,
+      urgente: false,
+    });
+  }
+
+  // A partir de AiEvent (ver query `auditEvents` acima) — eventType ->
+  // LogEvento['tipo']. Só os eventTypes "maintenance.log.*" instrumentados
+  // pra esta tela entram aqui; qualquer outro eventType que caia em
+  // AiEvent (ex.: os que packages/core emite pra alimentar a IA) é
+  // ignorado, de propósito, pra não duplicar os 7 tipos "clássicos" acima.
+  const aiLogTipoPorEventType: Record<string, LogEvento["tipo"]> = {
+    "maintenance.log.programacao_fechada": "programacao_fechada",
+    "maintenance.log.programacao_reaberta": "programacao_reaberta",
+    "maintenance.log.card_urgente_adicionado": "card_urgente_adicionado",
+    "maintenance.log.material_comprado": "material_comprado",
+    "maintenance.log.cotacao_registrada": "cotacao_registrada",
+    "maintenance.log.servico_agendado": "servico_agendado",
+    "maintenance.log.spot_editado": "spot_editado",
+    "maintenance.log.uh3d_imagem_criada": "uh3d_imagem",
+    "maintenance.log.uh3d_imagem_excluida": "uh3d_imagem",
+    "maintenance.log.uh3d_spot_criado": "uh3d_spot",
+    "maintenance.log.uh3d_spot_movido": "uh3d_spot",
+    "maintenance.log.uh3d_spot_excluido": "uh3d_spot",
+    "maintenance.log.item_catalogo_criado": "item_catalogo_editado",
+    "maintenance.log.item_catalogo_editado": "item_catalogo_editado",
+    "maintenance.log.item_catalogo_excluido": "item_catalogo_editado",
+    "maintenance.log.atribuicao_editada": "atribuicao_editada",
+    "maintenance.log.config_editada": "config_editada",
+  };
+
+  // Mesmo limite (6 nomes + "+N") usado tanto pra lista de UHs do
+  // fechamento/reabertura de programação quanto pra lista de itens da
+  // atribuição por UH — evita o card da timeline virar uma parede de texto
+  // quando o fechamento/atribuição envolve muitos cards/itens de uma vez.
+  function limitarLista(nomes: string[], max = 6): string {
+    if (nomes.length === 0) return "—";
+    if (nomes.length <= max) return nomes.join(", ");
+    return `${nomes.slice(0, max).join(", ")} +${nomes.length - max}`;
+  }
+
+  for (const ev of auditEvents) {
+    const tipo = aiLogTipoPorEventType[ev.eventType];
+    if (!tipo) continue;
+
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = JSON.parse(ev.payload) as Record<string, unknown>;
+    } catch {
+      payload = {};
+    }
+
+    let uhNumero = typeof payload.uhNumero === "string" ? payload.uhNumero : "—";
+    let itemNome = typeof payload.itemNome === "string" ? payload.itemNome : null;
+    const atorNome = typeof payload.atorNome === "string" ? payload.atorNome : null;
+    let detalhe: string | null = null;
+
+    switch (tipo) {
+      case "programacao_fechada": {
+        const cards = Array.isArray(payload.cards) ? (payload.cards as { uhNumero: string }[]) : [];
+        uhNumero = cards.length === 1 ? cards[0].uhNumero : `${cards.length} UHs`;
+        itemNome = null;
+        detalhe = `Programação fechada por ${String(payload.fechadoPor ?? "—")} — ${cards.length} ${cards.length === 1 ? "card" : "cards"}: ${limitarLista(cards.map((c) => c.uhNumero))}.`;
+        break;
+      }
+      case "programacao_reaberta": {
+        const cards = Array.isArray(payload.cards) ? (payload.cards as { uhNumero: string }[]) : [];
+        uhNumero = cards.length === 1 ? cards[0].uhNumero : `${cards.length} UHs`;
+        itemNome = null;
+        detalhe = `Programação reaberta por ${String(payload.reabertoPor ?? "—")} (fechada originalmente por ${String(payload.fechadoPor ?? "—")}) — ${cards.length} ${cards.length === 1 ? "card" : "cards"}: ${limitarLista(cards.map((c) => c.uhNumero))}.`;
+        break;
+      }
+      case "card_urgente_adicionado":
+        detalhe = payload.bloqueado
+          ? "Card intempestivo adicionado à programação do dia — UH marcada para bloqueio."
+          : "Card intempestivo adicionado à programação do dia.";
+        break;
+      case "material_comprado":
+        detalhe = "Material marcado como comprado.";
+        break;
+      case "cotacao_registrada":
+        detalhe = `Cotação registrada com ${String(payload.fornecedorNome ?? "fornecedor")}.`;
+        break;
+      case "servico_agendado":
+        detalhe = `Serviço agendado com ${String(payload.fornecedorNome ?? "fornecedor")} para ${String(payload.data ?? "—")}.`;
+        break;
+      case "spot_editado":
+        detalhe = typeof payload.comment === "string" && payload.comment ? payload.comment : "Descrição/fotos da não conformidade atualizadas.";
+        break;
+      case "uh3d_imagem":
+        detalhe = payload.acao === "excluída"
+          ? `Foto do cômodo "${String(payload.tipo ?? "—")}" excluída.`
+          : `Nova foto adicionada ao cômodo "${String(payload.tipo ?? "—")}".`;
+        break;
+      case "uh3d_spot":
+        detalhe = payload.acao === "excluído"
+          ? "Spot removido da UH 3D."
+          : payload.acao === "movido"
+            ? "Spot reposicionado na UH 3D."
+            : "Novo spot adicionado na UH 3D.";
+        break;
+      case "item_catalogo_editado":
+        uhNumero = "—";
+        detalhe = payload.acao === "criado"
+          ? `Item "${String(payload.itemNome ?? "—")}" criado no catálogo.`
+          : payload.acao === "excluído"
+            ? `Item "${String(payload.itemNome ?? "—")}" excluído do catálogo.`
+            : `Item "${String(payload.itemNome ?? "—")}" editado no catálogo.`;
+        break;
+      case "atribuicao_editada": {
+        if (payload.acao === "item_removido") {
+          detalhe = `Item "${String(payload.itemRemovidoNome ?? "—")}" removido como incompatível.`;
+        } else {
+          const nomes = Array.isArray(payload.itemNomes) ? (payload.itemNomes as string[]) : [];
+          const total = typeof payload.totalItens === "number" ? payload.totalItens : nomes.length;
+          detalhe = `Atribuição de itens atualizada — ${total} ${total === 1 ? "item aplicável" : "itens aplicáveis"}${nomes.length ? `: ${limitarLista(nomes)}` : ""}.`;
+        }
+        break;
+      }
+      case "config_editada":
+        uhNumero = "—";
+        detalhe = `Prazo entre inspeções: ${String(payload.maxDaysBetweenInspectionsAntes ?? "—")} → ${String(payload.maxDaysBetweenInspectionsDepois ?? "—")} dias · Meta: ${String(payload.goalAntes ?? "—")}% → ${String(payload.goalDepois ?? "—")}%.`;
+        break;
+    }
+
+    logEventos.push({
+      id: `ai-${ev.id}`,
+      tipo,
+      timestamp: ev.createdAt.toISOString(),
+      uhNumero,
+      itemNome,
+      atorNome,
+      detalhe,
       urgente: false,
     });
   }
