@@ -16,12 +16,12 @@ import { apiFetch } from "@/lib/apiFetch";
 // Cabeçalho (linhas 1-2) e coluna de rótulo (coluna 1) usam position:sticky
 // pra ficar fixos enquanto rola o resto.
 
-const DAY_COL_PX = 44;
+const DAY_COL_PX = 48; // largura MÍNIMA da coluna — com espaço sobrando na tela, a coluna cresce (ver gridTemplateColumns)
 const LABEL_COL_PX = 220;
 const ROW1_H = 26;
 const ROW2_H = 40;
 const UH_ROW_H = 52;
-const DIAS_VISIVEIS = 21;
+const DIAS_VISIVEIS = 30;
 
 type UhResumo = { id: string; numero: string; tipo: string };
 type PropertyGroup = { id: string; nome: string; uhs: UhResumo[] };
@@ -138,7 +138,12 @@ export function CalendarioView() {
     }
   }
 
-  const gridTemplateColumns = `${LABEL_COL_PX}px repeat(${DIAS_VISIVEIS}, ${DAY_COL_PX}px)`;
+  // minmax(..., 1fr) em vez de um px fixo: em telas largas as colunas de
+  // dia esticam pra preencher o espaço sobrando (era o motivo da faixa
+  // enorme de área vazia ao redor do calendário) em vez de deixar sobrar
+  // margem morta; em telas estreitas elas encolhem até o mínimo e o resto
+  // vira scroll horizontal, como antes.
+  const gridTemplateColumns = `${LABEL_COL_PX}px repeat(${DIAS_VISIVEIS}, minmax(${DAY_COL_PX}px, 1fr))`;
 
   return (
     <div>
