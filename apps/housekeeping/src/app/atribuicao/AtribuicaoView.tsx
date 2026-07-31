@@ -265,7 +265,11 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
     for (const su of selUHs) rm[su.uhId] = su.temReserva ?? false;
     setReservaMap(rm);
     const todos = Array.isArray(c) ? c : [];
-    setCamareiras(todos.filter((u: User) => u.role === "CAMAREIRA"));
+    // Governanta também pode ser atribuída para limpar uma UH — caso
+    // fortuito de precisar atuar como camareira (pedido do Felipe,
+    // 31/07/2026). Backend (POST /api/atribuicoes) já aceita qualquer
+    // userId do tenant, então isso é só liberar a opção aqui no seletor.
+    setCamareiras(todos.filter((u: User) => u.role === "CAMAREIRA" || u.role === "GOVERNANTA"));
     const progs = Array.isArray(p) ? p : [];
     setPrograms(progs);
     if (!novoPrograma && progs.length > 0) setNovoPrograma(progs[0].id);
@@ -438,7 +442,7 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
             <label className="label">Camareira</label>
             <select value={novaCamareira} onChange={(e) => setNovaCamareira(e.target.value)} className="input">
               <option value="">Selecionar camareira</option>
-              {camareiras.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              {camareiras.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.role === "GOVERNANTA" ? " (Governanta)" : ""}</option>)}
             </select>
           </div>
           <div>
