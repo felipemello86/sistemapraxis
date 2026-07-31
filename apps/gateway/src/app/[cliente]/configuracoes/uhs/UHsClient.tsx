@@ -69,8 +69,17 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<string | null>(null);
   const [editNumero, setEditNumero] = useState("");
+  const [editTipo, setEditTipo] = useState("");
   const [editPropertyId, setEditPropertyId] = useState("");
   const [newNumero, setNewNumero] = useState("");
+  // Categoria/tipo do quarto (ex: "Standard", "Loft com Vista Frontal") —
+  // até 31/07/2026 esse campo existia no schema mas nunca era exposto na
+  // tela (POST/PUT sempre gravavam "Standard" fixo), por isso o Calendário
+  // do módulo Recepção (que agrupa UH por categoria dentro de cada
+  // property) mostrava tudo igual. Texto livre com sugestão via <datalist>
+  // das categorias já usadas, em vez de um cadastro à parte — mesmo
+  // raciocínio de Property, mas sem precisar de outra tabela.
+  const [newTipo, setNewTipo] = useState("");
   const [newPropertyId, setNewPropertyId] = useState("");
   const [newPropertyNome, setNewPropertyNome] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -180,13 +189,14 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
       const r = await fetch("/api/uhs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numero: newNumero, tipo: "Standard", ordem: 0, propertyId: newPropertyId }),
+        body: JSON.stringify({ numero: newNumero, tipo: newTipo.trim() || "Standard", ordem: 0, propertyId: newPropertyId }),
       });
       const data = await r.json();
       if (!r.ok) {
         setErro(data.error || `Erro ${r.status}`);
       } else {
         setNewNumero("");
+        setNewTipo("");
         carregar();
       }
     } catch (e: any) {
@@ -201,7 +211,7 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
     await fetch("/api/uhs", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editId, numero: editNumero, tipo: "Standard", ordem: 0, propertyId: editPropertyId }),
+      body: JSON.stringify({ id: editId, numero: editNumero, tipo: editTipo.trim() || "Standard", ordem: 0, propertyId: editPropertyId }),
     });
     setEditId(null);
     setSalvando(false);
@@ -222,6 +232,10 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
     ascending
       ? a.numero.localeCompare(b.numero, undefined, { numeric: true })
       : b.numero.localeCompare(a.numero, undefined, { numeric: true })
+  );
+
+  const tiposExistentes = Array.from(new Set(uhs.map((u) => u.tipo).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b)
   );
 
   if (loading) return <p style={{ color: "#6e6e73" }}>Carregando...</p>;
@@ -357,10 +371,29 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
                 ))}
               </select>
             </label>
+            <label style={{ ...labelStyle, flex: 1, minWidth: 160 }}>
+              Categoria
+              <input
+                style={inputStyle}
+                list="categorias-existentes"
+                placeholder="ex: Standard, Loft Vista Mar"
+                value={newTipo}
+                onChange={(e) => setNewTipo(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && adicionar()}
+              />
+            </label>
             <button onClick={adicionar} disabled={salvando || !newNumero || !newPropertyId} style={btnStyle(true, salvando || !newNumero || !newPropertyId)}>
               Adicionar
             </button>
           </div>
+          <datalist id="categorias-existentes">
+            {tiposExistentes.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+          <p style={{ color: "#6e6e73", fontSize: 12, marginTop: 8 }}>
+            Deixe em branco pra usar "Standard". A categoria agrupa os quartos no Calendário do módulo Recepção.
+          </p>
           {properties.length === 0 && (
             <p style={{ color: "#c77700", fontSize: 13, marginTop: 10 }}>
               Cadastre ao menos uma propriedade acima antes de criar UHs.
@@ -393,6 +426,13 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
                     </option>
                   ))}
                 </select>
+                <input
+                  style={{ ...inputStyle, flex: 1, minWidth: 140 }}
+                  list="categorias-existentes"
+                  placeholder="Categoria (ex: Standard)"
+                  value={editTipo}
+                  onChange={(e) => setEditTipo(e.target.value)}
+                />
                 <button onClick={salvarEdicao} style={{ background: "none", border: "none", color: "#1d8a3e", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                   Salvar
                 </button>
@@ -404,7 +444,9 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
                   <span style={{ fontWeight: 700, fontSize: 15 }}>{uh.numero}</span>
-                  <div style={{ color: "#6e6e73", fontSize: 12, marginTop: 2 }}>{uh.property?.nome ?? "sem propriedade"}</div>
+                  <div style={{ color: "#6e6e73", fontSize: 12, marginTop: 2 }}>
+                    {uh.property?.nome ?? "sem propriedade"} · {uh.tipo}
+                  </div>
                 </div>
                 {!somenteLeitura && (
                   <div style={{ display: "flex", gap: 14 }}>
@@ -412,6 +454,7 @@ export function UHsClient({ somenteLeitura }: { somenteLeitura: boolean }) {
                       onClick={() => {
                         setEditId(uh.id);
                         setEditNumero(uh.numero);
+                        setEditTipo(uh.tipo);
                         setEditPropertyId(uh.propertyId);
                       }}
                       style={{ background: "none", border: "none", color: "#0071e3", fontSize: 13, fontWeight: 600, cursor: "pointer" }}

@@ -122,18 +122,41 @@ export function CalendarioView() {
     setColapsadas((c) => ({ ...c, [id]: !c[id] }));
   }
 
-  const linhas: Array<{ tipo: "property"; property: PropertyGroup } | { tipo: "uh"; uh: UhResumo }> = [];
+  type Linha =
+    | { kind: "property"; property: PropertyGroup }
+    | { kind: "categoria"; propertyId: string; nome: string }
+    | { kind: "uh"; uh: UhResumo };
+
+  const linhas: Linha[] = [];
   const uhRowMap: Record<string, number> = {};
   if (dados) {
     let row = 3;
     for (const p of dados.properties) {
-      linhas.push({ tipo: "property", property: p });
+      linhas.push({ kind: "property", property: p });
       row++;
       if (colapsadas[p.id]) continue;
+
+      // Agrupa as UHs da property por categoria (UH.tipo, ex.: "Standard",
+      // "Loft com Vista Frontal") — pedido do Felipe pra distinguir os
+      // quartos dentro do mesmo prédio. Preserva a ordem de primeira
+      // aparição (== ordem/numero, já vem ordenado da API) em vez de
+      // reordenar alfabeticamente, pra respeitar a ordem que o Atendimento
+      // já configura em Configurações → UHs.
+      const porCategoria = new Map<string, UhResumo[]>();
       for (const uh of p.uhs) {
-        linhas.push({ tipo: "uh", uh });
-        uhRowMap[uh.id] = row;
+        const lista = porCategoria.get(uh.tipo) ?? [];
+        lista.push(uh);
+        porCategoria.set(uh.tipo, lista);
+      }
+
+      for (const [categoria, uhsDaCategoria] of porCategoria) {
+        linhas.push({ kind: "categoria", propertyId: p.id, nome: categoria });
         row++;
+        for (const uh of uhsDaCategoria) {
+          linhas.push({ kind: "uh", uh });
+          uhRowMap[uh.id] = row;
+          row++;
+        }
       }
     }
   }
@@ -225,11 +248,12 @@ export function CalendarioView() {
                 );
               })}
 
-              {/* Linhas de fundo — property (rótulo + faixa cinza) e UH (rótulo + células por dia) */}
+              {/* Linhas de fundo — property (rótulo + faixa cinza), categoria (sub-cabeçalho mais claro
+                  e indentado) e UH (rótulo + células por dia) */}
               {linhas.map((linha, i) => {
                 const row = 3 + i;
 
-                if (linha.tipo === "property") {
+                if (linha.kind === "property") {
                   return (
                     <Fragment key={`p-${linha.property.id}`}>
                       <div
@@ -246,16 +270,28 @@ export function CalendarioView() {
                   );
                 }
 
+                if (linha.kind === "categoria") {
+                  return (
+                    <Fragment key={`cat-${linha.propertyId}-${linha.nome}`}>
+                      <div
+                        className="bg-gray-50 border-b border-gray-100 flex items-center pl-8 pr-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide"
+                        style={{ gridColumn: 1, gridRow: row, position: "sticky", left: 0, zIndex: 14 }}
+                      >
+                        {linha.nome}
+                      </div>
+                      <div className="bg-gray-50 border-b border-gray-100" style={{ gridColumn: "2 / -1", gridRow: row }} />
+                    </Fragment>
+                  );
+                }
+
                 return (
                   <Fragment key={`uh-${linha.uh.id}`}>
                     <div
-                      className="bg-white border-b border-r border-gray-100 flex items-center px-3 text-sm"
+                      className="bg-white border-b border-r border-gray-100 flex items-center pl-6 pr-3 text-sm"
                       style={{ gridColumn: 1, gridRow: row, position: "sticky", left: 0, zIndex: 10, height: UH_ROW_H }}
                     >
-                      <div>
-                        <p className="font-medium text-gray-900 leading-tight">{linha.uh.numero}</p>
-                        <p className="text-xs text-gray-400 leading-tight">{linha.uh.tipo}</p>
-                      </div>
+                      {/* Categoria já aparece no sub-cabeçalho do grupo, não repete aqui */}
+                      <p className="font-medium text-gray-900">{linha.uh.numero}</p>
                     </div>
                     {dias.map((d, di) => {
                       const dt = parseISO(d);
