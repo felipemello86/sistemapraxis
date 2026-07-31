@@ -27,23 +27,23 @@ export default async function CrmBoard() {
   ]);
 
   return (
-    // 30/07/2026: layout virou flex-column de altura fixa (100svh) em vez de
-    // minHeight + fluxo normal — era o que fazia o "Finalizados" precisar de
-    // scroll da página inteira pra aparecer quando uma coluna tinha muitos
-    // cards (o cálculo antigo, "calc(100svh - 220px)" num número fixo
-    // chutado, não batia com a altura real do cabeçalho). Com flex-column +
-    // flex:1 no board, cada pedaço ocupa exatamente o espaço que sobra, sem
-    // número mágico.
+    // 30/07/2026, 2ª rodada: a versão anterior (altura fixa 100svh + flex:1
+    // até o board) resolvia o scroll da página, mas fazia a linha de
+    // colunas SEMPRE esticar até preencher o espaço inteiro disponível —
+    // mesmo com poucos cards, sobrava um vão vazio enorme antes do
+    // "Finalizados" (que é só um sibling logo depois da linha). Trocado por
+    // fluxo normal (minHeight, sem flex:1 obrigando a esticar): a linha de
+    // colunas agora só cresce até a altura do próprio conteúdo, com um teto
+    // (ver maxHeight no KanbanBoard) só pra colunas realmente longas — aí
+    // sim rolam por dentro em vez de empurrar a página. "Finalizados" some
+    // coladinho embaixo do board de verdade, não lá embaixo na tela.
     <main
       style={{
-        height: "100svh",
-        boxSizing: "border-box",
+        minHeight: "100svh",
         padding: "max(24px, env(safe-area-inset-top)) 24px 24px",
-        display: "flex",
-        flexDirection: "column",
       }}
     >
-      <div style={{ maxWidth: "100%", margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <div style={{ maxWidth: "100%", margin: "0 auto", width: "100%" }}>
         {/* 30/07/2026: header condensado numa linha só (pedido do Felipe —
             "prioridade dessa tela é o kanban", muito espaço perdido em
             breadcrumb/título/subtítulo/botão cada um na sua própria linha).

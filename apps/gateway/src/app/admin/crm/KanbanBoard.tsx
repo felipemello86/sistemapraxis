@@ -128,8 +128,13 @@ export function KanbanBoard({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, overflowX: "auto", paddingBottom: 12, flex: 1, minHeight: 0 }}>
+    <div>
+      {/* alignItems no default (stretch) — colunas ficam com altura
+          uniforme entre si (visual normal de kanban), até o teto de
+          maxHeight abaixo. Sem flex:1 aqui: a linha só cresce até a altura
+          do próprio conteúdo (a maior coluna), não até preencher o espaço
+          inteiro da tela. */}
+      <div style={{ display: "flex", gap: 14, overflowX: "auto", overflowY: "hidden", paddingBottom: 12, maxHeight: "62vh" }}>
         {etapas.map((etapa, index) => {
           const leadsDaEtapa = leadsPorEtapa.get(etapa.id) ?? [];
           const somaValores = leadsDaEtapa.reduce((soma, l) => soma + l.valor, 0);
@@ -157,13 +162,6 @@ export function KanbanBoard({
                 display: "flex",
                 flexDirection: "column",
                 minHeight: 0,
-                // maxHeight (não height fixo) — coluna com poucos cards
-                // encolhe pro tamanho do conteúdo em vez de esticar até o
-                // fim do espaço disponível (senão "Finalizados" fica colado
-                // na borda de baixo da tela à toa, mesmo com colunas
-                // curtas). Só quando o conteúdo passa desse teto que a
-                // rolagem interna dela entra em ação.
-                maxHeight: "100%",
                 transition: "background 0.1s, border-color 0.1s",
               }}
             >
