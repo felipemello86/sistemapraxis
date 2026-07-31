@@ -130,6 +130,11 @@ enum SuiteModule {
   // (TenantModule + UserModuleAccess), mesmo não tendo um app próprio: vive
   // dentro do gateway (ver apps/gateway/src/app/[cliente]/inteligencia).
   INTELLIGENCE
+  // Recepção — primeira tela do PMS/Channel Manager (ver plano
+  // praxis-pms-channel-manager-plano.md), app próprio em apps/recepcao.
+  // Fase 1: só visualização de Reserva (as importadas via Channex e as
+  // futuras criadas manualmente) — sem criar/editar ainda.
+  RECEPTION
 }
 
 // Licenciamento por módulo: um tenant só enxerga um módulo se houver uma

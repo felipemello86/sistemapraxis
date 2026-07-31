@@ -12,6 +12,7 @@ export const MODULE_SLUGS: Record<SuiteModule, string> = {
   // apps/gateway/src/app/[cliente]/inteligencia), por isso o slug não tem
   // uma regra de rewrite correspondente em nenhum next.config.js.
   INTELLIGENCE: "inteligencia",
+  RECEPTION: "recepcao",
 };
 
 export const MODULE_LABELS: Record<SuiteModule, string> = {
@@ -21,6 +22,7 @@ export const MODULE_LABELS: Record<SuiteModule, string> = {
   STOCK: "Estoque",
   RESTAURANT: "Restaurante",
   INTELLIGENCE: "Central de Inteligência",
+  RECEPTION: "Recepção",
 };
 
 const SLUG_TO_MODULE: Record<string, SuiteModule> = Object.fromEntries(

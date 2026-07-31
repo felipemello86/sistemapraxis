@@ -33,6 +33,7 @@ const MODULOS = [
   { value: "BOOKING_REVIEWS", label: "Avaliações" },
   { value: "STOCK", label: "Estoque" },
   { value: "RESTAURANT", label: "Restaurante" },
+  { value: "RECEPTION", label: "Recepção" },
 ] as const;
 
 const cardStyle: CSSProperties = {

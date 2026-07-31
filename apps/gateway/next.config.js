@@ -63,6 +63,15 @@ const nextConfig = {
       );
     }
 
+    if (process.env.RECEPCAO_APP_URL) {
+      rules.push(
+        { source: "/:cliente/recepcao", destination: `${process.env.RECEPCAO_APP_URL}/recepcao` },
+        { source: "/:cliente/recepcao/:path*", destination: `${process.env.RECEPCAO_APP_URL}/recepcao/:path*` },
+        { source: "/recepcao", destination: `${process.env.RECEPCAO_APP_URL}/recepcao` },
+        { source: "/recepcao/:path*", destination: `${process.env.RECEPCAO_APP_URL}/recepcao/:path*` }
+      );
+    }
+
     return rules;
   },
 };

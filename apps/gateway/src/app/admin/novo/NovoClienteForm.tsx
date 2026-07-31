@@ -12,6 +12,7 @@ const MODULOS: { value: string; label: string }[] = [
   { value: "STOCK", label: "Estoque" },
   { value: "RESTAURANT", label: "Restaurante" },
   { value: "INTELLIGENCE", label: "Central de Inteligência" },
+  { value: "RECEPTION", label: "Recepção" },
 ];
 
 const inputStyle: React.CSSProperties = {
