@@ -67,7 +67,7 @@ model Tenant {
   tarifasDiarias           TarifaDiaria[]
   bloqueiosDisponibilidade BloqueioDisponibilidade[]
   folios                   Folio[]
-  channexPropertyMapping   ChannexPropertyMapping?
+  channexPropertyMappings  ChannexPropertyMapping[]
   channexRoomMappings      ChannexRoomMapping[]
 
   // Avaliações (Booking-Reviews)
@@ -365,6 +365,11 @@ model Property {
   reviews     Review[]
   geoArrivals GeoArrival[]
 
+  // PMS / Channel Manager — ver comentário completo em
+  // ChannexPropertyMapping. Opcional: nem toda Property precisa estar
+  // conectada a um canal.
+  channexPropertyMapping ChannexPropertyMapping?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -568,21 +573,39 @@ model Reserva {
   @@index([tenantId, uhId, checkInData])
 }
 
-// Mapeamento tenant → property da Channex. Isolado de propósito (ver
-// princípio arquitetural, seção 2 do plano de implementação): é o único
-// lugar do schema onde um ID da Channex aparece. Se um dia trocarmos de
-// fornecedor, só essas duas tabelas (ChannexPropertyMapping e
+// Mapeamento Property (Praxis) → property da Channex. Isolado de propósito
+// (ver princípio arquitetural, seção 2 do plano de implementação): é o
+// único lugar do schema onde um ID da Channex aparece. Se um dia trocarmos
+// de fornecedor, só essas duas tabelas (ChannexPropertyMapping e
 // ChannexRoomMapping) mudam — Reserva/Hospede/Tarifa nunca sabem que a
 // Channex existe.
+//
+// Até 31/07/2026 isso era "1 por tenant" (tenantId @unique) — quebrou na
+// prática quando o Felipe quis isolar uma única UH (1406-D) da Bnb Flex
+// Premium numa property Channex própria pra testar conexão real de OTA sem
+// arriscar as outras 3 unidades: rodar mapear-channex.ts de novo pro mesmo
+// tenant sobrescrevia a linha existente (upsert por tenantId), e a Premium
+// parava de resolver webhook. Agora é "1 por Property do Praxis"
+// (propertyId @unique) — um tenant pode ter quantas Properties conectadas
+// à Channex quiser, cada uma com sua property própria lá.
+//
+// propertyId opcional só pra migração não travar na linha existente (que
+// nasceu antes desse campo existir) — mapear-channex.ts sempre pede e
+// preenche esse campo pra mapeamento novo ou re-rodado.
 model ChannexPropertyMapping {
   id       String @id @default(cuid())
-  tenantId String @unique
+  tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  propertyId String?   @unique
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   channexPropertyId String @unique // UUID da property no lado da Channex
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 // Room Type da Channex → UH do Praxis. `uhTipo` (equivalente a UH.tipo,
