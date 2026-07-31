@@ -3,7 +3,8 @@ import { getSession, hasModuleAccess } from "@praxis/core";
 
 // Rota raiz do módulo (vira "/recepcao" com o basePath) — pra onde o tile
 // "Recepção" do hub do gateway leva. Sem UI própria, só despacha pra
-// Reservas (única tela da Fase 1 — ver comentário em ReservasView.tsx).
+// Calendário (visão padrão — ver CalendarioView.tsx); a lista plana em
+// /reservas continua acessível pelo menu lateral.
 export default async function RecepcaoHome() {
   const session = await getSession();
   if (!session) {
@@ -17,5 +18,5 @@ export default async function RecepcaoHome() {
     redirect(`${process.env.NEXT_PUBLIC_GATEWAY_URL || "https://sistemaspraxis.com.br"}/${session.tenantSlug}`);
   }
 
-  redirect("/reservas");
+  redirect("/calendario");
 }

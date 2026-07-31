@@ -2,18 +2,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Menu, X, LayoutGrid, BedDouble, Wrench, Star, Package, UtensilsCrossed, Sparkles, CalendarDays } from "lucide-react";
+import { Menu, X, LayoutGrid, BedDouble, Wrench, Star, Package, UtensilsCrossed, Sparkles, CalendarDays, List } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Mesmo padrão dos demais módulos (ver
 // apps/restaurante/src/components/layout/Sidebar.tsx) — sidebar clara,
 // item ativo como pill escuro, dropdown "trocar de módulo" alimentado por
-// /api/modulos. Só um item de navegação por enquanto (Fase 1 do plano é só
-// visualização — ver ReservasView.tsx).
+// /api/modulos. Dois itens de navegação, os dois só leitura (Fase 1 do
+// plano): Calendário (visão dia x UH, ver CalendarioView.tsx) é a tela
+// padrão; Reservas é a lista plana, útil pra reserva sem UH alocada ainda
+// (essas não aparecem no calendário — ver comentário em api/calendario).
 
 const MARK_SRC = "/recepcao/praxis-mark.png";
 
-const navItems = [{ href: "/reservas", icon: CalendarDays, label: "Reservas" }];
+const navItems = [
+  { href: "/calendario", icon: CalendarDays, label: "Calendário" },
+  { href: "/reservas", icon: List, label: "Reservas" },
+];
 
 function hubUrl(tenantSlug: string) {
   const base = process.env.NEXT_PUBLIC_GATEWAY_URL || "https://sistemaspraxis.com.br";
