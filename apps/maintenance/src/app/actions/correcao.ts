@@ -1,13 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { corrigirItemDireto, getSession, hasModuleAccess, prisma, resolveCorrectionCard } from "@praxis/core";
+import {
+  aplicarBloqueioPorUrgencia,
+  corrigirItemDireto,
+  getSession,
+  hasModuleAccess,
+  prisma,
+  resolveCorrectionCard,
+} from "@praxis/core";
 import { dataAtualSP } from "@praxis/core";
 import { safeAction } from "@/lib/safeAction";
 import {
   calcularConformidadeAtual,
   enviarResultadoDiarioSeNecessario,
-  notificarPorRoles,
   notificarTodosDoTenant,
 } from "@/lib/dailyReport";
 
@@ -220,7 +226,7 @@ async function fecharProgramacaoDiaImpl(input: {
 
   const cards = await prisma.maintenanceCorrectionCard.findMany({
     where: { id: { in: input.cardIds }, tenantId: session.tenantId },
-    include: { uh: { select: { id: true } } },
+    include: { uh: { select: { id: true } }, inspectionItem: { select: { comment: true } } },
   });
   if (cards.length !== input.cardIds.length) throw new Error("Algum card selecionado não foi encontrado.");
 
@@ -275,12 +281,28 @@ async function fecharProgramacaoDiaImpl(input: {
     data: { view: "correcao" },
   });
 
+  // Bug corrigido (31/07/2026, relato do Felipe): marcar "Sim" aqui só
+  // gravava blockForReservation (campo puramente informativo, ver comentário
+  // no schema) e mandava um aviso solto — nenhum HkBlockRequest chegava a
+  // existir, então nada aparecia na tela Decisão de Bloqueio pro Atendimento
+  // decidir. Pior, a UI mostrava "UH bloqueada" pro pessoal de Manutenção
+  // como se já estivesse em vigor. Agora passa pelo mesmo mecanismo de
+  // aprovação da NC urgente (aplicarBloqueioPorUrgencia): cria o pedido
+  // PENDENTE e notifica Atendimento/Gerente/Governanta/Master — o bloqueio
+  // continua sendo decisão humana do Atendimento, nunca automático.
   const uhsParaBloquear = cards.filter((c) => input.blockMap?.[c.id]);
-  if (uhsParaBloquear.length > 0) {
-    await notificarPorRoles(session.tenantId, ["ATENDIMENTO", "GERENTE", "MASTER"], {
-      title: "🚫 Bloqueio de UH pra reservas",
-      body: `${uhsParaBloquear.length} UH(s) da manutenção de hoje precisam ser bloqueadas pra reservas.`,
-      data: { view: "correcao" },
+  const uhIdsJaPedidos = new Set<string>();
+  for (const card of uhsParaBloquear) {
+    if (uhIdsJaPedidos.has(card.uhId)) continue;
+    uhIdsJaPedidos.add(card.uhId);
+    await aplicarBloqueioPorUrgencia({
+      tenantId: session.tenantId,
+      uhId: card.uhId,
+      checklistItemId: card.checklistItemId,
+      comment:
+        card.inspectionItem?.comment?.trim() ||
+        "UH marcada para bloqueio no fechamento da programação do dia.",
+      solicitanteNome: session.nome,
     });
   }
 
@@ -450,14 +472,16 @@ async function adicionarCardUrgenteImpl(input: { cardId: string; block?: boolean
     },
   });
 
-  // Mesmo aviso que o fechamento normal da programação dispara pra UH
-  // marcada — pedido implícito: essa opção precisa existir aqui também, não
-  // só antes do fechamento (ver comentário acima do bug corrigido).
+  // Mesmo pedido de aprovação que o fechamento normal da programação dispara
+  // pra UH marcada — mesmo bug e mesma correção de fecharProgramacaoDiaImpl
+  // (ver comentário lá): antes só mandava aviso solto, sem HkBlockRequest.
   if (input.block) {
-    await notificarPorRoles(session.tenantId, ["ATENDIMENTO", "GERENTE", "MASTER"], {
-      title: "🚫 Bloqueio de UH pra reservas",
-      body: "Um card intempestivo adicionado à programação de hoje precisa que a UH seja bloqueada pra reservas.",
-      data: { view: "correcao" },
+    await aplicarBloqueioPorUrgencia({
+      tenantId: session.tenantId,
+      uhId: card.uhId,
+      checklistItemId: card.checklistItemId,
+      comment: "Card intempestivo adicionado à programação do dia — UH marcada para bloqueio.",
+      solicitanteNome: session.nome,
     });
   }
 
