@@ -461,6 +461,7 @@ model UH {
   reservas                 Reserva[]
   tarifasDiarias           TarifaDiaria[]
   bloqueiosDisponibilidade BloqueioDisponibilidade[]
+  channexRoomMappings      ChannexRoomMapping[]
 
   @@unique([tenantId, numero])
 }
@@ -579,10 +580,17 @@ model ChannexPropertyMapping {
   updatedAt DateTime @updatedAt
 }
 
-// Room Type da Channex → tipo de UH do Praxis. Mapeia pra um TIPO
-// (uhTipo, equivalente a UH.tipo), não pra uma UH específica — ver
-// comentário em Reserva.uhId sobre por que a alocação física é sempre
-// posterior à importação da reserva.
+// Room Type da Channex → UH do Praxis. `uhTipo` (equivalente a UH.tipo,
+// ex.: "Standard") é sempre preenchido, e é o mínimo necessário — reflete
+// o caso normal onde um Room Type é uma CATEGORIA (várias UHs
+// intercambiáveis), e a alocação física fica pra depois (Fase 4, ver
+// comentário em Reserva.uhId).
+//
+// `uhId` é opcional e serve pro caso descoberto ao configurar a Bnb Flex
+// Premium: lá cada Room Type da Channex já representa 1 UH física
+// específica (Count Of Rooms = 1, nome descritivo tipo "Loft com Vista pro
+// Mar"), não uma categoria — nesse caso mapear direto pra uma UH permite
+// já chegar com a reserva pré-alocada, sem esperar a Fase 4.
 model ChannexRoomMapping {
   id       String @id @default(cuid())
   tenantId String
@@ -590,6 +598,9 @@ model ChannexRoomMapping {
 
   channexRoomTypeId String @unique // UUID do room type na Channex
   uhTipo             String // equivalente a UH.tipo (ex.: "Standard")
+
+  uhId String? // preenchido só quando o Room Type == 1 UH física específica
+  uh   UH?     @relation(fields: [uhId], references: [id])
 
   createdAt DateTime @default(now())
 

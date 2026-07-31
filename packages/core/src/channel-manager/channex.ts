@@ -158,10 +158,16 @@ export async function importarBookingRevision(rev: ChannexBookingRevision): Prom
   }
 
   let uhTipoSolicitado: string | null = null;
+  let uhId: string | null = null;
   const roomTypeId = rev.rooms?.[0]?.room_type_id;
   if (roomTypeId) {
     const roomMapping = await prisma.channexRoomMapping.findUnique({ where: { channexRoomTypeId: roomTypeId } });
     uhTipoSolicitado = roomMapping?.uhTipo ?? null;
+    // Se o Room Type já está mapeado pra uma UH específica (ver comentário
+    // em ChannexRoomMapping.uhId no schema — caso de propriedades onde
+    // cada Room Type é 1 UH física, não uma categoria), a reserva já chega
+    // pré-alocada, sem esperar a Fase 4.
+    uhId = roomMapping?.uhId ?? null;
   }
 
   const nomeHospede = [rev.customer?.name, rev.customer?.surname].filter(Boolean).join(" ").trim() || "Hóspede sem nome (Channex)";
@@ -202,6 +208,7 @@ export async function importarBookingRevision(rev: ChannexBookingRevision): Prom
       checkInData: rev.arrival_date,
       checkOutData: rev.departure_date,
       uhTipoSolicitado,
+      uhId,
       adultos: rev.occupancy?.adults ?? undefined,
       criancas: rev.occupancy?.children ?? undefined,
       valorTotal,
@@ -216,6 +223,7 @@ export async function importarBookingRevision(rev: ChannexBookingRevision): Prom
       checkInData: rev.arrival_date,
       checkOutData: rev.departure_date,
       uhTipoSolicitado,
+      uhId,
       adultos: rev.occupancy?.adults ?? 1,
       criancas: rev.occupancy?.children ?? 0,
       valorTotal,
