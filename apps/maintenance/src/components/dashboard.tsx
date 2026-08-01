@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   LayoutDashboard,
   TrendingUp,
-  Route,
+  Search,
   Wrench,
   Settings,
   Menu,
@@ -173,7 +173,7 @@ const SIDEBAR_COLLAPSED_KEY = 'praxis-maintenance-sidebar-collapsed'
 const NAV: { id: ViewId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'gerencial', label: 'Visão Gerencial', icon: LayoutDashboard },
   { id: 'evolucao', label: 'Evolução', icon: TrendingUp },
-  { id: 'informacoes', label: 'Inspeções', icon: Route },
+  { id: 'informacoes', label: 'Inspeções', icon: Search },
   { id: 'correcao', label: 'Correção', icon: Wrench },
   { id: 'performance', label: 'Performance', icon: BarChart3 },
   { id: 'uh3d', label: 'UH 3D', icon: Box },
@@ -300,6 +300,17 @@ export function Dashboard({
     setMobileOpen(false)
   }
 
+  // `collapsed` é preferência de rail SÓ do desktop (ver comentário em
+  // SIDEBAR_COLLAPSED_KEY acima) — mas antes as classes de "esconder label"
+  // abaixo checavam `collapsed` puro, sem olhar pra `mobileOpen`. Bug real
+  // reportado pelo Felipe: no overlay mobile (tela cheia, <md), se o
+  // navegador tinha `collapsed=true` persistido de uma visita anterior em
+  // viewport largo, o overlay mobile abria com os ícones certos mas SEM
+  // nenhum texto de label — a sidebar "colapsada" nunca deveria existir no
+  // mobile. `escondeLabel` corrige isso: só esconde labels quando colapsado
+  // E não é o overlay mobile.
+  const escondeLabel = collapsed && !mobileOpen
+
   return (
     <div className="flex min-h-svh bg-background text-foreground">
       {/* Sidebar */}
@@ -327,14 +338,14 @@ export function Dashboard({
           {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
         </button>
 
-        <div className={cn('flex h-16 items-center gap-3', collapsed ? 'justify-center px-2' : 'px-5')}>
+        <div className={cn('flex h-16 items-center gap-3', escondeLabel ? 'justify-center px-2' : 'px-5')}>
           {/* Marca vira o botão Home (pedido explícito do Felipe) — leva pro
               hub, onde a pessoa vê todos os módulos e pode sair. */}
           <a href={hubUrl(user.tenantSlug)} title="Ir pro hub" className="shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={MARK_SRC} alt="Praxis" className="h-8 w-8 object-contain rounded-md" />
           </a>
-          {!collapsed && (
+          {!escondeLabel && (
             <div className="leading-tight min-w-0">
               <p className="truncate text-sm font-semibold tracking-tight">{user.tenantSlug || 'Praxis'}</p>
               <p className="text-xs text-muted-foreground">Manutenção</p>
@@ -350,33 +361,33 @@ export function Dashboard({
               <button
                 key={item.id}
                 onClick={() => go(item.id)}
-                title={collapsed ? item.label : undefined}
+                title={escondeLabel ? item.label : undefined}
                 className={cn(
                   'flex w-full items-center rounded-xl py-2.5 text-sm font-medium transition-colors',
-                  collapsed ? 'justify-center px-0' : 'gap-3 px-3',
+                  escondeLabel ? 'justify-center px-0' : 'gap-3 px-3',
                   active
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
               >
                 <Icon className="h-[18px] w-[18px] shrink-0" />
-                {!collapsed && <span className="truncate text-pretty">{item.label}</span>}
+                {!escondeLabel && <span className="truncate text-pretty">{item.label}</span>}
               </button>
             )
           })}
         </nav>
 
         <div className="border-t border-border/70 p-3">
-          <div className={cn('mb-1 flex', collapsed && 'justify-center')}>
-            <ModuleSwitcher tenantSlug={user.tenantSlug} variant={collapsed ? 'icon' : 'full'} panelPosition="up" />
+          <div className={cn('mb-1 flex', escondeLabel && 'justify-center')}>
+            <ModuleSwitcher tenantSlug={user.tenantSlug} variant={escondeLabel ? 'icon' : 'full'} panelPosition="up" />
           </div>
-          <div className={cn('flex items-center rounded-xl py-2', collapsed ? 'justify-center px-0' : 'gap-3 px-2')}>
+          <div className={cn('flex items-center rounded-xl py-2', escondeLabel ? 'justify-center px-0' : 'gap-3 px-2')}>
             <Avatar className="h-9 w-9">
               <AvatarFallback className="bg-accent text-xs font-semibold text-foreground">
                 {iniciais}
               </AvatarFallback>
             </Avatar>
-            {!collapsed && (
+            {!escondeLabel && (
               <div className="min-w-0 flex-1 leading-tight">
                 <p className="truncate text-sm font-medium">{user.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
