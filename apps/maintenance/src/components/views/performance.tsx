@@ -1,10 +1,19 @@
 'use client'
 
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef, useEffect, useState } from 'react'
 import { AreaChart, ComposedChart, Area, Line, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
-import { AlertTriangle, BarChart3, CheckCircle2, Clock, Siren, TrendingUp } from 'lucide-react'
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  Maximize2,
+  Minimize2,
+  Siren,
+  TrendingUp,
+} from 'lucide-react'
 import type { DailyCommitmentView } from '@/lib/types'
 
 // Tela "Performance" — lista de relatórios diários do Kanban de Execução +
@@ -15,8 +24,11 @@ import type { DailyCommitmentView } from '@/lib/types'
 
 // Janela do gráfico "Capacidade Produtiva" — mesma largura (90 dias) usada
 // em components/views/evolucao.tsx (DIAS_JANELA), pra consistência entre os
-// gráficos diários do módulo.
+// gráficos diários do módulo. Pedido do Felipe: card compacto mostra só os
+// últimos DIAS_COMPACTO_CAPACIDADE dias; o botão de expandir (mesmo padrão
+// de Evolução) revela a janela inteira de DIAS_JANELA_CAPACIDADE.
 const DIAS_JANELA_CAPACIDADE = 90
+const DIAS_COMPACTO_CAPACIDADE = 7
 
 function formatarDiaMes(data: string) {
   const [, mes, dia] = data.split('-')
@@ -41,6 +53,37 @@ function chaveDiaLocal(d: Date) {
 // contínua.
 const VERDE_BANDA = 'rgb(34, 197, 94)'
 const VERMELHO_BANDA = 'rgb(239, 68, 68)'
+
+// Config do ChartContainer — mesmo objeto usado nos dois modos (compacto e
+// expandido), então fica declarado uma vez só fora do componente.
+const CAPACIDADE_CHART_CONFIG = {
+  ncSurgidas: { label: 'NC surgidas', color: 'var(--destructive)' },
+  ncEliminadas: { label: 'NC eliminadas', color: 'var(--success)' },
+}
+
+type PontoCapacidade = {
+  dia: string
+  ncSurgidas: number
+  ncEliminadas: number
+  minValor: number
+  diffValor: number
+  positivo: boolean
+}
+
+// Stops do gradiente horizontal da banda — um por ponto da série recebida,
+// verde quando aquele dia eliminou mais NC do que surgiu, vermelho caso
+// contrário (pedido explícito do Felipe). Mesma técnica de stopsGradiente em
+// evolucao.tsx, só que com 2 cores fixas em vez de interpolação contínua.
+// Função solta (não hook) porque é chamada com séries diferentes (compacta
+// de 7 dias vs. expandida de 90) a partir de dois useMemo separados abaixo.
+function calcularStopsBanda(dados: PontoCapacidade[]) {
+  const n = dados.length
+  if (n === 0) return []
+  return dados.map((d, i) => ({
+    offset: `${(i / Math.max(n - 1, 1)) * 100}%`,
+    cor: d.positivo ? VERDE_BANDA : VERMELHO_BANDA,
+  }))
+}
 
 // Denominador é totalPrevisto (congelado no fechamento do dia), não o total
 // ao vivo de commitment.cards — cards intempestivos/urgentes adicionados
@@ -95,14 +138,7 @@ export function Performance({
 
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
-    const dias: {
-      dia: string
-      ncSurgidas: number
-      ncEliminadas: number
-      minValor: number
-      diffValor: number
-      positivo: boolean
-    }[] = []
+    const dias: PontoCapacidade[] = []
     for (let i = DIAS_JANELA_CAPACIDADE - 1; i >= 0; i--) {
       const d = new Date(hoje)
       d.setDate(d.getDate() - i)
@@ -122,18 +158,103 @@ export function Performance({
     return dias
   }, [ncSurgidasEm, ncEliminadasEm])
 
-  // Stops do gradiente horizontal da banda — um por dia, verde quando aquele
-  // dia eliminou mais NC do que surgiu, vermelho caso contrário (pedido
-  // explícito do Felipe). Mesma técnica de stopsGradiente em evolucao.tsx,
-  // só que com 2 cores fixas em vez de interpolação contínua.
-  const stopsBanda = useMemo(() => {
-    const n = serieCapacidade.length
-    if (n === 0) return []
-    return serieCapacidade.map((d, i) => ({
-      offset: `${(i / Math.max(n - 1, 1)) * 100}%`,
-      cor: d.positivo ? VERDE_BANDA : VERMELHO_BANDA,
-    }))
-  }, [serieCapacidade])
+  // Card compacto: só os últimos DIAS_COMPACTO_CAPACIDADE dias (pedido
+  // explícito do Felipe). Modo expandido (botão de maximizar, mesmo padrão
+  // de Evolução): janela inteira de DIAS_JANELA_CAPACIDADE dias, com rótulos
+  // do eixo X pulando pra caber sem rolagem (mesma conta de
+  // intervaloExpandido em evolucao.tsx).
+  const serieCapacidadeCompacta = useMemo(
+    () => serieCapacidade.slice(-DIAS_COMPACTO_CAPACIDADE),
+    [serieCapacidade],
+  )
+  const intervaloExpandidoCapacidade = Math.max(0, Math.ceil(serieCapacidade.length / 15) - 1)
+  const stopsBandaCompacta = useMemo(() => calcularStopsBanda(serieCapacidadeCompacta), [serieCapacidadeCompacta])
+  const stopsBandaExpandida = useMemo(() => calcularStopsBanda(serieCapacidade), [serieCapacidade])
+
+  const [expandidoCapacidade, setExpandidoCapacidade] = useState(false)
+  useEffect(() => {
+    if (!expandidoCapacidade) return
+    const bodyOverflowAnterior = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setExpandidoCapacidade(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = bodyOverflowAnterior
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [expandidoCapacidade])
+
+  // Conteúdo do gráfico em si — extraído numa função (mesmo padrão de
+  // renderGraficoConformidade em evolucao.tsx) pra não duplicar o
+  // ComposedChart inteiro entre o card compacto e o overlay expandido; só um
+  // dos dois fica montado por vez, então reaproveitar o mesmo id de
+  // <linearGradient> nos dois não gera ambiguidade.
+  function renderGraficoCapacidade(dados: PontoCapacidade[], interval: number, stops: { offset: string; cor: string }[]) {
+    return (
+      <ComposedChart data={dados} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
+        <defs>
+          <linearGradient id="fillBandaCapacidade" x1="0" y1="0" x2="1" y2="0">
+            {stops.map((s, i) => (
+              <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={0.3} />
+            ))}
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+        <XAxis
+          dataKey="dia"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          interval={interval}
+          angle={-45}
+          textAnchor="end"
+          height={50}
+          tick={{ fontSize: 11 }}
+        />
+        <YAxis tickLine={false} axisLine={false} width={32} allowDecimals={false} />
+        <ChartTooltip content={<ChartTooltipContent />} />
+        {/* Banda entre as duas linhas: minValor (transparente, só empurra a
+            base) + diffValor (colorido, empilhado em cima) — junto preenchem
+            exatamente a região entre ncSurgidas e ncEliminadas naquele dia.
+            tooltipType="none" nas duas pra não aparecerem no tooltip (são só
+            suporte visual da banda, não métricas em si). */}
+        <Area
+          dataKey="minValor"
+          stackId="banda"
+          stroke="none"
+          fill="transparent"
+          isAnimationActive={false}
+          tooltipType="none"
+        />
+        <Area
+          dataKey="diffValor"
+          stackId="banda"
+          stroke="none"
+          fill="url(#fillBandaCapacidade)"
+          isAnimationActive={false}
+          tooltipType="none"
+        />
+        <Line
+          dataKey="ncSurgidas"
+          type="monotone"
+          stroke="var(--color-ncSurgidas)"
+          strokeWidth={2.5}
+          dot={false}
+          isAnimationActive={false}
+        />
+        <Line
+          dataKey="ncEliminadas"
+          type="monotone"
+          stroke="var(--color-ncEliminadas)"
+          strokeWidth={2.5}
+          dot={false}
+          isAnimationActive={false}
+        />
+      </ComposedChart>
+    )
+  }
 
   const temDadosCapacidade = ncSurgidasEm.length > 0 || ncEliminadasEm.length > 0
 
@@ -154,13 +275,6 @@ export function Performance({
     const el = scrollRef.current
     if (el) el.scrollLeft = el.scrollWidth
   }, [serieDiaria])
-
-  const larguraGraficoCapacidade = Math.max(serieCapacidade.length * 44, 600)
-  const scrollCapacidadeRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = scrollCapacidadeRef.current
-    if (el) el.scrollLeft = el.scrollWidth
-  }, [serieCapacidade])
 
   return (
     <div className="space-y-6">
@@ -185,95 +299,61 @@ export function Performance({
         />
       </div>
 
-      <Panel
-        title="Capacidade Produtiva"
-        description="NC eliminadas vs. NC surgidas por dia. Área verde = eliminação maior que surgimento; vermelha = o contrário. Arraste pros lados pra ver os outros dias."
-      >
-        {!temDadosCapacidade ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Nenhuma não conformidade registrada ou resolvida ainda.
-          </p>
-        ) : (
-          <div className="overflow-x-auto" ref={scrollCapacidadeRef}>
-            <div style={{ minWidth: larguraGraficoCapacidade }}>
-              <ChartContainer
-                config={{
-                  ncSurgidas: { label: 'NC surgidas', color: 'var(--destructive)' },
-                  ncEliminadas: { label: 'NC eliminadas', color: 'var(--success)' },
-                }}
-                className="h-72 w-full"
+      {!expandidoCapacidade ? (
+        <Panel
+          title="Capacidade Produtiva"
+          description={`NC eliminadas vs. NC surgidas — últimos ${DIAS_COMPACTO_CAPACIDADE} dias. Verde = eliminação maior que surgimento; vermelha = o contrário.`}
+          action={
+            !temDadosCapacidade ? undefined : (
+              <button
+                type="button"
+                onClick={() => setExpandidoCapacidade(true)}
+                title="Expandir gráfico (3 meses)"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <ComposedChart data={serieCapacidade} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
-                  <defs>
-                    {/* Gradiente HORIZONTAL (um stop por dia) — verde/vermelho
-                        conforme quem está por cima naquele dia (positivo em
-                        serieCapacidade). Mesma técnica do gradiente por score
-                        em evolucao.tsx, só que binária. */}
-                    <linearGradient id="fillBandaCapacidade" x1="0" y1="0" x2="1" y2="0">
-                      {stopsBanda.map((s, i) => (
-                        <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={0.3} />
-                      ))}
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="dia"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    interval={0}
-                    angle={-45}
-                    textAnchor="end"
-                    height={50}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis tickLine={false} axisLine={false} width={32} allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  {/* Banda entre as duas linhas: minValor (transparente, só
-                      empurra a base) + diffValor (colorido, empilhado em
-                      cima) — junto preenchem exatamente a região entre
-                      ncSurgidas e ncEliminadas naquele dia. tooltipType="none"
-                      nas duas pra não aparecerem no tooltip (são só suporte
-                      visual da banda, não métricas em si — ncSurgidas/
-                      ncEliminadas já cobrem isso). */}
-                  <Area
-                    dataKey="minValor"
-                    stackId="banda"
-                    stroke="none"
-                    fill="transparent"
-                    isAnimationActive={false}
-                    tooltipType="none"
-                  />
-                  <Area
-                    dataKey="diffValor"
-                    stackId="banda"
-                    stroke="none"
-                    fill="url(#fillBandaCapacidade)"
-                    isAnimationActive={false}
-                    tooltipType="none"
-                  />
-                  <Line
-                    dataKey="ncSurgidas"
-                    type="monotone"
-                    stroke="var(--color-ncSurgidas)"
-                    strokeWidth={2.5}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                  <Line
-                    dataKey="ncEliminadas"
-                    type="monotone"
-                    stroke="var(--color-ncEliminadas)"
-                    strokeWidth={2.5}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </ComposedChart>
+                <Maximize2 className="h-4 w-4" />
+              </button>
+            )
+          }
+        >
+          {!temDadosCapacidade ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              Nenhuma não conformidade registrada ou resolvida ainda.
+            </p>
+          ) : (
+            <ChartContainer config={CAPACIDADE_CHART_CONFIG} className="h-72 w-full">
+              {renderGraficoCapacidade(serieCapacidadeCompacta, 0, stopsBandaCompacta)}
+            </ChartContainer>
+          )}
+        </Panel>
+      ) : (
+        // Só um dos dois (compacto OU expandido) fica montado por vez — ver
+        // mesmo comentário/motivo em evolucao.tsx (duplicar o <linearGradient>
+        // reaproveitado nos dois ao mesmo tempo deixaria o id ambíguo).
+        <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 md:p-6">
+          <Panel
+            title="Capacidade Produtiva"
+            description={`NC eliminadas vs. NC surgidas — últimos ${DIAS_JANELA_CAPACIDADE} dias (3 meses), janela inteira visível abaixo.`}
+            action={
+              <button
+                type="button"
+                onClick={() => setExpandidoCapacidade(false)}
+                title="Reduzir gráfico (Esc)"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </button>
+            }
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="min-h-0 flex-1">
+              <ChartContainer config={CAPACIDADE_CHART_CONFIG} className="h-full w-full">
+                {renderGraficoCapacidade(serieCapacidade, intervaloExpandidoCapacidade, stopsBandaExpandida)}
               </ChartContainer>
             </div>
-          </div>
-        )}
-      </Panel>
+          </Panel>
+        </div>
+      )}
 
       <Panel
         title="Performance ao longo do tempo"
