@@ -83,7 +83,7 @@ export function Informacoes({
   itemInfos,
   itemInfoLogs,
   inspectionItemIdsComCard,
-  uhIdsLiberadasHoje,
+  uhIdsSelecionadasHoje,
 }: {
   podeOperar: boolean
   unidades: UnitOption[]
