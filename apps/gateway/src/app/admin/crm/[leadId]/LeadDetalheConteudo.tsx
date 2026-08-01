@@ -122,7 +122,7 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
         {/* Valor/Fonte/Parceiro numa linha só (pedido do Felipe) — cabem
             tranquilo agora que os botões de ação saíram daqui pros ícones
             de cima. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Valor (R$):</span>
           <ValorInput leadId={lead.id} valorAtual={lead.valor} action={atualizarValorAction} />
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Fonte:</span>

@@ -19,12 +19,18 @@ export function FonteSelect({
       defaultValue={fonteAtual}
       onChange={(e) => action(leadId, e.target.value)}
       style={{
-        padding: "8px 12px",
+        // maxWidth (31/07/2026, pedido do Felipe: "valor, fonte e parceiro
+        // estão desorganizados, ocupando duas linhas no card") — sem isso o
+        // <select> cresce pro tamanho do texto selecionado e não sobra
+        // espaço pro Parceiro do lado, quebrando a linha no popup (mais
+        // estreito que o board).
+        padding: "8px 10px",
         borderRadius: 9,
         border: "1px solid #d2d2d7",
         background: "#fff",
         fontSize: 13,
         cursor: "pointer",
+        maxWidth: 130,
       }}
     >
       {!FONTE_OPCOES.includes(fonteAtual) && <option value={fonteAtual}>{fonteAtual}</option>}

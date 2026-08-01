@@ -21,20 +21,27 @@ function IconePerdido({ size = 15 }: { size?: number }) {
   );
 }
 
-function IconeLixeira() {
+function IconeLixeira({ size = 14 }: { size?: number }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="3 6 5 6 21 6" />
       <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   );
 }
 
+// Um pouco maiores que no card do Kanban (pedido do Felipe, 31/07/2026:
+// "no kanban os tamanhos estão bons" — aqui no popup eles ficavam pequenos
+// demais perto do resto do conteúdo, que é maior). 20/18 em vez dos 15/14
+// padrão do KanbanBoard.tsx.
+const TAMANHO_ICONE = 20;
+const TAMANHO_LIXEIRA = 18;
+
 const botaoIconeStyle: React.CSSProperties = {
   border: "none",
   background: "none",
   cursor: "pointer",
-  padding: 2,
+  padding: 3,
   display: "flex",
 };
 
@@ -78,14 +85,14 @@ export function LeadAcoesIcones({
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {desfecho === "ABERTO" ? (
         <>
           <button type="button" title="Marcar como ganho" onClick={() => void marcarGanho()} style={{ ...botaoIconeStyle, color: "#1a7f37" }}>
-            <IconeGanho />
+            <IconeGanho size={TAMANHO_ICONE} />
           </button>
           <button type="button" title="Marcar como perdido" onClick={onPerdido} style={{ ...botaoIconeStyle, color: "#d70015" }}>
-            <IconePerdido />
+            <IconePerdido size={TAMANHO_ICONE} />
           </button>
         </>
       ) : (
@@ -115,7 +122,7 @@ export function LeadAcoesIcones({
         onMouseEnter={(e) => (e.currentTarget.style.color = "#d70015")}
         onMouseLeave={(e) => (e.currentTarget.style.color = "#a1a1a6")}
       >
-        <IconeLixeira />
+        <IconeLixeira size={TAMANHO_LIXEIRA} />
       </button>
     </div>
   );

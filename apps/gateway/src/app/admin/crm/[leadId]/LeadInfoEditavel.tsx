@@ -4,6 +4,19 @@ import { useState } from "react";
 import { EtapaSelect } from "../EtapaSelect";
 import { TelefoneInput } from "./TelefoneInput";
 
+// SVG inline em vez de emoji (pedido do Felipe, 31/07/2026: "o botão do
+// lápis deve ser um ícone e não um emoji") — mesmo traçado do IconeLapis em
+// ParceirosSection.tsx, duplicado aqui pelo mesmo motivo (evitar acoplar os
+// dois arquivos por causa de um ícone).
+function IconeLapis() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
 // Cabeçalho + dados de contato do lead (hotel, nome, e-mail, mensagem) —
 // antes só Telefone/Valor/Fonte/Etapa eram editáveis (auto-save no
 // onBlur/onChange); hotel/nome/email/mensagem ficavam só texto fixo. Pedido
@@ -143,9 +156,9 @@ export function LeadInfoEditavel({
               onClick={iniciarEdicao}
               title="Editar dados do lead"
               aria-label="Editar dados do lead"
-              style={{ ...botaoStyle, padding: "6px 9px", fontSize: 14 }}
+              style={{ ...botaoStyle, padding: "6px 9px", display: "flex" }}
             >
-              ✏️
+              <IconeLapis />
             </button>
           ) : (
             <>

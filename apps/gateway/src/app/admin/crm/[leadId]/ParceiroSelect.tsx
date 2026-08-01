@@ -22,12 +22,15 @@ export function ParceiroSelect({
       defaultValue={parceiroIdAtual ?? ""}
       onChange={(e) => action(leadId, e.target.value)}
       style={{
-        padding: "8px 12px",
+        // maxWidth pelo mesmo motivo do FonteSelect.tsx — cabe junto de
+        // Valor/Fonte numa linha só no popup.
+        padding: "8px 10px",
         borderRadius: 9,
         border: "1px solid #d2d2d7",
         background: "#fff",
         fontSize: 13,
         cursor: "pointer",
+        maxWidth: 140,
       }}
     >
       <option value="">— Nenhum —</option>

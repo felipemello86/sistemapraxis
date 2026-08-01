@@ -29,12 +29,14 @@ export function ValorInput({
         void action(leadId, valor);
       }}
       style={{
-        padding: "8px 12px",
+        // 100 (era 120) — ajuda Valor/Fonte/Parceiro caberem numa linha só
+        // no popup (pedido do Felipe, 31/07/2026).
+        padding: "8px 10px",
         borderRadius: 9,
         border: "1px solid #d2d2d7",
         background: "#fff",
         fontSize: 13,
-        width: 120,
+        width: 100,
       }}
     />
   );
