@@ -436,7 +436,7 @@ export function KanbanExecucao({
                       !card.previsto && !card.canceladoPorLiberacao && (
                         <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
                           <Plus className="h-2.5 w-2.5" />
-                          Não previsto
+                          Imprevisto
                         </span>
                       )
                     }
@@ -483,7 +483,7 @@ export function KanbanExecucao({
                       !card.previsto && (
                         <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
                           <Plus className="h-2.5 w-2.5" />
-                          Não previsto
+                          Imprevisto
                         </span>
                       )
                     }

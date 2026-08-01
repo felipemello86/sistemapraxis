@@ -175,7 +175,7 @@ export function DialogDetalheCard({
                   Status: {EXECUCAO_LABEL[card.executionStatus] ?? card.executionStatus}
                   {!card.previsto && (
                     <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
-                      Não previsto
+                      Imprevisto
                     </span>
                   )}
                 </p>

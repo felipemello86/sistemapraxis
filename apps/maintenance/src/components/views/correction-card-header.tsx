@@ -34,7 +34,7 @@ export function CorrectionCardHeader({
   // Felipe pra dar essa visibilidade também nos cards de Correção.
   liberada?: boolean
   onVerDetalhe?: (card: CorrectionCardView) => void
-  // Badge extra específico de um kanban (ex.: "Não previsto" só existe na
+  // Badge extra específico de um kanban (ex.: "Imprevisto" só existe na
   // Execução) — evita ter que reimplementar a linha inteira de badges só
   // pra acrescentar um a mais.
   extraBadge?: React.ReactNode
@@ -60,10 +60,28 @@ export function CorrectionCardHeader({
       tabIndex={onVerDetalhe ? 0 : undefined}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-medium">
+        <p className="text-sm font-medium">
           <span className={card.canceladoPorLiberacao ? 'line-through decoration-2' : undefined}>
             Unidade {card.uhName}
           </span>
+        </p>
+        {card.checklistItemCategory && (
+          <Badge
+            variant="outline"
+            className="text-[10px]"
+            style={{ borderColor: corCategoria(card.checklistItemCategory), color: corCategoria(card.checklistItemCategory) }}
+          >
+            {card.checklistItemCategory}
+          </Badge>
+        )}
+      </div>
+      {/* Linha própria pras flags (badges) — antes dividiam espaço com o
+          título numa linha só e cortavam/eram cortadas em cards com várias
+          flags juntas (pedido do Felipe, 01/08/2026: "as flags não estão
+          cabendo no card"). flex-wrap deixa quebrar em quantas linhas
+          precisar, em vez de estourar a largura do card. */}
+      {(card.urgente || temReserva || liberada || card.canceladoPorLiberacao || extraBadge) && (
+        <div className="flex flex-wrap items-center gap-1.5">
           {card.urgente && (
             <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
               <Siren className="h-2.5 w-2.5" />
@@ -85,7 +103,7 @@ export function CorrectionCardHeader({
           {/* UH saiu da lista do dia em Housekeeping (ver
               cancelarCardsPorExclusaoDeUh, packages/core) — card cancelado,
               mas continua visível e executável (pedido explícito do Felipe,
-              01/08/2026). Some no lugar do badge "Não previsto" (extraBadge
+              01/08/2026). Some no lugar do badge "Imprevisto" (extraBadge
               em kanban-execucao.tsx), já que este caso é mais específico. */}
           {card.canceladoPorLiberacao && (
             <span className="flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
@@ -94,17 +112,8 @@ export function CorrectionCardHeader({
             </span>
           )}
           {extraBadge}
-        </p>
-        {card.checklistItemCategory && (
-          <Badge
-            variant="outline"
-            className="text-[10px]"
-            style={{ borderColor: corCategoria(card.checklistItemCategory), color: corCategoria(card.checklistItemCategory) }}
-          >
-            {card.checklistItemCategory}
-          </Badge>
-        )}
-      </div>
+        </div>
+      )}
       <p className={`text-sm text-muted-foreground ${card.canceladoPorLiberacao ? 'line-through' : ''}`}>
         {card.checklistItemName ?? 'Item removido do catálogo'}
       </p>
