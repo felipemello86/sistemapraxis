@@ -5,7 +5,6 @@ import { FonteSelect } from "./FonteSelect";
 import { ParceiroSelect } from "./ParceiroSelect";
 import { ValorInput } from "./ValorInput";
 import { LeadInfoEditavel } from "./LeadInfoEditavel";
-import { LeadAcoesIcones } from "./LeadAcoesIcones";
 import { NotaForm } from "./NotaForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
 import { WhatsAppChat } from "./WhatsAppChat";
@@ -80,34 +79,29 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
   return (
     <>
       <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
-        {/* Canto superior esquerdo do popup (pedido do Felipe, 31/07/2026):
-            os mesmos 3 ícones do card do Kanban, em vez dos antigos botões
-            com texto que ficavam embaixo perto de Valor/Fonte. */}
-        <LeadAcoesIcones
-          hotelNome={lead.hotel}
+        {/* Ícones de ganho/perdido/excluir agora ficam DENTRO de
+            LeadInfoEditavel, empilhados no canto superior direito, acima
+            do lápis/Etapa (pedido do Felipe, 01/08/2026: "migrar pro canto
+            superior direito, acima de 'em negociação'"). */}
+        <LeadInfoEditavel
+          leadId={lead.id}
+          hotelAtual={lead.hotel}
+          nomeAtual={lead.nome}
+          emailAtual={lead.email ?? ""}
+          mensagemAtual={lead.mensagem ?? ""}
+          telefoneAtual={lead.telefone}
+          criadoEmLabel={lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+          etapaAtualId={lead.stageId}
+          etapas={etapas}
+          moverEtapaAction={moverEtapaDetalheAction}
+          atualizarTelefoneAction={atualizarTelefoneAction}
+          atualizarDadosAction={atualizarDadosLeadAction}
           desfecho={lead.desfecho}
           marcarGanho={marcarGanhoComId}
           marcarPerdido={marcarPerdidoRapidoComId}
           reabrir={reabrirComId}
           excluir={excluirComId}
         />
-
-        <div style={{ marginTop: 10 }}>
-          <LeadInfoEditavel
-            leadId={lead.id}
-            hotelAtual={lead.hotel}
-            nomeAtual={lead.nome}
-            emailAtual={lead.email ?? ""}
-            mensagemAtual={lead.mensagem ?? ""}
-            telefoneAtual={lead.telefone}
-            criadoEmLabel={lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-            etapaAtualId={lead.stageId}
-            etapas={etapas}
-            moverEtapaAction={moverEtapaDetalheAction}
-            atualizarTelefoneAction={atualizarTelefoneAction}
-            atualizarDadosAction={atualizarDadosLeadAction}
-          />
-        </div>
 
         {lead.desfecho === "GANHO" && (
           <p style={{ margin: "10px 0 0", fontSize: 13, fontWeight: 700, color: "#1a7f37" }}>Lead ganho</p>
@@ -119,10 +113,10 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
           </p>
         )}
 
-        {/* Valor/Fonte/Parceiro numa linha só (pedido do Felipe) — cabem
-            tranquilo agora que os botões de ação saíram daqui pros ícones
-            de cima. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+        {/* Valor/Fonte/Parceiro numa linha só, alinhados à direita (pedido
+            do Felipe, 01/08/2026: extremidade direita bate com a do
+            <EtapaSelect> lá em cima, mesma margem do card). */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Valor (R$):</span>
           <ValorInput leadId={lead.id} valorAtual={lead.valor} action={atualizarValorAction} />
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Fonte:</span>

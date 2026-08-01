@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { EtapaSelect } from "../EtapaSelect";
 import { TelefoneInput } from "./TelefoneInput";
+import { LeadAcoesIcones } from "./LeadAcoesIcones";
 
 // SVG inline em vez de emoji (pedido do Felipe, 31/07/2026: "o botão do
 // lápis deve ser um ícone e não um emoji") — mesmo traçado do IconeLapis em
@@ -39,6 +40,11 @@ export function LeadInfoEditavel({
   moverEtapaAction,
   atualizarTelefoneAction,
   atualizarDadosAction,
+  desfecho,
+  marcarGanho,
+  marcarPerdido,
+  reabrir,
+  excluir,
 }: {
   leadId: string;
   hotelAtual: string;
@@ -55,6 +61,17 @@ export function LeadInfoEditavel({
     leadId: string,
     dados: { hotel: string; nome: string; email: string; mensagem: string }
   ) => Promise<void>;
+  // Ícones de ganho/perdido/excluir (ver LeadAcoesIcones.tsx) — renderizados
+  // aqui dentro, empilhados ACIMA do lápis/Etapa no canto superior direito
+  // (pedido do Felipe, 01/08/2026: "os 3 botões devem migrar pro canto
+  // superior direito, acima de 'em negociação'"). Ficam neste componente (e
+  // não soltos em LeadDetalheConteudo.tsx como antes) porque agora dividem
+  // a mesma coluna direita empilhada com o lápis/EtapaSelect.
+  desfecho: "ABERTO" | "GANHO" | "PERDIDO";
+  marcarGanho: () => Promise<void>;
+  marcarPerdido: (motivo: string) => Promise<void>;
+  reabrir: () => Promise<void>;
+  excluir: () => Promise<void>;
 }) {
   const [editando, setEditando] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -149,39 +166,52 @@ export function LeadInfoEditavel({
             </div>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {!editando ? (
-            <button
-              type="button"
-              onClick={iniciarEdicao}
-              title="Editar dados do lead"
-              aria-label="Editar dados do lead"
-              style={{ ...botaoStyle, padding: "6px 9px", display: "flex" }}
-            >
-              <IconeLapis />
-            </button>
-          ) : (
-            <>
+        {/* Coluna direita empilhada: ícones de ganho/perdido/excluir em
+            cima, lápis/Etapa embaixo — ambos alinhados à direita (pedido do
+            Felipe, 01/08/2026). */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          <LeadAcoesIcones
+            hotelNome={hotelAtual}
+            desfecho={desfecho}
+            marcarGanho={marcarGanho}
+            marcarPerdido={marcarPerdido}
+            reabrir={reabrir}
+            excluir={excluir}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!editando ? (
               <button
                 type="button"
-                onClick={salvar}
-                disabled={salvando || !hotel.trim() || !nome.trim()}
-                style={{
-                  ...botaoStyle,
-                  background: "#1a7f37",
-                  borderColor: "#1a7f37",
-                  color: "#fff",
-                  opacity: salvando || !hotel.trim() || !nome.trim() ? 0.6 : 1,
-                }}
+                onClick={iniciarEdicao}
+                title="Editar dados do lead"
+                aria-label="Editar dados do lead"
+                style={{ ...botaoStyle, padding: "6px 9px", display: "flex" }}
               >
-                {salvando ? "Salvando..." : "✓ Salvar"}
+                <IconeLapis />
               </button>
-              <button type="button" onClick={cancelar} disabled={salvando} style={botaoStyle}>
-                Cancelar
-              </button>
-            </>
-          )}
-          <EtapaSelect leadId={leadId} etapaAtualId={etapaAtualId} etapas={etapas} action={moverEtapaAction} />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={salvar}
+                  disabled={salvando || !hotel.trim() || !nome.trim()}
+                  style={{
+                    ...botaoStyle,
+                    background: "#1a7f37",
+                    borderColor: "#1a7f37",
+                    color: "#fff",
+                    opacity: salvando || !hotel.trim() || !nome.trim() ? 0.6 : 1,
+                  }}
+                >
+                  {salvando ? "Salvando..." : "✓ Salvar"}
+                </button>
+                <button type="button" onClick={cancelar} disabled={salvando} style={botaoStyle}>
+                  Cancelar
+                </button>
+              </>
+            )}
+            <EtapaSelect leadId={leadId} etapaAtualId={etapaAtualId} etapas={etapas} action={moverEtapaAction} />
+          </div>
         </div>
       </div>
 
