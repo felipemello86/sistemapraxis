@@ -137,6 +137,10 @@ export function Informacoes({
   }
   const [busca, setBusca] = useState('')
   const [situacao, setSituacao] = useState<FiltroSituacao>('todas')
+  // Filtro on-off — pedido explícito do Felipe: "botão de filtro pro usuário
+  // ver apenas as q estão livres hj". Independente do Select de Situação
+  // (que é sobre resultado da inspeção, não sobre a UH estar livre hoje).
+  const [apenasLivresHoje, setApenasLivresHoje] = useState(false)
   const [sortField, setSortField] = useState<SortField>('ultima')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [expandida, setExpandida] = useState<string | null>(null)
@@ -209,6 +213,8 @@ export function Informacoes({
       return true
     })
 
+    if (apenasLivresHoje) filtradas = filtradas.filter((l) => l.livreHoje)
+
     const dir = sortDir === 'asc' ? 1 : -1
     filtradas = [...filtradas].sort((a, b) => {
       if (sortField === 'unidade') {
@@ -223,7 +229,7 @@ export function Informacoes({
     })
 
     return filtradas
-  }, [todasAsLinhas, busca, situacao, sortField, sortDir])
+  }, [todasAsLinhas, busca, situacao, apenasLivresHoje, sortField, sortDir])
 
   const historicoDoItem = useMemo(() => {
     if (!historico) return []
@@ -512,6 +518,24 @@ export function Informacoes({
                 <SelectItem value="pendencias">Com pendências</SelectItem>
               </SelectContent>
             </Select>
+            <button
+              type="button"
+              onClick={() => setApenasLivresHoje((v) => !v)}
+              aria-pressed={apenasLivresHoje}
+              title="Mostrar só as UHs livres hoje (selecionadas para limpeza pelo Atendimento)"
+              className={`flex h-10 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-sm font-medium transition-colors ${
+                apenasLivresHoje
+                  ? 'border-[var(--success)]/40 bg-[var(--success)]/15 text-[var(--success)]'
+                  : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground'
+              }`}
+            >
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${
+                  apenasLivresHoje ? 'bg-[var(--success)]' : 'bg-muted-foreground/40'
+                }`}
+              />
+              Só livres hoje
+            </button>
             <div className="relative w-full max-w-56">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
