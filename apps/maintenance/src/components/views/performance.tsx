@@ -22,12 +22,13 @@ import type { DailyCommitmentView } from '@/lib/types'
 // pedido explícito). Um relatório = um MaintenanceDailyCommitment (um por
 // dia, criado ao "fechar a programação do dia").
 
-// Janela do gráfico "Capacidade Produtiva" — mesma largura (90 dias) usada
-// em components/views/evolucao.tsx (DIAS_JANELA), pra consistência entre os
-// gráficos diários do módulo. Pedido do Felipe: card compacto mostra só os
-// últimos DIAS_COMPACTO_CAPACIDADE dias; o botão de expandir (mesmo padrão
-// de Evolução) revela a janela inteira de DIAS_JANELA_CAPACIDADE.
-const DIAS_JANELA_CAPACIDADE = 90
+// Janela do gráfico "Capacidade Produtiva" — 30 dias (1 mês), reduzida dos
+// 90 dias (3 meses) originais a pedido do Felipe; não precisa mais bater com
+// DIAS_JANELA de components/views/evolucao.tsx (que continua em 90). Card
+// compacto mostra só os últimos DIAS_COMPACTO_CAPACIDADE dias; o botão de
+// expandir (mesmo padrão de Evolução) revela a janela inteira de
+// DIAS_JANELA_CAPACIDADE.
+const DIAS_JANELA_CAPACIDADE = 30
 const DIAS_COMPACTO_CAPACIDADE = 7
 
 // Pedido explícito do Felipe: cada dia do gráfico de Capacidade Produtiva
@@ -325,7 +326,7 @@ export function Performance({
               <button
                 type="button"
                 onClick={() => setExpandidoCapacidade(true)}
-                title="Expandir gráfico (3 meses)"
+                title="Expandir gráfico (1 mês)"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <Maximize2 className="h-4 w-4" />
@@ -350,7 +351,7 @@ export function Performance({
         <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 md:p-6">
           <Panel
             title="Capacidade Produtiva"
-            description={`Saldo diário (NC eliminadas − surgidas), média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_JANELA_CAPACIDADE} dias (3 meses), janela inteira visível abaixo.`}
+            description={`Saldo diário (NC eliminadas − surgidas), média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_JANELA_CAPACIDADE} dias (1 mês), janela inteira visível abaixo.`}
             action={
               <button
                 type="button"

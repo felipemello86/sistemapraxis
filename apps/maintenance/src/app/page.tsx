@@ -44,16 +44,18 @@ export default async function Home() {
 
   const hoje = dataAtualSP();
 
-  // Janela do gráfico "Capacidade Produtiva" (tela Performance) — mesma
-  // largura de DIAS_JANELA usada em components/views/evolucao.tsx (90 dias).
-  // Corte com folga de 100 dias (não só 90) porque: (a) o bucket por dia é
-  // feito no client em horário local, mesmo critério de isoLocal em
+  // Janela do gráfico "Capacidade Produtiva" (tela Performance) — 30 dias (1
+  // mês, reduzida dos 90 dias/3 meses originais a pedido do Felipe; ver
+  // DIAS_JANELA_CAPACIDADE em components/views/performance.tsx). Corte com
+  // folga de 100 dias (bem mais que os 30 exibidos) porque: (a) o bucket por
+  // dia é feito no client em horário local, mesmo critério de isoLocal em
   // evolucao.tsx — evita perder o primeiro dia por causa da diferença de
   // fuso entre o corte aqui (servidor) e o agrupamento lá; (b) cada dia
-  // exibido agora é uma MÉDIA MÓVEL dos 7 dias anteriores (pedido explícito
-  // do Felipe) — o primeiro dia da janela de 90 também precisa de 6 dias de
-  // histórico ANTES dele pra ter uma média completa (ver serieCapacidade em
-  // components/views/performance.tsx).
+  // exibido é uma MÉDIA MÓVEL dos 7 dias anteriores (pedido explícito do
+  // Felipe) — o primeiro dia da janela também precisa de 6 dias de histórico
+  // ANTES dele pra ter uma média completa (ver serieCapacidade em
+  // components/views/performance.tsx). A folga de 100 é generosa de sobra;
+  // não precisou ser reduzida junto com a janela.
   const cutoffCapacidade = new Date();
   cutoffCapacidade.setDate(cutoffCapacidade.getDate() - 100);
 
