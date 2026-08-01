@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { emitEvent, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { calcularScoreUH, calcularScoreSuperLimpeza } from "@/lib/scoring";
 import { dataAtualSP } from "@/lib/timezone";
 
@@ -184,18 +184,47 @@ export async function PATCH(req: NextRequest) {
     if (!justificativa?.trim()) {
       return NextResponse.json({ error: "Justificativa obrigatória pra excluir uma UH do ranking" }, { status: 400 });
     }
-    await prisma.cleaningSession.update({
+    const sessaoExcluir = await prisma.cleaningSession.update({
       where: { id: sessaoId },
       data: { excluidoDoScore: true, justificativaExclusao: justificativa.trim() },
+      include: { uh: { select: { numero: true } }, camareira: { select: { nome: true } } },
+    });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.ranking_uh_alterado",
+      entityType: "CleaningSession",
+      entityId: sessaoId,
+      payload: {
+        uhNumero: sessaoExcluir.uh.numero,
+        camareiraNome: sessaoExcluir.camareira.nome,
+        acao: "excluida",
+        justificativa: justificativa.trim(),
+        atorNome: session.nome,
+      },
     });
     return NextResponse.json({ ok: true });
   }
 
   if (action === "reincluir_uh") {
     if (!sessaoId) return NextResponse.json({ error: "sessaoId obrigatório" }, { status: 400 });
-    await prisma.cleaningSession.update({
+    const sessaoReincluir = await prisma.cleaningSession.update({
       where: { id: sessaoId },
       data: { excluidoDoScore: false, justificativaExclusao: null },
+      include: { uh: { select: { numero: true } }, camareira: { select: { nome: true } } },
+    });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.ranking_uh_alterado",
+      entityType: "CleaningSession",
+      entityId: sessaoId,
+      payload: {
+        uhNumero: sessaoReincluir.uh.numero,
+        camareiraNome: sessaoReincluir.camareira.nome,
+        acao: "reincluida",
+        atorNome: session.nome,
+      },
     });
     return NextResponse.json({ ok: true });
   }
@@ -233,6 +262,21 @@ export async function PATCH(req: NextRequest) {
         data: { tipo: "fim_dia", data },
       });
     }
+
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.dia_confirmado",
+      entityType: "DailyClosure",
+      entityId: data,
+      payload: {
+        data,
+        totalUHs,
+        topCamareiraNome: top?.nome ?? null,
+        topScore: top?.mediaScore ?? null,
+        atorNome: session.nome,
+      },
+    });
 
     return NextResponse.json({ ok: true, ranking });
   }

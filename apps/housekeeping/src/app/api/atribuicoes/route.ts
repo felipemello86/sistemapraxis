@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { emitEvent, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/atribuicoes/route.ts (v1) — agora
@@ -121,6 +121,13 @@ export async function POST(req: NextRequest) {
     });
     const statusInicial = selecao?.liberada ? "LIBERADO" : "PENDENTE";
 
+    // Lido ANTES do upsert só pra saber se é criação ou edição (pro Log do
+    // Sistema — o upsert em si não diz qual dos dois caminhos rodou).
+    const jaExistia = await prisma.dailyAssignment.findUnique({
+      where: { data_uhId_camareiraId: { data, uhId, camareiraId } },
+      select: { id: true, programId: true, observacoes: true },
+    });
+
     // Chave composta agora inclui camareiraId (ver comentário no schema) —
     // permite mais de uma camareira na mesma UH/dia. Se a mesma camareira já
     // tinha uma atribuição aqui, isso atualiza (troca de programa/obs); se é
@@ -130,7 +137,7 @@ export async function POST(req: NextRequest) {
       where: { data_uhId_camareiraId: { data, uhId, camareiraId } },
       update: { programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
       create: { tenantId, data, uhId, camareiraId, programId, status: statusInicial, observacoes: observacoes ?? null, criadoPorNome: session.nome },
-      include: { uh: true, camareira: { select: { id: true, nome: true, role: true, foto: true, telegramChatId: true } } },
+      include: { uh: true, camareira: { select: { id: true, nome: true, role: true, foto: true, telegramChatId: true } }, program: { select: { nome: true } } },
     });
     // Push (best-effort — sendPushToUser nunca lança erro, mas o await é
     // necessário: em serverless a function pode congelar logo após a
@@ -141,6 +148,28 @@ export async function POST(req: NextRequest) {
       body: `Você foi atribuída à UH ${assignment.uh.numero}${data ? ` (${data})` : ""}.`,
       data: { tipo: "atribuicao", uhId: assignment.uhId, data },
     });
+
+    // A criação já aparece no Log via DailyAssignment.createdAt (ver
+    // reconstrução em api/logs/route.ts, tipo ATRIBUICAO_CRIADA) — só emite
+    // aqui pra EDIÇÃO de uma atribuição existente (troca de programa/obs),
+    // que hoje não tem nenhum rastro.
+    if (jaExistia) {
+      await emitEvent({
+        tenantId,
+        module: "HOUSEKEEPING",
+        eventType: "housekeeping.log.atribuicao_editada",
+        entityType: "DailyAssignment",
+        entityId: assignment.id,
+        payload: {
+          uhNumero: assignment.uh.numero,
+          camareiraNome: assignment.camareira.nome,
+          programaNome: assignment.program?.nome ?? null,
+          observacoes: assignment.observacoes,
+          atorNome: session.nome,
+        },
+      });
+    }
+
     return NextResponse.json(assignment, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -214,6 +243,14 @@ export async function PATCH(req: NextRequest) {
     }
 
     // TODO: notificar cada camareira e as governantas via Telegram
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.atribuicao_notificada",
+      entityType: "DailyAssignment",
+      entityId: dataAtual,
+      payload: { data: dataAtual, totalCamareiras: porCamareira.size, atorNome: session.nome },
+    });
     return NextResponse.json({ ok: true, notificados: porCamareira.size });
   }
 
@@ -258,6 +295,21 @@ export async function PATCH(req: NextRequest) {
         data: { tipo: "solicitacao_alteracao", assignmentId, solicitacaoTipo: tipoSolicitacao },
       });
     }
+
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.alteracao_solicitada",
+      entityType: "DailyAssignment",
+      entityId: assignmentId,
+      payload: {
+        uhNumero: assignment.uh.numero,
+        camareiraNome: assignment.camareira.nome,
+        tipoSolicitacao,
+        mensagem,
+        atorNome: assignment.camareira.nome,
+      },
+    });
 
     return NextResponse.json({ ok: true });
   }
@@ -307,6 +359,22 @@ export async function PATCH(req: NextRequest) {
       data: { tipo: "decisao_alteracao", assignmentId, aprovado: String(aprovado) },
     });
 
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.alteracao_decidida",
+      entityType: "DailyAssignment",
+      entityId: assignmentId,
+      payload: {
+        uhNumero: assignment.uh.numero,
+        camareiraNome: assignment.camareira.nome,
+        tipoSolicitacao: atual.solicitacaoTipo,
+        mensagem: atual.solicitacaoMensagem,
+        aprovado,
+        atorNome: session.nome,
+      },
+    });
+
     return NextResponse.json({ ok: true, assignment });
   }
 
@@ -325,6 +393,25 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
+  // Lido ANTES do delete — depois não tem mais como saber UH/camareira pro
+  // log (mesmo padrão de "renovar" em selecao-uhs/route.ts).
+  const assignment = await prisma.dailyAssignment.findUnique({
+    where: { id },
+    include: { uh: { select: { numero: true } }, camareira: { select: { nome: true } } },
+  });
+
   await prisma.dailyAssignment.delete({ where: { id } });
+
+  if (assignment) {
+    await emitEvent({
+      tenantId: assignment.tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.atribuicao_removida",
+      entityType: "DailyAssignment",
+      entityId: id,
+      payload: { uhNumero: assignment.uh.numero, camareiraNome: assignment.camareira.nome, atorNome: session.nome },
+    });
+  }
+
   return NextResponse.json({ ok: true });
 }

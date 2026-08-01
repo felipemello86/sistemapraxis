@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, getSession, sendPushToUser } from "@praxis/core";
+import { prisma, getSession, sendPushToUser, emitEvent } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/bloqueio/route.ts (v1).
 // Notificação via Telegram fica como TODO. DELETE (desbloquear, restrito a
@@ -56,6 +56,15 @@ export async function POST(req: NextRequest) {
 
   // TODO: notificar via Telegram todos os usuários do tenant, quando o bot
   // for portado.
+
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.bloqueio_manual_criado",
+    entityType: "UH",
+    entityId: uh.id,
+    payload: { uhNumero: uh.numero, motivo: motivo.trim(), atorNome: session.nome },
+  });
 
   return NextResponse.json({ ok: true });
 }

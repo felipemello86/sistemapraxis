@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, prisma } from "@praxis/core";
+import { emitEvent, getSession, prisma } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/scores/excluir/route.ts (v1).
 // PATCH /api/scores/excluir  body: { sessaoId }
@@ -14,7 +14,11 @@ export async function PATCH(req: NextRequest) {
 
   const atual = await prisma.cleaningSession.findUnique({
     where: { id: sessaoId },
-    select: { excluidoDoScore: true },
+    select: {
+      excluidoDoScore: true,
+      uh: { select: { numero: true } },
+      camareira: { select: { nome: true, tenantId: true } },
+    },
   });
   if (!atual) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
 
@@ -22,6 +26,20 @@ export async function PATCH(req: NextRequest) {
     where: { id: sessaoId },
     data: { excluidoDoScore: !atual.excluidoDoScore },
     select: { id: true, excluidoDoScore: true },
+  });
+
+  await emitEvent({
+    tenantId: atual.camareira.tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.score_sessao_alterado",
+    entityType: "CleaningSession",
+    entityId: sessaoId,
+    payload: {
+      uhNumero: atual.uh.numero,
+      camareiraNome: atual.camareira.nome,
+      excluidoDoScore: atualizado.excluidoDoScore,
+      atorNome: session.nome,
+    },
   });
 
   return NextResponse.json(atualizado);

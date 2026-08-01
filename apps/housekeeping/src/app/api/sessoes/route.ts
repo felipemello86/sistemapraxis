@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, getSession, hasModuleAccess, sendPushToUser } from "@praxis/core";
+import { prisma, getSession, hasModuleAccess, sendPushToUser, emitEvent } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/sessoes/route.ts (v1). Diferenças:
@@ -190,7 +190,10 @@ export async function PATCH(req: NextRequest) {
   const agora = new Date();
 
   if (action === "concluir_step") {
-    const stepAtual = await prisma.sessionStep.findUnique({ where: { id: stepId } });
+    const stepAtual = await prisma.sessionStep.findUnique({
+      where: { id: stepId },
+      include: { step: { select: { titulo: true } }, session: { select: { uhId: true, uh: { select: { numero: true } } } } },
+    });
     if (!stepAtual) return NextResponse.json({ error: "Etapa não encontrada" }, { status: 404 });
 
     await prisma.sessionStep.update({
@@ -211,6 +214,20 @@ export async function PATCH(req: NextRequest) {
         data: { iniciadoEm: agora },
       });
     }
+
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.etapa_concluida",
+      entityType: "SessionStep",
+      entityId: stepId,
+      payload: {
+        uhNumero: stepAtual.session.uh.numero,
+        etapaTitulo: stepAtual.step.titulo,
+        atorNome: session.nome,
+      },
+    });
+
     return NextResponse.json({ ok: true });
   }
 
@@ -222,7 +239,10 @@ export async function PATCH(req: NextRequest) {
   // schema) e devolve a atribuição/UH pro estado de antes de "Iniciar"
   // (LIBERADO / DISPONIVEL), como se a limpeza nunca tivesse começado.
   if (action === "cancelar") {
-    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    const sessao = await prisma.cleaningSession.findUnique({
+      where: { id: sessaoId },
+      include: { uh: { select: { numero: true } }, camareira: { select: { nome: true } } },
+    });
     if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
     if (sessao.camareiraId !== session.userId) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
@@ -230,6 +250,17 @@ export async function PATCH(req: NextRequest) {
     if (sessao.finalizadaEm) {
       return NextResponse.json({ error: "Essa limpeza já foi concluída, não é possível cancelar." }, { status: 400 });
     }
+
+    // Log emitido ANTES do delete — mesmo padrão de "renovar" em
+    // selecao-uhs/route.ts, senão a sessão cancelada não deixa nenhum rastro.
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.sessao_cancelada",
+      entityType: "CleaningSession",
+      entityId: sessaoId,
+      payload: { uhNumero: sessao.uh.numero, camareiraNome: sessao.camareira.nome, atorNome: session.nome },
+    });
 
     await prisma.cleaningSession.delete({ where: { id: sessaoId } });
     await prisma.dailyAssignment.update({
@@ -249,7 +280,10 @@ export async function PATCH(req: NextRequest) {
   // gasto respondendo/registrando não deve contar contra a camareira — ver
   // comentário em CleaningSession.manutencaoSegundosExcluidos no schema.
   if (action === "iniciar_manutencao") {
-    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    const sessao = await prisma.cleaningSession.findUnique({
+      where: { id: sessaoId },
+      include: { uh: { select: { numero: true } } },
+    });
     if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
     if (sessao.camareiraId !== session.userId) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
@@ -258,12 +292,23 @@ export async function PATCH(req: NextRequest) {
     // disparou duas vezes), não sobrescreve o timestamp original.
     if (!sessao.manutencaoAbertaEm) {
       await prisma.cleaningSession.update({ where: { id: sessaoId }, data: { manutencaoAbertaEm: agora } });
+      await emitEvent({
+        tenantId: session.tenantId,
+        module: "HOUSEKEEPING",
+        eventType: "housekeeping.log.manutencao_etapa_sessao",
+        entityType: "CleaningSession",
+        entityId: sessaoId,
+        payload: { uhNumero: sessao.uh.numero, acao: "iniciada", atorNome: session.nome },
+      });
     }
     return NextResponse.json({ ok: true });
   }
 
   if (action === "concluir_manutencao") {
-    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    const sessao = await prisma.cleaningSession.findUnique({
+      where: { id: sessaoId },
+      include: { uh: { select: { numero: true } } },
+    });
     if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
     if (sessao.camareiraId !== session.userId) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
@@ -276,6 +321,14 @@ export async function PATCH(req: NextRequest) {
           manutencaoAbertaEm: null,
           manutencaoSegundosExcluidos: sessao.manutencaoSegundosExcluidos + Math.max(0, delta),
         },
+      });
+      await emitEvent({
+        tenantId: session.tenantId,
+        module: "HOUSEKEEPING",
+        eventType: "housekeeping.log.manutencao_etapa_sessao",
+        entityType: "CleaningSession",
+        entityId: sessaoId,
+        payload: { uhNumero: sessao.uh.numero, acao: "concluida", atorNome: session.nome },
       });
     }
     return NextResponse.json({ ok: true });

@@ -20,6 +20,46 @@ const TIPO_META: Record<string, { label: string; cor: string; icon: string }> = 
   INSPECAO_CONCLUIDA:{ label: "Inspeção concluída",    cor: "bg-green-50 text-green-700 border-green-200",     icon: "🏁" },
   COBERTURA_CRIADA:  { label: "Cobertura registrada",  cor: "bg-indigo-50 text-indigo-700 border-indigo-200",  icon: "🔄" },
   FOTOS_EDITADAS:    { label: "Fotos editadas",        cor: "bg-pink-50 text-pink-700 border-pink-200",        icon: "📷" },
+
+  // ── Cobertura completa de auditoria (pedido explícito do Felipe: "faz o
+  // mesmo pra governança", espelhando apps/maintenance/src/components/views/
+  // logs.tsx) — eventos vindos de AiEvent, ver api/logs/route.ts.
+  SELECAO_DIA_EDITADA:              { label: "Seleção do dia editada",      cor: "bg-gray-100 text-gray-600 border-gray-200",     icon: "📝" },
+  SELECAO_DIA_CONFIRMADA:           { label: "Seleção do dia confirmada",   cor: "bg-teal-50 text-teal-700 border-teal-200",      icon: "✔️" },
+  SELECAO_REABERTA:                 { label: "Seleção reaberta",            cor: "bg-amber-50 text-amber-700 border-amber-200",   icon: "↩️" },
+  LIBERACAO_DESFEITA:               { label: "Liberação desfeita",          cor: "bg-slate-100 text-slate-700 border-slate-200",  icon: "🔒" },
+  MANUTENCAO_TOGGLE:                { label: "Manutenção da UH",            cor: "bg-orange-50 text-orange-700 border-orange-200",icon: "🛠️" },
+  UH_DESBLOQUEADA:                  { label: "UH desbloqueada",             cor: "bg-green-50 text-green-700 border-green-200",   icon: "🔑" },
+  RESERVA_ALTERADA:                 { label: "Reserva da UH alterada",      cor: "bg-blue-50 text-blue-700 border-blue-200",      icon: "🗓️" },
+  LATE_CHECKOUT_ALTERADO:           { label: "Late check-out alterado",     cor: "bg-purple-50 text-purple-700 border-purple-200",icon: "⏰" },
+  ATRIBUICAO_RENOVADA:              { label: "Atribuição renovada",         cor: "bg-red-50 text-red-700 border-red-200",         icon: "♻️" },
+  COMENTARIO_UH_ALTERADO:           { label: "Comentário da UH alterado",   cor: "bg-gray-100 text-gray-600 border-gray-200",     icon: "💬" },
+  PRIORIDADE_UH_ALTERADA:           { label: "Prioridade da UH alterada",   cor: "bg-amber-50 text-amber-700 border-amber-200",   icon: "⭐" },
+  QUEIXA_REGISTRADA:                { label: "Queixa de hóspede",           cor: "bg-red-50 text-red-700 border-red-200",         icon: "📣" },
+  OBSERVACAO_ATRIBUICAO_ALTERADA:   { label: "Observação da atribuição",    cor: "bg-gray-100 text-gray-600 border-gray-200",     icon: "🗒️" },
+  ATRIBUICAO_EDITADA:               { label: "Atribuição editada",          cor: "bg-gray-100 text-gray-600 border-gray-200",     icon: "✏️" },
+  ATRIBUICAO_NOTIFICADA:            { label: "Atribuições notificadas",     cor: "bg-blue-50 text-blue-700 border-blue-200",      icon: "🔔" },
+  ALTERACAO_SOLICITADA:             { label: "Alteração solicitada",        cor: "bg-yellow-50 text-yellow-700 border-yellow-200",icon: "🙋" },
+  ALTERACAO_DECIDIDA:               { label: "Alteração decidida",          cor: "bg-indigo-50 text-indigo-700 border-indigo-200",icon: "⚖️" },
+  ATRIBUICAO_REMOVIDA:              { label: "Atribuição removida",         cor: "bg-red-50 text-red-700 border-red-200",         icon: "🗑️" },
+  ETAPA_CONCLUIDA:                  { label: "Etapa da limpeza concluída",  cor: "bg-slate-100 text-slate-700 border-slate-200",  icon: "☑️" },
+  SESSAO_CANCELADA:                 { label: "Limpeza cancelada",           cor: "bg-red-50 text-red-700 border-red-200",         icon: "❌" },
+  MANUTENCAO_ETAPA_SESSAO:          { label: "Etapa de manutenção da limpeza", cor: "bg-orange-50 text-orange-700 border-orange-200", icon: "🔧" },
+  FALHA_AVALIADA:                   { label: "Item avaliado na inspeção",   cor: "bg-orange-50 text-orange-700 border-orange-200",icon: "🧐" },
+  INSPECAO_CORRIGIDA:               { label: "Inspeção recalculada",        cor: "bg-green-50 text-green-700 border-green-200",   icon: "🧮" },
+  BLOQUEIO_DECIDIDO:                { label: "Decisão de bloqueio",         cor: "bg-red-50 text-red-700 border-red-200",         icon: "🚦" },
+  FALHA_GERENCIAL_RESOLVIDA:        { label: "Falha gerencial resolvida",   cor: "bg-green-50 text-green-700 border-green-200",   icon: "✅" },
+  RANKING_UH_ALTERADO:              { label: "Ranking do dia alterado",     cor: "bg-amber-50 text-amber-700 border-amber-200",   icon: "🏆" },
+  DIA_CONFIRMADO:                   { label: "Dia finalizado",              cor: "bg-teal-50 text-teal-700 border-teal-200",      icon: "📅" },
+  CONFIGURACAO_ALTERADA:            { label: "Configuração alterada",       cor: "bg-gray-100 text-gray-600 border-gray-200",     icon: "⚙️" },
+  BLOQUEIO_MANUAL_CRIADO:           { label: "Bloqueio manual",             cor: "bg-red-50 text-red-700 border-red-200",         icon: "🚨" },
+  FALHA_LAVANDERIA_REGISTRADA:      { label: "Falha de lavanderia",         cor: "bg-blue-50 text-blue-700 border-blue-200",      icon: "🧺" },
+  NC_MANUTENCAO_REPORTADA:          { label: "Não conformidade reportada",  cor: "bg-orange-50 text-orange-700 border-orange-200",icon: "🔧" },
+  SCORE_SESSAO_ALTERADO:            { label: "Score da UH alterado",        cor: "bg-purple-50 text-purple-700 border-purple-200",icon: "🎯" },
+  SCORE_LOTE_ALTERADO:              { label: "Score em lote alterado",      cor: "bg-purple-50 text-purple-700 border-purple-200",icon: "🎯" },
+  PROGRAMA_CRIADO:                  { label: "Programa de limpeza criado",  cor: "bg-gray-100 text-gray-600 border-gray-200",     icon: "📋" },
+  PROGRAMA_EDITADO:                 { label: "Programa de limpeza editado", cor: "bg-gray-100 text-gray-600 border-gray-200",     icon: "📋" },
+  TEMPLATE_INSPECAO_EDITADO:        { label: "Checklist de inspeção editado", cor: "bg-gray-100 text-gray-600 border-gray-200",   icon: "📐" },
 };
 
 const LINHA_COR: Record<string, string> = {
@@ -31,6 +71,43 @@ const LINHA_COR: Record<string, string> = {
   INSPECAO_CONCLUIDA: "bg-green-500",
   COBERTURA_CRIADA:   "bg-indigo-400",
   FOTOS_EDITADAS:     "bg-pink-400",
+
+  SELECAO_DIA_EDITADA:            "bg-gray-300",
+  SELECAO_DIA_CONFIRMADA:         "bg-teal-500",
+  SELECAO_REABERTA:               "bg-amber-400",
+  LIBERACAO_DESFEITA:             "bg-slate-400",
+  MANUTENCAO_TOGGLE:              "bg-orange-400",
+  UH_DESBLOQUEADA:                "bg-green-500",
+  RESERVA_ALTERADA:               "bg-blue-400",
+  LATE_CHECKOUT_ALTERADO:         "bg-purple-400",
+  ATRIBUICAO_RENOVADA:            "bg-red-400",
+  COMENTARIO_UH_ALTERADO:         "bg-gray-300",
+  PRIORIDADE_UH_ALTERADA:         "bg-amber-400",
+  QUEIXA_REGISTRADA:              "bg-red-500",
+  OBSERVACAO_ATRIBUICAO_ALTERADA: "bg-gray-300",
+  ATRIBUICAO_EDITADA:             "bg-gray-300",
+  ATRIBUICAO_NOTIFICADA:          "bg-blue-400",
+  ALTERACAO_SOLICITADA:           "bg-yellow-400",
+  ALTERACAO_DECIDIDA:             "bg-indigo-400",
+  ATRIBUICAO_REMOVIDA:            "bg-red-500",
+  ETAPA_CONCLUIDA:                "bg-slate-300",
+  SESSAO_CANCELADA:               "bg-red-500",
+  MANUTENCAO_ETAPA_SESSAO:        "bg-orange-300",
+  FALHA_AVALIADA:                 "bg-orange-400",
+  INSPECAO_CORRIGIDA:             "bg-green-400",
+  BLOQUEIO_DECIDIDO:              "bg-red-500",
+  FALHA_GERENCIAL_RESOLVIDA:      "bg-green-500",
+  RANKING_UH_ALTERADO:            "bg-amber-400",
+  DIA_CONFIRMADO:                 "bg-teal-500",
+  CONFIGURACAO_ALTERADA:          "bg-gray-400",
+  BLOQUEIO_MANUAL_CRIADO:         "bg-red-500",
+  FALHA_LAVANDERIA_REGISTRADA:    "bg-blue-400",
+  NC_MANUTENCAO_REPORTADA:        "bg-orange-400",
+  SCORE_SESSAO_ALTERADO:          "bg-purple-400",
+  SCORE_LOTE_ALTERADO:            "bg-purple-500",
+  PROGRAMA_CRIADO:                "bg-gray-300",
+  PROGRAMA_EDITADO:               "bg-gray-300",
+  TEMPLATE_INSPECAO_EDITADO:      "bg-gray-300",
 };
 
 function formatDuracao(seg: number) {
@@ -83,6 +160,188 @@ function Descricao({ ev }: { ev: LogEvento }) {
           )}
         </span>
       );
+    // ── Cobertura completa de auditoria ─────────────────────────────────
+    case "SELECAO_DIA_EDITADA": {
+      const add = Array.isArray(extra?.adicionadas) ? extra.adicionadas : [];
+      const rem = Array.isArray(extra?.removidas) ? extra.removidas : [];
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> editou a seleção do dia
+          {add.length > 0 ? ` · +${add.length} UH${add.length === 1 ? "" : "s"} (${add.join(", ")})` : ""}
+          {rem.length > 0 ? ` · −${rem.length} UH${rem.length === 1 ? "" : "s"} (${rem.join(", ")})` : ""}
+        </span>
+      );
+    }
+    case "SELECAO_DIA_CONFIRMADA":
+      return <span><b>{ev.atoreNome}</b> confirmou a seleção do dia</span>;
+    case "SELECAO_REABERTA":
+      return <span><b>{ev.atoreNome}</b> reabriu a seleção do dia (voltou ao modo de edição)</span>;
+    case "LIBERACAO_DESFEITA":
+      return <span><b>{ev.atoreNome}</b> desfez a liberação da UH <b>{ev.uhNumero}</b></span>;
+    case "MANUTENCAO_TOGGLE":
+      return extra?.acao === "solicitada" ? (
+        <span>
+          <b>{ev.atoreNome}</b> marcou a UH <b>{ev.uhNumero}</b> em manutenção
+          {extra?.itemNome ? ` · ${extra.itemNome}` : ""}
+          {extra?.descricao ? ` — "${extra.descricao}"` : ""}
+        </span>
+      ) : (
+        <span><b>{ev.atoreNome}</b> encerrou a manutenção da UH <b>{ev.uhNumero}</b></span>
+      );
+    case "UH_DESBLOQUEADA":
+      return <span><b>{ev.atoreNome}</b> desbloqueou a UH <b>{ev.uhNumero}</b></span>;
+    case "RESERVA_ALTERADA":
+      return <span><b>{ev.atoreNome}</b> {extra?.temReserva ? "marcou" : "desmarcou"} reserva na UH <b>{ev.uhNumero}</b></span>;
+    case "LATE_CHECKOUT_ALTERADO":
+      return extra?.acao === "ativado" ? (
+        <span><b>{ev.atoreNome}</b> ativou late check-out na UH <b>{ev.uhNumero}</b>{extra?.horaSaida ? ` até ${extra.horaSaida}` : ""}</span>
+      ) : (
+        <span><b>{ev.atoreNome}</b> desativou o late check-out da UH <b>{ev.uhNumero}</b></span>
+      );
+    case "ATRIBUICAO_RENOVADA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> renovou a atribuição da UH <b>{ev.uhNumero}</b>
+          {extra?.camareiraNome ? ` (era de ${extra.camareiraNome})` : ""}
+        </span>
+      );
+    case "COMENTARIO_UH_ALTERADO":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> {extra?.comentario ? "comentou" : "removeu o comentário"} na UH <b>{ev.uhNumero}</b>
+          {extra?.comentario ? `: "${extra.comentario}"` : ""}
+        </span>
+      );
+    case "PRIORIDADE_UH_ALTERADA":
+      return extra?.acao === "marcada" ? (
+        <span><b>{ev.atoreNome}</b> marcou a UH <b>{ev.uhNumero}</b> como prioritária{extra?.descricao ? `: "${extra.descricao}"` : ""}</span>
+      ) : (
+        <span><b>{ev.atoreNome}</b> removeu a prioridade da UH <b>{ev.uhNumero}</b></span>
+      );
+    case "QUEIXA_REGISTRADA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> registrou queixa de {String(extra?.tipo ?? "").toLowerCase()} na UH <b>{ev.uhNumero}</b>
+          {extra?.titulo ? ` — "${extra.titulo}"` : ""}
+          {extra?.camareiraNome ? ` · camareira: ${extra.camareiraNome}` : ""}
+          {extra?.pontosDescontados ? ` · −${extra.pontosDescontados} pts` : ""}
+        </span>
+      );
+    case "OBSERVACAO_ATRIBUICAO_ALTERADA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> alterou a observação da atribuição da UH <b>{ev.uhNumero}</b>
+          {extra?.camareiraNome ? ` (${extra.camareiraNome})` : ""}
+        </span>
+      );
+    case "ATRIBUICAO_EDITADA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> editou a atribuição da UH <b>{ev.uhNumero}</b>
+          {extra?.camareiraNome ? ` · ${extra.camareiraNome}` : ""}
+          {extra?.programaNome ? ` · ${extra.programaNome}` : ""}
+        </span>
+      );
+    case "ATRIBUICAO_NOTIFICADA":
+      return <span><b>{ev.atoreNome}</b> notificou as atribuições do dia{extra?.totalCamareiras ? ` (${extra.totalCamareiras} camareira${extra.totalCamareiras === 1 ? "" : "s"})` : ""}</span>;
+    case "ALTERACAO_SOLICITADA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> solicitou {extra?.tipoSolicitacao === "SUPER_LIMPEZA" ? "Super Limpeza ⭐️" : "troca de programa"} na UH <b>{ev.uhNumero}</b>
+          {extra?.mensagem ? `: "${extra.mensagem}"` : ""}
+        </span>
+      );
+    case "ALTERACAO_DECIDIDA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> {extra?.aprovado ? "aprovou" : "rejeitou"} a alteração solicitada na UH <b>{ev.uhNumero}</b>
+          {extra?.camareiraNome ? ` (${extra.camareiraNome})` : ""}
+        </span>
+      );
+    case "ATRIBUICAO_REMOVIDA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> removeu a atribuição da UH <b>{ev.uhNumero}</b>
+          {extra?.camareiraNome ? ` (${extra.camareiraNome})` : ""}
+        </span>
+      );
+    case "ETAPA_CONCLUIDA":
+      return <span><b>{ev.atoreNome}</b> concluiu a etapa {extra?.etapaTitulo ? `"${extra.etapaTitulo}"` : ""} na UH <b>{ev.uhNumero}</b></span>;
+    case "SESSAO_CANCELADA":
+      return <span><b>{ev.atoreNome}</b> cancelou a limpeza da UH <b>{ev.uhNumero}</b></span>;
+    case "MANUTENCAO_ETAPA_SESSAO":
+      return <span><b>{ev.atoreNome}</b> {extra?.acao === "iniciada" ? "abriu" : "fechou"} a etapa "Necessidade de Manutenção?" na UH <b>{ev.uhNumero}</b></span>;
+    case "FALHA_AVALIADA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> avaliou {extra?.itemNome ? `"${extra.itemNome}"` : "um item"} na UH <b>{ev.uhNumero}</b> como{" "}
+          <span className={extra?.resultado === "FALHA" ? "text-red-500" : "text-green-600"}>
+            {extra?.resultado === "FALHA" ? "falha" : extra?.resultado === "NAO_APLICAVEL" ? "não aplicável" : "OK"}
+          </span>
+          {extra?.tipoFalha === "GERENCIAL" ? " (gerencial)" : ""}
+        </span>
+      );
+    case "INSPECAO_CORRIGIDA":
+      return <span><b>{ev.atoreNome}</b> recalculou a inspeção da UH <b>{ev.uhNumero}</b>{extra?.totalFalhas !== undefined ? ` · ${extra.totalFalhas} falha(s)` : ""}</span>;
+    case "BLOQUEIO_DECIDIDO":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> {extra?.aprovado ? "aprovou" : "rejeitou"} o pedido de {extra?.tipo === "MANUTENCAO" ? "manutenção" : "bloqueio"} da UH <b>{ev.uhNumero}</b>
+          {extra?.solicitanteNome ? ` (solicitado por ${extra.solicitanteNome})` : ""}
+        </span>
+      );
+    case "FALHA_GERENCIAL_RESOLVIDA":
+      return <span><b>{ev.atoreNome}</b> resolveu a falha gerencial {extra?.itemNome ? `"${extra.itemNome}"` : ""} na UH <b>{ev.uhNumero}</b></span>;
+    case "RANKING_UH_ALTERADO":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> {extra?.acao === "excluida" ? "excluiu" : "reincluiu"} a UH <b>{ev.uhNumero}</b> do ranking do dia
+          {extra?.camareiraNome ? ` (${extra.camareiraNome})` : ""}
+          {extra?.justificativa ? ` — "${extra.justificativa}"` : ""}
+        </span>
+      );
+    case "DIA_CONFIRMADO":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> finalizou o dia
+          {extra?.totalUHs !== undefined ? ` · ${extra.totalUHs} UH(s)` : ""}
+          {extra?.topCamareiraNome ? ` · top: ${extra.topCamareiraNome} (${extra.topScore} pts)` : ""}
+        </span>
+      );
+    case "CONFIGURACAO_ALTERADA":
+      return <span><b>{ev.atoreNome}</b> alterou as configurações do módulo</span>;
+    case "BLOQUEIO_MANUAL_CRIADO":
+      return <span><b>{ev.atoreNome}</b> bloqueou manualmente a UH <b>{ev.uhNumero}</b>{extra?.motivo ? `: "${extra.motivo}"` : ""}</span>;
+    case "FALHA_LAVANDERIA_REGISTRADA":
+      return <span><b>{ev.atoreNome}</b> registrou falha de lavanderia na UH <b>{ev.uhNumero}</b>{extra?.descricao ? `: "${extra.descricao}"` : ""}</span>;
+    case "NC_MANUTENCAO_REPORTADA":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> reportou não conformidade de manutenção na UH <b>{ev.uhNumero}</b>
+          {extra?.itemNome ? ` · ${extra.itemNome}` : ""}
+          {extra?.urgente ? <span className="text-red-500 font-semibold"> · urgente</span> : ""}
+        </span>
+      );
+    case "SCORE_SESSAO_ALTERADO":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> {extra?.excluidoDoScore ? "excluiu" : "reincluiu"} a UH <b>{ev.uhNumero}</b> do score
+          {extra?.camareiraNome ? ` (${extra.camareiraNome})` : ""}
+        </span>
+      );
+    case "SCORE_LOTE_ALTERADO":
+      return (
+        <span>
+          <b>{ev.atoreNome}</b> {extra?.excluidoDoScore ? "excluiu" : "reincluiu"} {extra?.totalSessoes ?? 0} sessão(ões) do score
+          {extra?.camareiraNome ? ` de ${extra.camareiraNome}` : ""}
+        </span>
+      );
+    case "PROGRAMA_CRIADO":
+      return <span><b>{ev.atoreNome}</b> criou o programa de limpeza "{String(extra?.nome ?? "—")}"</span>;
+    case "PROGRAMA_EDITADO":
+      return <span><b>{ev.atoreNome}</b> editou o programa de limpeza "{String(extra?.nome ?? "—")}"</span>;
+    case "TEMPLATE_INSPECAO_EDITADO":
+      return <span><b>{ev.atoreNome}</b> editou o checklist de inspeção{extra?.totalItens !== undefined ? ` (${extra.totalItens} itens)` : ""}</span>;
     default:
       return <span>{ev.atoreNome} · UH {ev.uhNumero}</span>;
   }

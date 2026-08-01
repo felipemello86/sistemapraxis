@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { emitEvent, getSession, hasModuleAccess, prisma } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/programas/route.ts (v1). hotelId → tenantId.
 export async function GET() {
@@ -36,6 +36,16 @@ export async function POST(req: NextRequest) {
     },
     include: { steps: { orderBy: { ordem: "asc" } } },
   });
+
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.programa_criado",
+    entityType: "CleaningProgram",
+    entityId: program.id,
+    payload: { nome: program.nome, tipo: program.tipo, totalSteps: program.steps.length, atorNome: session.nome },
+  });
+
   return NextResponse.json(program, { status: 201 });
 }
 
@@ -82,5 +92,17 @@ export async function PUT(req: NextRequest) {
     where: { id },
     include: { steps: { orderBy: { ordem: "asc" } } },
   });
+
+  if (program) {
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.programa_editado",
+      entityType: "CleaningProgram",
+      entityId: program.id,
+      payload: { nome: program.nome, totalSteps: program.steps.length, atorNome: session.nome },
+    });
+  }
+
   return NextResponse.json(program);
 }

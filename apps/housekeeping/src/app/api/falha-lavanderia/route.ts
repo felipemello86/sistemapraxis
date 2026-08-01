@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma, getSession, sendPushToUser } from "@praxis/core";
+import { prisma, getSession, sendPushToUser, emitEvent } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/falha-lavanderia/route.ts (v1).
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const data = dataAtualSP();
 
-  await prisma.falhaLavanderia.create({
+  const falha = await prisma.falhaLavanderia.create({
     data: {
       tenantId: session.tenantId,
       data,
@@ -30,6 +30,15 @@ export async function POST(req: NextRequest) {
       reportadoPorRole: session.role,
       fotoUrl: fotoUrl ?? null,
     },
+  });
+
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.falha_lavanderia_registrada",
+    entityType: "FalhaLavanderia",
+    entityId: falha.id,
+    payload: { uhNumero, descricao: descricao.trim(), atorNome: session.nome },
   });
 
   const destinatarios = await prisma.user.findMany({

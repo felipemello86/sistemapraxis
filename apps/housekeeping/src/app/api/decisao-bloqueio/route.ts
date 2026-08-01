@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ativarManutencaoUH, getSession, hasModuleAccess, notificarPorRoles, prisma } from "@praxis/core";
+import { ativarManutencaoUH, emitEvent, getSession, hasModuleAccess, notificarPorRoles, prisma } from "@praxis/core";
 
 // Tela de Decisão de Bloqueio — pedido explícito do Felipe: "vamos remover o
 // bloqueio automático para manutenção [...] cabe ao Atendimento decidir".
@@ -108,7 +108,10 @@ export async function PATCH(req: NextRequest) {
   const { action, requestId, aprovar } = await req.json();
 
   if (action === "decidir") {
-    const pedido = await prisma.hkBlockRequest.findUnique({ where: { id: requestId } });
+    const pedido = await prisma.hkBlockRequest.findUnique({
+      where: { id: requestId },
+      include: { uh: { select: { numero: true } } },
+    });
     if (!pedido || pedido.tenantId !== tenantId) {
       return NextResponse.json({ error: "Pedido não encontrado" }, { status: 404 });
     }
@@ -130,6 +133,27 @@ export async function PATCH(req: NextRequest) {
         decididoPorId: session.userId,
         decididoPorNome: session.nome,
         decididoEm: new Date(),
+      },
+    });
+
+    // O evento mais importante desta tela pro Felipe (motivou a própria
+    // tela existir: NC urgente não bloqueia mais sozinha, precisa de decisão
+    // humana explícita do Atendimento) — registra a decisão em si, pros dois
+    // tipos (BLOQUEIO e MANUTENCAO), antes de qualquer efeito colateral.
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.bloqueio_decidido",
+      entityType: "HkBlockRequest",
+      entityId: requestId,
+      payload: {
+        uhNumero: pedido.uh.numero,
+        tipo: pedido.tipo,
+        aprovado: !!aprovar,
+        itemNome: pedido.itemNome,
+        comment: pedido.comment,
+        solicitanteNome: pedido.solicitanteNome,
+        atorNome: session.nome,
       },
     });
 

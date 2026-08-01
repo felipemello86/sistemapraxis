@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { emitEvent, getSession, hasModuleAccess, prisma } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/configuracoes/route.ts (v1).
 // hotelId → tenantId; hotelConfig → HkConfig; hotel.nome → tenant.name (v2
@@ -28,6 +28,8 @@ export async function PUT(req: NextRequest) {
 
   const { notificationTime, targetMinutes, photoRequirements, hotelNome, turnoInicioHora } = await req.json();
 
+  const anterior = await prisma.hkConfig.findUnique({ where: { tenantId } });
+
   const config = await prisma.hkConfig.upsert({
     where: { tenantId },
     update: { notificationTime, targetMinutes, photoRequirements: JSON.stringify(photoRequirements), turnoInicioHora },
@@ -37,6 +39,24 @@ export async function PUT(req: NextRequest) {
   if (hotelNome) {
     await prisma.tenant.update({ where: { id: tenantId }, data: { name: hotelNome } });
   }
+
+  await emitEvent({
+    tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.configuracao_alterada",
+    entityType: "HkConfig",
+    entityId: tenantId,
+    payload: {
+      atorNome: session.nome,
+      targetMinutesAntes: anterior?.targetMinutes ?? null,
+      targetMinutesDepois: targetMinutes,
+      notificationTimeAntes: anterior?.notificationTime ?? null,
+      notificationTimeDepois: notificationTime,
+      turnoInicioHoraAntes: anterior?.turnoInicioHora ?? null,
+      turnoInicioHoraDepois: turnoInicioHora,
+      hotelNome: hotelNome ?? null,
+    },
+  });
 
   return NextResponse.json(config);
 }

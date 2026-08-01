@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, notificarPorRoles, prisma, sendPushToUser } from "@praxis/core";
+import { emitEvent, getSession, hasModuleAccess, notificarPorRoles, prisma, sendPushToUser } from "@praxis/core";
 import { dataAtualSP } from "@/lib/timezone";
 
 // Portado de apps/housekeeping/src/app/api/inspecoes/route.ts (v1).
@@ -278,6 +278,25 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    // Decisão editorial da Governanta — a mais importante desta rota pro Log
+    // do Sistema (pedido explícito do Felipe): registra toda avaliação de
+    // item, não só as que viram Falha Gerencial.
+    await emitEvent({
+      tenantId: itemAtual.inspection.uh.tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.falha_avaliada",
+      entityType: "InspectionItem",
+      entityId: itemId,
+      payload: {
+        uhNumero: itemAtual.inspection.uh.numero,
+        itemNome: itemAtual.item,
+        resultado,
+        tipoFalha: tipoFalhaFixo,
+        observacao: observacaoFinal ?? null,
+        atorNome: session.nome,
+      },
+    });
+
     return NextResponse.json(item);
   }
 
@@ -289,7 +308,21 @@ export async function PATCH(req: NextRequest) {
     const inspecao = await prisma.inspectionSession.update({
       where: { id: inspecaoId },
       data: { totalFalhas, totalFalhasGerenciais },
-      include: { itens: true },
+      include: { itens: true, uh: { select: { numero: true, tenantId: true } } },
+    });
+
+    await emitEvent({
+      tenantId: inspecao.uh.tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.inspecao_corrigida",
+      entityType: "InspectionSession",
+      entityId: inspecaoId,
+      payload: {
+        uhNumero: inspecao.uh.numero,
+        totalFalhas,
+        totalFalhasGerenciais,
+        atorNome: session.nome,
+      },
     });
 
     return NextResponse.json(inspecao);

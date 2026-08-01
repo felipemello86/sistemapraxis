@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   aplicarBloqueioPorUrgencia,
   createCorrectionCardForItem,
+  emitEvent,
   notificarPorRoles,
   prisma,
   getSession,
@@ -138,6 +139,21 @@ export async function POST(req: NextRequest) {
     title: "🔧 Necessidade de manutenção registrada",
     body: `UH ${uh.numero}${item.name ? ` — ${item.name}` : ""}: ${descricaoLimpa}`,
     data: { view: "correcao" },
+  });
+
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.nc_manutencao_reportada",
+    entityType: "MaintenanceInspectionItem",
+    entityId: inspectionItemId,
+    payload: {
+      uhNumero: uh.numero,
+      itemNome: item.name,
+      descricao: descricaoLimpa,
+      urgente,
+      atorNome: session.nome,
+    },
   });
 
   // NC impeditiva ao uso — bloqueia a UH automaticamente e notifica todos

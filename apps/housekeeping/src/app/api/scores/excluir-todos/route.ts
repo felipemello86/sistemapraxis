@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, prisma } from "@praxis/core";
+import { emitEvent, getSession, prisma } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/scores/excluir-todos/route.ts (v1).
 // PATCH /api/scores/excluir-todos { camareiraId, excluir: boolean }
@@ -25,6 +25,15 @@ export async function PATCH(req: NextRequest) {
   const { count } = await prisma.cleaningSession.updateMany({
     where: { camareiraId, camareira: { tenantId } },
     data: { excluidoDoScore: excluir },
+  });
+
+  await emitEvent({
+    tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.score_lote_alterado",
+    entityType: "User",
+    entityId: camareiraId,
+    payload: { camareiraNome: camareira.nome, totalSessoes: count, excluidoDoScore: excluir, atorNome: session.nome },
   });
 
   return NextResponse.json({ ok: true, sessoes: count, nome: camareira.nome });

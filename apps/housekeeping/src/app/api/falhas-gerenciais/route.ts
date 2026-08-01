@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { emitEvent, getSession, hasModuleAccess, prisma } from "@praxis/core";
 
 // Tela "Falhas Gerenciais" — kanban Pendências/Resolvido. Os cards são
 // criados automaticamente em PATCH /api/inspecoes (ação avaliar_item),
@@ -57,7 +57,10 @@ export async function PATCH(req: NextRequest) {
   const { action, cardId, resolvedDescricao, resolvedPhotos } = await req.json();
 
   if (action === "resolver") {
-    const card = await prisma.hkManagerialFailureCard.findUnique({ where: { id: cardId } });
+    const card = await prisma.hkManagerialFailureCard.findUnique({
+      where: { id: cardId },
+      include: { uh: { select: { numero: true } } },
+    });
     if (!card) return NextResponse.json({ error: "Card não encontrado" }, { status: 404 });
     if (card.tenantId !== session.tenantId) return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
     if (card.status === "RESOLVIDO") {
@@ -79,6 +82,21 @@ export async function PATCH(req: NextRequest) {
         resolvedById: session.userId,
       },
     });
+
+    await emitEvent({
+      tenantId: session.tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.falha_gerencial_resolvida",
+      entityType: "HkManagerialFailureCard",
+      entityId: cardId,
+      payload: {
+        uhNumero: card.uh.numero,
+        itemNome: card.itemNome,
+        resolvedDescricao: String(resolvedDescricao).trim(),
+        atorNome: session.nome,
+      },
+    });
+
     return NextResponse.json(atualizado);
   }
 

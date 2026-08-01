@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ativarManutencaoUH, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import { ativarManutencaoUH, emitEvent, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
 import { liberarSelecionadasAoMeioDia } from "@/lib/liberacao-automatica";
@@ -243,6 +243,29 @@ export async function POST(req: NextRequest) {
     create: { tenantId, data, confirmado: false },
   });
 
+  // Log do Sistema — só emite quando algo de fato mudou (evita ruído em
+  // "Salvar" sem alterações reais na lista do dia).
+  if (removidasIds.length > 0 || adicionadasIds.length > 0) {
+    const uhsEnvolvidas = await prisma.uH.findMany({
+      where: { id: { in: [...removidasIds, ...adicionadasIds] } },
+      select: { id: true, numero: true },
+    });
+    const numeroPorId = new Map(uhsEnvolvidas.map((u) => [u.id, u.numero]));
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.selecao_dia_editada",
+      entityType: "DailyUHSelection",
+      entityId: data,
+      payload: {
+        data,
+        atorNome: session.nome,
+        adicionadas: adicionadasIds.map((id) => numeroPorId.get(id) ?? id),
+        removidas: removidasIds.map((id) => numeroPorId.get(id) ?? id),
+      },
+    });
+  }
+
   return NextResponse.json({ ok: true });
 }
 
@@ -274,6 +297,14 @@ export async function PATCH(req: NextRequest) {
       where: { tenantId_data: { tenantId, data } },
       update: { confirmado: true },
       create: { tenantId, data, confirmado: true },
+    });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.selecao_dia_confirmada",
+      entityType: "DailySelectionStatus",
+      entityId: data,
+      payload: { data, atorNome: session.nome },
     });
     // TODO: notificar suporte via Telegram sobre confirmação da seleção
     return NextResponse.json({ ok: true });
@@ -346,12 +377,30 @@ export async function PATCH(req: NextRequest) {
       }
       // TODO: notificar camareira, governantas e gerente via Telegram
 
+      await emitEvent({
+        tenantId,
+        module: "HOUSEKEEPING",
+        eventType: "housekeeping.log.liberacao_desfeita",
+        entityType: "DailyAssignment",
+        entityId: assignmentId,
+        payload: { uhNumero: assignment.uh.numero, camareiraNome: assignment.camareira.nome, atorNome: session.nome },
+      });
+
       return NextResponse.json({ ok: true });
     }
 
     await prisma.dailyUHSelection.update({
       where: { data_uhId: { data, uhId } },
       data: { liberada: false, liberadaEm: null },
+    });
+    const uhDesfazerSemAssignment = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.liberacao_desfeita",
+      entityType: "DailyUHSelection",
+      entityId: `${data}:${uhId}`,
+      payload: { uhNumero: uhDesfazerSemAssignment?.numero ?? null, atorNome: session.nome },
     });
     return NextResponse.json({ ok: true });
   }
@@ -372,7 +421,7 @@ export async function PATCH(req: NextRequest) {
   if (action === "toggle_manutencao") {
     const uh = await prisma.uH.findUnique({
       where: { id: uhId },
-      select: { numero: true, emManutencao: true },
+      select: { numero: true, emManutencao: true, manutencaoDescricao: true },
     });
     if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });
 
@@ -385,6 +434,14 @@ export async function PATCH(req: NextRequest) {
           manutencaoSolicitanteNome: null,
           manutencaoEm: null,
         },
+      });
+      await emitEvent({
+        tenantId,
+        module: "HOUSEKEEPING",
+        eventType: "housekeeping.log.manutencao_toggle",
+        entityType: "UH",
+        entityId: uhId,
+        payload: { uhNumero: uh.numero, acao: "encerrada", descricaoAnterior: uh.manutencaoDescricao, atorNome: session.nome },
       });
       return NextResponse.json({ emManutencao: false });
     }
@@ -407,7 +464,7 @@ export async function PATCH(req: NextRequest) {
     const [itemCatalogo, atribuicoesDaUh] = await Promise.all([
       prisma.maintenanceChecklistItem.findUnique({
         where: { id: checklistItemId },
-        select: { id: true, tenantId: true },
+        select: { id: true, tenantId: true, name: true },
       }),
       prisma.maintenanceUnitChecklistItem.findMany({
         where: { tenantId, uhId },
@@ -431,6 +488,21 @@ export async function PATCH(req: NextRequest) {
       descricao: descricao.trim(),
       solicitanteNome: session.nome,
       registradoPorId: session.userId,
+    });
+
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.manutencao_toggle",
+      entityType: "UH",
+      entityId: uhId,
+      payload: {
+        uhNumero: uh.numero,
+        acao: "solicitada",
+        descricao: descricao.trim(),
+        itemNome: itemCatalogo.name,
+        atorNome: session.nome,
+      },
     });
 
     return NextResponse.json({ emManutencao: true });
@@ -472,6 +544,15 @@ export async function PATCH(req: NextRequest) {
       });
     }
 
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.uh_desbloqueada",
+      entityType: "UH",
+      entityId: uhId,
+      payload: { uhNumero: uh.numero, atorNome: session.nome },
+    });
+
     return NextResponse.json({ ok: true });
   }
 
@@ -485,6 +566,15 @@ export async function PATCH(req: NextRequest) {
     await prisma.dailyUHSelection.update({
       where: { data_uhId: { data, uhId } },
       data: { temReserva: novoValor },
+    });
+    const uhReserva = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.reserva_alterada",
+      entityType: "DailyUHSelection",
+      entityId: `${data}:${uhId}`,
+      payload: { uhNumero: uhReserva?.numero ?? null, temReserva: novoValor, atorNome: session.nome },
     });
     return NextResponse.json({ temReserva: novoValor });
   }
@@ -509,6 +599,15 @@ export async function PATCH(req: NextRequest) {
         lateCheckoutEm: new Date(),
       },
     });
+    const uhLateOn = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.late_checkout_alterado",
+      entityType: "DailyUHSelection",
+      entityId: `${data}:${uhId}`,
+      payload: { uhNumero: uhLateOn?.numero ?? null, acao: "ativado", horaSaida: hora, atorNome: session.nome },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -524,6 +623,15 @@ export async function PATCH(req: NextRequest) {
         lateCheckoutEm: null,
       },
     });
+    const uhLateOff = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.late_checkout_alterado",
+      entityType: "DailyUHSelection",
+      entityId: `${data}:${uhId}`,
+      payload: { uhNumero: uhLateOff?.numero ?? null, acao: "desativado", atorNome: session.nome },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -531,12 +639,36 @@ export async function PATCH(req: NextRequest) {
   if (action === "renovar") {
     if (!isGerente) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
+    const uhRenovar = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+
     if (assignmentId) {
       const assignment = await prisma.dailyAssignment.findUnique({
         where: { id: assignmentId },
-        include: { cleaningSession: { include: { inspection: true } } },
+        include: {
+          cleaningSession: { include: { inspection: true } },
+          camareira: { select: { nome: true } },
+        },
       });
       if (!assignment) return NextResponse.json({ error: "Atribuição não encontrada" }, { status: 404 });
+
+      // Log emitido ANTES dos deletes abaixo, de propósito — mesmo padrão
+      // usado em reabrirProgramacaoDiaImpl (Manutenção): depois do cascade
+      // este é o único rastro que sobra de que a UH foi renovada e o que
+      // tinha sido feito até então.
+      await emitEvent({
+        tenantId,
+        module: "HOUSEKEEPING",
+        eventType: "housekeeping.log.atribuicao_renovada",
+        entityType: "DailyAssignment",
+        entityId: assignmentId,
+        payload: {
+          uhNumero: uhRenovar?.numero ?? null,
+          camareiraNome: assignment.camareira.nome,
+          tinhaSessaoLimpeza: !!assignment.cleaningSession,
+          tinhaInspecao: !!assignment.cleaningSession?.inspection,
+          atorNome: session.nome,
+        },
+      });
 
       // Cascade manual: InspectionItems → InspectionSession → SessionSteps → CleaningSession → Assignment
       if (assignment.cleaningSession) {
@@ -550,6 +682,15 @@ export async function PATCH(req: NextRequest) {
       }
 
       await prisma.dailyAssignment.delete({ where: { id: assignmentId } });
+    } else {
+      await emitEvent({
+        tenantId,
+        module: "HOUSEKEEPING",
+        eventType: "housekeeping.log.atribuicao_renovada",
+        entityType: "DailyUHSelection",
+        entityId: `${data}:${uhId}`,
+        payload: { uhNumero: uhRenovar?.numero ?? null, camareiraNome: null, atorNome: session.nome },
+      });
     }
 
     await prisma.dailyUHSelection.delete({ where: { data_uhId: { data, uhId } } });
@@ -576,6 +717,15 @@ export async function PATCH(req: NextRequest) {
         comentarioEm: texto ? new Date() : null,
       },
     });
+    const uhComentario = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.comentario_uh_alterado",
+      entityType: "DailyUHSelection",
+      entityId: `${data}:${uhId}`,
+      payload: { uhNumero: uhComentario?.numero ?? null, comentario: texto, atorNome: session.nome },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -598,6 +748,15 @@ export async function PATCH(req: NextRequest) {
         prioridadeEm: new Date(),
       },
     });
+    const uhPrioridade = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.prioridade_uh_alterada",
+      entityType: "DailyUHSelection",
+      entityId: `${data}:${uhId}`,
+      payload: { uhNumero: uhPrioridade?.numero ?? null, acao: "marcada", descricao: texto, atorNome: session.nome },
+    });
     return NextResponse.json({ ok: true });
   }
 
@@ -612,6 +771,15 @@ export async function PATCH(req: NextRequest) {
         prioridadePorNome: null,
         prioridadeEm: null,
       },
+    });
+    const uhRemoverPrioridade = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.prioridade_uh_alterada",
+      entityType: "DailyUHSelection",
+      entityId: `${data}:${uhId}`,
+      payload: { uhNumero: uhRemoverPrioridade?.numero ?? null, acao: "removida", atorNome: session.nome },
     });
     return NextResponse.json({ ok: true });
   }
@@ -710,7 +878,7 @@ export async function PATCH(req: NextRequest) {
       });
     }
 
-    await prisma.guestComplaint.create({
+    const complaint = await prisma.guestComplaint.create({
       data: {
         tenantId, data, uhId, tipo,
         titulo: tituloTexto,
@@ -721,6 +889,23 @@ export async function PATCH(req: NextRequest) {
         camareiraId,
         pontosDescontados,
         reviewId: review.id,
+      },
+    });
+
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.queixa_registrada",
+      entityType: "GuestComplaint",
+      entityId: complaint.id,
+      payload: {
+        uhNumero: uh.numero,
+        tipo,
+        titulo: tituloTexto,
+        descricao: texto,
+        camareiraNome: camareiraNomeLog,
+        pontosDescontados,
+        atorNome: session.nome,
       },
     });
 
@@ -755,9 +940,24 @@ export async function PATCH(req: NextRequest) {
   // ── Salvar observação no assignment ──────────────────────────────
   if (action === "set_observacao") {
     if (!assignmentId) return NextResponse.json({ error: "assignmentId obrigatório" }, { status: 400 });
-    await prisma.dailyAssignment.update({
+    const observacaoTexto = observacoes?.trim() || null;
+    const assignmentObs = await prisma.dailyAssignment.update({
       where: { id: assignmentId },
-      data: { observacoes: observacoes?.trim() || null },
+      data: { observacoes: observacaoTexto },
+      include: { uh: { select: { numero: true } }, camareira: { select: { nome: true } } },
+    });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.observacao_atribuicao_alterada",
+      entityType: "DailyAssignment",
+      entityId: assignmentId,
+      payload: {
+        uhNumero: assignmentObs.uh.numero,
+        camareiraNome: assignmentObs.camareira.nome,
+        observacoes: observacaoTexto,
+        atorNome: session.nome,
+      },
     });
     return NextResponse.json({ ok: true });
   }
@@ -768,6 +968,14 @@ export async function PATCH(req: NextRequest) {
       where: { tenantId_data: { tenantId, data } },
       update: { confirmado: false },
       create: { tenantId, data, confirmado: false },
+    });
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.selecao_reaberta",
+      entityType: "DailySelectionStatus",
+      entityId: data,
+      payload: { data, atorNome: session.nome },
     });
     return NextResponse.json({ ok: true });
   }

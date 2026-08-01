@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { emitEvent, getSession, hasModuleAccess, prisma } from "@praxis/core";
 
 // Portado de apps/housekeeping/src/app/api/inspecao-template/route.ts (v1).
 // hotelId → tenantId.
@@ -88,5 +88,15 @@ export async function PUT(req: NextRequest) {
     where: { tenantId, ativo: true },
     orderBy: { ordem: "asc" },
   });
+
+  await emitEvent({
+    tenantId,
+    module: "HOUSEKEEPING",
+    eventType: "housekeeping.log.template_inspecao_editado",
+    entityType: "InspectionTemplate",
+    entityId: tenantId,
+    payload: { totalItens: result.length, atorNome: session.nome },
+  });
+
   return NextResponse.json(result);
 }
