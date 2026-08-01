@@ -492,6 +492,48 @@ export async function atualizarValorAction(leadId: string, valorStr: string) {
   redirect(`/admin/crm/${leadId}`);
 }
 
+// Atualiza hotel/nome/e-mail/mensagem do lead a partir do modo de edição da
+// tela de detalhe (ver LeadInfoEditavel.tsx) — pedido do Felipe
+// (31/07/2026): "os leads precisam ser editáveis... um botão de lápis que
+// habilite a edição e depois confirme ou desista". Diferente de
+// atualizarTelefoneAction/atualizarValorAction/atualizarFonteAction (que
+// salvam campo a campo no onBlur, sem confirmação), esta é chamada uma vez
+// só, ao clicar em "Salvar" no modo de edição — mas segue o mesmo padrão de
+// fundo (sem <form>, chamada direto do client component, redirect no final
+// pra atualizar os dados exibidos com o que foi de fato salvo).
+export async function atualizarDadosLeadAction(
+  leadId: string,
+  dados: { hotel: string; nome: string; email: string; mensagem: string }
+) {
+  await requireAdminSession();
+  const hotel = dados.hotel.trim().slice(0, 120);
+  const nome = dados.nome.trim().slice(0, 120);
+  const email = dados.email.trim().slice(0, 160);
+  const mensagem = dados.mensagem.trim().slice(0, 2000);
+
+  // Hotel e nome são obrigatórios (mesma regra de criarLeadManualAction) —
+  // o botão "Salvar" do client já fica desabilitado nesse caso; isso aqui é
+  // só defesa extra. Se vierem vazios, não salva nada (evita apagar dados
+  // por engano).
+  if (!hotel || !nome) redirect(`/admin/crm/${leadId}`);
+
+  // E-mail inválido não trava o resto do salvamento — só não entra no
+  // `data` do update, preservando o valor anterior no banco (mesmo espírito
+  // de "ignora silenciosamente" de atualizarTelefoneAction/atualizarFonteAction).
+  const emailValido = !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  await prisma.demoLead.update({
+    where: { id: leadId },
+    data: {
+      hotel,
+      nome,
+      mensagem,
+      ...(emailValido ? { email } : {}),
+    },
+  });
+  redirect(`/admin/crm/${leadId}`);
+}
+
 // Cria um lead direto no CRM, sem passar pelo formulário público da landing
 // page — pra contatos que chegaram por telefone, indicação, evento etc.
 // E-mail é opcional aqui (diferente do POST /api/demo) porque nem sempre dá

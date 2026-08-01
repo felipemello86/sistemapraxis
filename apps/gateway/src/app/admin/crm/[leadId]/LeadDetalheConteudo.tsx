@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation";
 import { getAdminSession, prisma } from "@praxis/core";
 import { garantirCrmPronto } from "../data";
-import { EtapaSelect } from "../EtapaSelect";
 import { FonteSelect } from "./FonteSelect";
 import { ValorInput } from "./ValorInput";
-import { TelefoneInput } from "./TelefoneInput";
+import { LeadInfoEditavel } from "./LeadInfoEditavel";
 import { NotaForm } from "./NotaForm";
 import { PerdidoForm } from "./PerdidoForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
@@ -15,6 +14,7 @@ import {
   atualizarFonteAction,
   atualizarValorAction,
   atualizarTelefoneAction,
+  atualizarDadosLeadAction,
   criarNotaAction,
   marcarPerdidoAction,
   marcarGanhoDetalheAction,
@@ -89,45 +89,20 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
   return (
     <>
       <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-          <div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{lead.hotel}</h1>
-            <p style={{ margin: "4px 0 0", color: "#6e6e73", fontSize: 13 }}>{lead.nome}</p>
-          </div>
-          <EtapaSelect
-            leadId={lead.id}
-            etapaAtualId={lead.stageId}
-            etapas={etapas}
-            action={moverEtapaDetalheAction}
-          />
-        </div>
-
-        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 3 }}>
-          <p style={{ margin: 0, fontSize: 13.5, color: "#1d1d1f" }}>
-            <span style={{ color: "#6e6e73" }}>E-mail: </span>
-            {lead.email ? (
-              <a href={`mailto:${lead.email}`} style={{ color: "#0071e3" }}>
-                {lead.email}
-              </a>
-            ) : (
-              "—"
-            )}
-          </p>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "#1d1d1f" }}>
-            <span style={{ color: "#6e6e73" }}>Telefone:</span>
-            <TelefoneInput leadId={lead.id} telefoneAtual={lead.telefone} action={atualizarTelefoneAction} />
-          </div>
-          <p style={{ margin: 0, fontSize: 13.5, color: "#1d1d1f" }}>
-            <span style={{ color: "#6e6e73" }}>Criado em: </span>
-            {lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-          </p>
-        </div>
-
-        {lead.mensagem && (
-          <p style={{ margin: "10px 0 0", fontSize: 13.5, color: "#1d1d1f", lineHeight: 1.5 }}>
-            <span style={{ color: "#6e6e73" }}>Mensagem: </span>“{lead.mensagem}”
-          </p>
-        )}
+        <LeadInfoEditavel
+          leadId={lead.id}
+          hotelAtual={lead.hotel}
+          nomeAtual={lead.nome}
+          emailAtual={lead.email ?? ""}
+          mensagemAtual={lead.mensagem ?? ""}
+          telefoneAtual={lead.telefone}
+          criadoEmLabel={lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+          etapaAtualId={lead.stageId}
+          etapas={etapas}
+          moverEtapaAction={moverEtapaDetalheAction}
+          atualizarTelefoneAction={atualizarTelefoneAction}
+          atualizarDadosAction={atualizarDadosLeadAction}
+        />
 
         {lead.desfecho === "GANHO" && (
           <p style={{ margin: "10px 0 0", fontSize: 13, fontWeight: 700, color: "#1a7f37" }}>✅ Lead ganho</p>
