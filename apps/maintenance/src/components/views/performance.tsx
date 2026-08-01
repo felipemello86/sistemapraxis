@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useEffect, useState } from 'react'
-import { AreaChart, ComposedChart, Area, Line, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { AreaChart, Area, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
 import {
@@ -65,37 +65,36 @@ function arredondar1(n: number) {
 // (negativo) — mesmos tons de corPorScore em evolucao.tsx (green-500/red-500),
 // aqui sem interpolação: é uma decisão binária por dia, não uma escala
 // contínua.
-const VERDE_BANDA = 'rgb(34, 197, 94)'
-const VERMELHO_BANDA = 'rgb(239, 68, 68)'
+const VERDE_CAPACIDADE = 'rgb(34, 197, 94)'
+const VERMELHO_CAPACIDADE = 'rgb(239, 68, 68)'
 
 // Config do ChartContainer — mesmo objeto usado nos dois modos (compacto e
-// expandido), então fica declarado uma vez só fora do componente.
+// expandido), então fica declarado uma vez só fora do componente. Uma única
+// série agora (pedido explícito do Felipe: "o gráfico deve ser apenas uma
+// linha") — a cor real de cada trecho vem do gradiente horizontal aplicado
+// no stroke/fill, não desse `color` (que só serve de fallback/legenda).
 const CAPACIDADE_CHART_CONFIG = {
-  ncSurgidas: { label: 'NC surgidas', color: 'var(--destructive)' },
-  ncEliminadas: { label: 'NC eliminadas', color: 'var(--success)' },
+  diferenca: { label: 'Diferença (eliminadas − surgidas)', color: 'var(--foreground)' },
 }
 
 type PontoCapacidade = {
   dia: string
-  ncSurgidas: number
-  ncEliminadas: number
-  minValor: number
-  diffValor: number
+  diferenca: number
   positivo: boolean
 }
 
-// Stops do gradiente horizontal da banda — um por ponto da série recebida,
+// Stops do gradiente horizontal da linha — um por ponto da série recebida,
 // verde quando aquele dia eliminou mais NC do que surgiu, vermelho caso
 // contrário (pedido explícito do Felipe). Mesma técnica de stopsGradiente em
 // evolucao.tsx, só que com 2 cores fixas em vez de interpolação contínua.
 // Função solta (não hook) porque é chamada com séries diferentes (compacta
 // de 7 dias vs. expandida de 90) a partir de dois useMemo separados abaixo.
-function calcularStopsBanda(dados: PontoCapacidade[]) {
+function calcularStopsCapacidade(dados: PontoCapacidade[]) {
   const n = dados.length
   if (n === 0) return []
   return dados.map((d, i) => ({
     offset: `${(i / Math.max(n - 1, 1)) * 100}%`,
-    cor: d.positivo ? VERDE_BANDA : VERMELHO_BANDA,
+    cor: d.positivo ? VERDE_CAPACIDADE : VERMELHO_CAPACIDADE,
   }))
 }
 
@@ -137,10 +136,10 @@ export function Performance({
   // MaintenanceDailyCommitment fechado, diferente de serieDiaria acima).
   // Cada dia exibido é a MÉDIA MÓVEL de JANELA_MEDIA_MOVEL_CAPACIDADE dias
   // (o próprio dia + os 6 anteriores) — pedido explícito do Felipe, pra
-  // suavizar picos de um único dia ruidoso. minValor/diffValor formam a
-  // "banda" empilhada (Area stackId) que preenche visualmente a região
-  // entre as duas linhas — minValor fica transparente (só empurra a base),
-  // diffValor é a parte colorida em cima.
+  // suavizar picos de um único dia ruidoso. `diferenca` é o saldo do dia
+  // (eliminadas − surgidas, já sobre as médias móveis, podendo ser negativo)
+  // — pedido explícito: "o gráfico deve ser apenas uma linha, q deve ser a
+  // subtração entre as NCs eliminadas e as surgidas".
   const serieCapacidade = useMemo(() => {
     const surgidasPorDia = new Map<string, number>()
     for (const iso of ncSurgidasEm) {
@@ -183,10 +182,7 @@ export function Performance({
       const ncEliminadas = arredondar1(janela.reduce((s, v) => s + v.ncEliminadas, 0) / janela.length)
       dias.push({
         dia: label,
-        ncSurgidas,
-        ncEliminadas,
-        minValor: Math.min(ncSurgidas, ncEliminadas),
-        diffValor: Math.abs(ncEliminadas - ncSurgidas),
+        diferenca: arredondar1(ncEliminadas - ncSurgidas),
         positivo: ncEliminadas >= ncSurgidas,
       })
     }
@@ -203,8 +199,11 @@ export function Performance({
     [serieCapacidade],
   )
   const intervaloExpandidoCapacidade = Math.max(0, Math.ceil(serieCapacidade.length / 15) - 1)
-  const stopsBandaCompacta = useMemo(() => calcularStopsBanda(serieCapacidadeCompacta), [serieCapacidadeCompacta])
-  const stopsBandaExpandida = useMemo(() => calcularStopsBanda(serieCapacidade), [serieCapacidade])
+  const stopsCapacidadeCompacta = useMemo(
+    () => calcularStopsCapacidade(serieCapacidadeCompacta),
+    [serieCapacidadeCompacta],
+  )
+  const stopsCapacidadeExpandida = useMemo(() => calcularStopsCapacidade(serieCapacidade), [serieCapacidade])
 
   const [expandidoCapacidade, setExpandidoCapacidade] = useState(false)
   useEffect(() => {
@@ -222,17 +221,27 @@ export function Performance({
   }, [expandidoCapacidade])
 
   // Conteúdo do gráfico em si — extraído numa função (mesmo padrão de
-  // renderGraficoConformidade em evolucao.tsx) pra não duplicar o
-  // ComposedChart inteiro entre o card compacto e o overlay expandido; só um
-  // dos dois fica montado por vez, então reaproveitar o mesmo id de
-  // <linearGradient> nos dois não gera ambiguidade.
+  // renderGraficoConformidade em evolucao.tsx) pra não duplicar o AreaChart
+  // inteiro entre o card compacto e o overlay expandido; só um dos dois fica
+  // montado por vez, então reaproveitar o mesmo id de <linearGradient> nos
+  // dois não gera ambiguidade. Uma única série (diferenca), colorida por
+  // segmento via gradiente horizontal (verde/vermelho conforme o sinal do
+  // dia) — pedido explícito: "o gráfico deve ser apenas uma linha... deve
+  // variar de cor conforme o resultado". baseValue={0} faz a área preencher
+  // a partir do zero (não da base do eixo), já que diferenca pode ser
+  // negativa; ReferenceLine em y=0 ancora visualmente o positivo/negativo.
   function renderGraficoCapacidade(dados: PontoCapacidade[], interval: number, stops: { offset: string; cor: string }[]) {
     return (
-      <ComposedChart data={dados} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
+      <AreaChart data={dados} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
         <defs>
-          <linearGradient id="fillBandaCapacidade" x1="0" y1="0" x2="1" y2="0">
+          <linearGradient id="fillCapacidade" x1="0" y1="0" x2="1" y2="0">
             {stops.map((s, i) => (
               <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={0.3} />
+            ))}
+          </linearGradient>
+          <linearGradient id="strokeCapacidade" x1="0" y1="0" x2="1" y2="0">
+            {stops.map((s, i) => (
+              <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={1} />
             ))}
           </linearGradient>
         </defs>
@@ -249,45 +258,18 @@ export function Performance({
           tick={{ fontSize: 11 }}
         />
         <YAxis tickLine={false} axisLine={false} width={32} allowDecimals={false} />
+        <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" />
         <ChartTooltip content={<ChartTooltipContent />} />
-        {/* Banda entre as duas linhas: minValor (transparente, só empurra a
-            base) + diffValor (colorido, empilhado em cima) — junto preenchem
-            exatamente a região entre ncSurgidas e ncEliminadas naquele dia.
-            tooltipType="none" nas duas pra não aparecerem no tooltip (são só
-            suporte visual da banda, não métricas em si). */}
         <Area
-          dataKey="minValor"
-          stackId="banda"
-          stroke="none"
-          fill="transparent"
-          isAnimationActive={false}
-          tooltipType="none"
-        />
-        <Area
-          dataKey="diffValor"
-          stackId="banda"
-          stroke="none"
-          fill="url(#fillBandaCapacidade)"
-          isAnimationActive={false}
-          tooltipType="none"
-        />
-        <Line
-          dataKey="ncSurgidas"
+          dataKey="diferenca"
           type="monotone"
-          stroke="var(--color-ncSurgidas)"
+          baseValue={0}
+          stroke="url(#strokeCapacidade)"
+          fill="url(#fillCapacidade)"
           strokeWidth={2.5}
-          dot={false}
           isAnimationActive={false}
         />
-        <Line
-          dataKey="ncEliminadas"
-          type="monotone"
-          stroke="var(--color-ncEliminadas)"
-          strokeWidth={2.5}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </ComposedChart>
+      </AreaChart>
     )
   }
 
@@ -337,7 +319,7 @@ export function Performance({
       {!expandidoCapacidade ? (
         <Panel
           title="Capacidade Produtiva"
-          description={`Média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias — NC eliminadas vs. surgidas, últimos ${DIAS_COMPACTO_CAPACIDADE} dias. Verde = eliminação maior que surgimento; vermelha = o contrário.`}
+          description={`Saldo diário (NC eliminadas − surgidas), média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_COMPACTO_CAPACIDADE} dias. Verde = saldo positivo; vermelha = negativo.`}
           action={
             !temDadosCapacidade ? undefined : (
               <button
@@ -357,7 +339,7 @@ export function Performance({
             </p>
           ) : (
             <ChartContainer config={CAPACIDADE_CHART_CONFIG} className="h-72 w-full">
-              {renderGraficoCapacidade(serieCapacidadeCompacta, 0, stopsBandaCompacta)}
+              {renderGraficoCapacidade(serieCapacidadeCompacta, 0, stopsCapacidadeCompacta)}
             </ChartContainer>
           )}
         </Panel>
@@ -368,7 +350,7 @@ export function Performance({
         <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 md:p-6">
           <Panel
             title="Capacidade Produtiva"
-            description={`Média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias — NC eliminadas vs. surgidas, últimos ${DIAS_JANELA_CAPACIDADE} dias (3 meses), janela inteira visível abaixo.`}
+            description={`Saldo diário (NC eliminadas − surgidas), média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_JANELA_CAPACIDADE} dias (3 meses), janela inteira visível abaixo.`}
             action={
               <button
                 type="button"
@@ -383,7 +365,7 @@ export function Performance({
           >
             <div className="min-h-0 flex-1">
               <ChartContainer config={CAPACIDADE_CHART_CONFIG} className="h-full w-full">
-                {renderGraficoCapacidade(serieCapacidade, intervaloExpandidoCapacidade, stopsBandaExpandida)}
+                {renderGraficoCapacidade(serieCapacidade, intervaloExpandidoCapacidade, stopsCapacidadeExpandida)}
               </ChartContainer>
             </div>
           </Panel>
