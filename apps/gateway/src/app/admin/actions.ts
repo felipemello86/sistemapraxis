@@ -573,6 +573,27 @@ export async function excluirParceiroAction(parceiroId: string) {
   redirect("/admin/crm");
 }
 
+// Edita um parceiro já cadastrado (31/07/2026, pedido do Felipe: "tornar os
+// cards dos parceiros editáveis") — mesmo padrão de atualizarDadosLeadAction
+// (modo de edição explícito no client, botão de lápis + Salvar/Cancelar, sem
+// <form>, chamada direto do client component).
+export async function atualizarParceiroDadosAction(
+  parceiroId: string,
+  dados: { nome: string; telefone: string; observacao: string }
+) {
+  await requireAdminSession();
+  const nome = dados.nome.trim().slice(0, 120);
+  const telefone = dados.telefone.trim().slice(0, 40);
+  const observacao = dados.observacao.trim().slice(0, 500);
+  if (!nome) redirect("/admin/crm"); // nome é obrigatório, mesma regra da criação — não salva vazio
+
+  await prisma.crmParceiro.update({
+    where: { id: parceiroId },
+    data: { nome, telefone: telefone || null, observacao: observacao || null },
+  });
+  redirect("/admin/crm");
+}
+
 // Cria um lead direto no CRM, sem passar pelo formulário público da landing
 // page — pra contatos que chegaram por telefone, indicação, evento etc.
 // E-mail é opcional aqui (diferente do POST /api/demo) porque nem sempre dá

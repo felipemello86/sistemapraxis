@@ -10,6 +10,7 @@ import {
   reabrirLeadAction,
   criarParceiroAction,
   excluirParceiroAction,
+  atualizarParceiroDadosAction,
 } from "../actions";
 import { NovoLeadForm } from "./NovoLeadForm";
 import { KanbanBoard } from "./KanbanBoard";
@@ -44,7 +45,10 @@ export default async function CrmBoard() {
     <main
       style={{
         minHeight: "100svh",
-        padding: "max(24px, env(safe-area-inset-top)) 24px 24px",
+        // 16px nas laterais (era 24) — pedido do Felipe (31/07/2026): ajuda
+        // a caber as 5 colunas do board sem rolagem horizontal, junto com a
+        // redução de largura/gap das colunas em KanbanBoard.tsx.
+        padding: "max(24px, env(safe-area-inset-top)) 16px 24px",
       }}
     >
       <div style={{ maxWidth: "100%", margin: "0 auto", width: "100%" }}>
@@ -110,7 +114,12 @@ export default async function CrmBoard() {
           reabrirLeadAction={reabrirLeadAction}
         />
 
-        <ParceirosSection parceiros={parceiros} criarAction={criarParceiroAction} excluirAction={excluirParceiroAction} />
+        <ParceirosSection
+          parceiros={parceiros}
+          criarAction={criarParceiroAction}
+          excluirAction={excluirParceiroAction}
+          atualizarAction={atualizarParceiroDadosAction}
+        />
       </div>
     </main>
   );

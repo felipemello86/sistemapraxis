@@ -160,7 +160,7 @@ export function KanbanBoard({
           maxHeight abaixo. Sem flex:1 aqui: a linha só cresce até a altura
           do próprio conteúdo (a maior coluna), não até preencher o espaço
           inteiro da tela. */}
-      <div style={{ display: "flex", gap: 14, overflowX: "auto", overflowY: "hidden", paddingBottom: 12, maxHeight: "62vh" }}>
+      <div style={{ display: "flex", gap: 10, overflowX: "auto", overflowY: "hidden", paddingBottom: 12, maxHeight: "62vh" }}>
         {etapas.map((etapa, index) => {
           const leadsDaEtapa = leadsPorEtapa.get(etapa.id) ?? [];
           const somaValores = leadsDaEtapa.reduce((soma, l) => soma + l.valor, 0);
@@ -179,11 +179,14 @@ export function KanbanBoard({
                 soltar(etapa.id);
               }}
               style={{
-                flex: "0 0 280px",
+                // 250px (era 280) + gap 10 (era 14) — pedido do Felipe
+                // (31/07/2026): caber 5 colunas (4 etapas + Finalizados) sem
+                // rolagem horizontal, "faltou muito pouco" no tamanho antigo.
+                flex: "0 0 250px",
                 background: emFoco ? "#eef4ff" : "#f5f5f7",
                 border: emFoco ? "1px dashed #0071e3" : "1px solid transparent",
                 borderRadius: 14,
-                padding: 12,
+                padding: 10,
                 boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
@@ -293,11 +296,11 @@ export function KanbanBoard({
             PALETA_ETAPAS — ela não é uma etapa cíclica, é fixa. */}
         <div
           style={{
-            flex: "0 0 280px",
+            flex: "0 0 250px",
             background: "#f5f5f7",
             border: "1px solid transparent",
             borderRadius: 14,
-            padding: 12,
+            padding: 10,
             boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
