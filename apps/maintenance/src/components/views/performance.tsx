@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useEffect } from 'react'
-import { AreaChart, Area, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { AreaChart, ComposedChart, Area, Line, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
 import { AlertTriangle, BarChart3, CheckCircle2, Clock, Siren, TrendingUp } from 'lucide-react'
@@ -13,6 +13,11 @@ import type { DailyCommitmentView } from '@/lib/types'
 // pedido explícito). Um relatório = um MaintenanceDailyCommitment (um por
 // dia, criado ao "fechar a programação do dia").
 
+// Janela do gráfico "Capacidade Produtiva" — mesma largura (90 dias) usada
+// em components/views/evolucao.tsx (DIAS_JANELA), pra consistência entre os
+// gráficos diários do módulo.
+const DIAS_JANELA_CAPACIDADE = 90
+
 function formatarDiaMes(data: string) {
   const [, mes, dia] = data.split('-')
   return `${dia}/${mes}`
@@ -21,6 +26,21 @@ function formatarDiaMes(data: string) {
 function formatarHora(iso: string) {
   return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 }
+
+// Mesmo critério de "dia local" de isoLocal em evolucao.tsx — usa
+// getFullYear/getMonth/getDate (hora do NAVEGADOR, não toISOString/UTC) pra
+// não empurrar um evento perto da meia-noite pro dia errado. Só serve pra
+// bucketizar aqui dentro; não precisa bater com nenhum formato salvo no banco.
+function chaveDiaLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Verde (positivo: mais NC eliminadas que surgidas no dia) / vermelho
+// (negativo) — mesmos tons de corPorScore em evolucao.tsx (green-500/red-500),
+// aqui sem interpolação: é uma decisão binária por dia, não uma escala
+// contínua.
+const VERDE_BANDA = 'rgb(34, 197, 94)'
+const VERMELHO_BANDA = 'rgb(239, 68, 68)'
 
 // Denominador é totalPrevisto (congelado no fechamento do dia), não o total
 // ao vivo de commitment.cards — cards intempestivos/urgentes adicionados
@@ -33,7 +53,18 @@ function pctRealizacao(commitment: DailyCommitmentView) {
   return Math.round((executadas / commitment.totalPrevisto) * 100)
 }
 
-export function Performance({ commitments }: { commitments: DailyCommitmentView[] }) {
+export function Performance({
+  commitments,
+  ncSurgidasEm,
+  ncEliminadasEm,
+}: {
+  commitments: DailyCommitmentView[]
+  // Timestamps ISO crus (ver comentário completo em components/dashboard.tsx)
+  // — bucketizados por dia aqui dentro, mesmo padrão de serieDiaria em
+  // evolucao.tsx.
+  ncSurgidasEm: string[]
+  ncEliminadasEm: string[]
+}) {
   // commitments chega ordenado do mais recente pro mais antigo (page.tsx) —
   // aqui inverte só pro gráfico, que precisa do mais antigo à esquerda.
   const serieDiaria = useMemo(
@@ -43,6 +74,68 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
         .map((c) => ({ dia: formatarDiaMes(c.data), realizacao: pctRealizacao(c) })),
     [commitments],
   )
+
+  // "Capacidade Produtiva" — NC surgidas vs eliminadas por dia, últimos
+  // DIAS_JANELA_CAPACIDADE dias corridos (não amarrado a dia com
+  // MaintenanceDailyCommitment fechado, diferente de serieDiaria acima).
+  // minValor/diffValor formam a "banda" empilhada (Area stackId) que
+  // preenche visualmente a região entre as duas linhas — minValor fica
+  // transparente (só empurra a base), diffValor é a parte colorida em cima.
+  const serieCapacidade = useMemo(() => {
+    const surgidasPorDia = new Map<string, number>()
+    for (const iso of ncSurgidasEm) {
+      const chave = chaveDiaLocal(new Date(iso))
+      surgidasPorDia.set(chave, (surgidasPorDia.get(chave) ?? 0) + 1)
+    }
+    const eliminadasPorDia = new Map<string, number>()
+    for (const iso of ncEliminadasEm) {
+      const chave = chaveDiaLocal(new Date(iso))
+      eliminadasPorDia.set(chave, (eliminadasPorDia.get(chave) ?? 0) + 1)
+    }
+
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+    const dias: {
+      dia: string
+      ncSurgidas: number
+      ncEliminadas: number
+      minValor: number
+      diffValor: number
+      positivo: boolean
+    }[] = []
+    for (let i = DIAS_JANELA_CAPACIDADE - 1; i >= 0; i--) {
+      const d = new Date(hoje)
+      d.setDate(d.getDate() - i)
+      const chave = chaveDiaLocal(d)
+      const label = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
+      const ncSurgidas = surgidasPorDia.get(chave) ?? 0
+      const ncEliminadas = eliminadasPorDia.get(chave) ?? 0
+      dias.push({
+        dia: label,
+        ncSurgidas,
+        ncEliminadas,
+        minValor: Math.min(ncSurgidas, ncEliminadas),
+        diffValor: Math.abs(ncEliminadas - ncSurgidas),
+        positivo: ncEliminadas >= ncSurgidas,
+      })
+    }
+    return dias
+  }, [ncSurgidasEm, ncEliminadasEm])
+
+  // Stops do gradiente horizontal da banda — um por dia, verde quando aquele
+  // dia eliminou mais NC do que surgiu, vermelho caso contrário (pedido
+  // explícito do Felipe). Mesma técnica de stopsGradiente em evolucao.tsx,
+  // só que com 2 cores fixas em vez de interpolação contínua.
+  const stopsBanda = useMemo(() => {
+    const n = serieCapacidade.length
+    if (n === 0) return []
+    return serieCapacidade.map((d, i) => ({
+      offset: `${(i / Math.max(n - 1, 1)) * 100}%`,
+      cor: d.positivo ? VERDE_BANDA : VERMELHO_BANDA,
+    }))
+  }, [serieCapacidade])
+
+  const temDadosCapacidade = ncSurgidasEm.length > 0 || ncEliminadasEm.length > 0
 
   const mediaRealizacao = useMemo(() => {
     if (commitments.length === 0) return 0
@@ -61,6 +154,13 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
     const el = scrollRef.current
     if (el) el.scrollLeft = el.scrollWidth
   }, [serieDiaria])
+
+  const larguraGraficoCapacidade = Math.max(serieCapacidade.length * 44, 600)
+  const scrollCapacidadeRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = scrollCapacidadeRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [serieCapacidade])
 
   return (
     <div className="space-y-6">
@@ -84,6 +184,96 @@ export function Performance({ commitments }: { commitments: DailyCommitmentView[
           icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
         />
       </div>
+
+      <Panel
+        title="Capacidade Produtiva"
+        description="NC eliminadas vs. NC surgidas por dia. Área verde = eliminação maior que surgimento; vermelha = o contrário. Arraste pros lados pra ver os outros dias."
+      >
+        {!temDadosCapacidade ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Nenhuma não conformidade registrada ou resolvida ainda.
+          </p>
+        ) : (
+          <div className="overflow-x-auto" ref={scrollCapacidadeRef}>
+            <div style={{ minWidth: larguraGraficoCapacidade }}>
+              <ChartContainer
+                config={{
+                  ncSurgidas: { label: 'NC surgidas', color: 'var(--destructive)' },
+                  ncEliminadas: { label: 'NC eliminadas', color: 'var(--success)' },
+                }}
+                className="h-72 w-full"
+              >
+                <ComposedChart data={serieCapacidade} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
+                  <defs>
+                    {/* Gradiente HORIZONTAL (um stop por dia) — verde/vermelho
+                        conforme quem está por cima naquele dia (positivo em
+                        serieCapacidade). Mesma técnica do gradiente por score
+                        em evolucao.tsx, só que binária. */}
+                    <linearGradient id="fillBandaCapacidade" x1="0" y1="0" x2="1" y2="0">
+                      {stopsBanda.map((s, i) => (
+                        <stop key={i} offset={s.offset} stopColor={s.cor} stopOpacity={0.3} />
+                      ))}
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="dia"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    interval={0}
+                    angle={-45}
+                    textAnchor="end"
+                    height={50}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis tickLine={false} axisLine={false} width={32} allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  {/* Banda entre as duas linhas: minValor (transparente, só
+                      empurra a base) + diffValor (colorido, empilhado em
+                      cima) — junto preenchem exatamente a região entre
+                      ncSurgidas e ncEliminadas naquele dia. tooltipType="none"
+                      nas duas pra não aparecerem no tooltip (são só suporte
+                      visual da banda, não métricas em si — ncSurgidas/
+                      ncEliminadas já cobrem isso). */}
+                  <Area
+                    dataKey="minValor"
+                    stackId="banda"
+                    stroke="none"
+                    fill="transparent"
+                    isAnimationActive={false}
+                    tooltipType="none"
+                  />
+                  <Area
+                    dataKey="diffValor"
+                    stackId="banda"
+                    stroke="none"
+                    fill="url(#fillBandaCapacidade)"
+                    isAnimationActive={false}
+                    tooltipType="none"
+                  />
+                  <Line
+                    dataKey="ncSurgidas"
+                    type="monotone"
+                    stroke="var(--color-ncSurgidas)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    dataKey="ncEliminadas"
+                    type="monotone"
+                    stroke="var(--color-ncEliminadas)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </ComposedChart>
+              </ChartContainer>
+            </div>
+          </div>
+        )}
+      </Panel>
 
       <Panel
         title="Performance ao longo do tempo"

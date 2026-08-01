@@ -205,6 +205,8 @@ export function Dashboard({
   cardsExecutadasHoje,
   conformitySnapshots,
   logEventos,
+  ncSurgidasEm,
+  ncEliminadasEm,
 }: {
   user: DashboardUser
   // false = usuário pode ver todas as telas normalmente, mas os botões de
@@ -242,6 +244,13 @@ export function Dashboard({
   // Timeline "Log do Sistema" — já vem pronta e ordenada (desc) do page.tsx,
   // ver comentário completo em lib/types.ts (LogEvento).
   logEventos: LogEvento[]
+  // Gráfico "Capacidade Produtiva" (tela Performance) — timestamps crus
+  // (ISO) de NC surgidas (MaintenanceCorrectionCard.createdAt) e eliminadas
+  // (MaintenanceCorrection.createdAt) dos últimos ~95 dias; o bucket por dia
+  // é feito dentro de Performance, mesmo padrão de serieDiaria em
+  // components/views/evolucao.tsx.
+  ncSurgidasEm: string[]
+  ncEliminadasEm: string[]
 }) {
   const [view, setView] = useState<ViewId>('gerencial')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -481,7 +490,9 @@ export function Dashboard({
               correcoesRecentes={correcoes}
             />
           )}
-          {view === 'performance' && <Performance commitments={commitments} />}
+          {view === 'performance' && (
+            <Performance commitments={commitments} ncSurgidasEm={ncSurgidasEm} ncEliminadasEm={ncEliminadasEm} />
+          )}
           {view === 'logs' && <Logs eventos={logEventos} />}
           {view === 'uh3d' && (
             <Uh3D

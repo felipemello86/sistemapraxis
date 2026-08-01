@@ -44,6 +44,15 @@ export default async function Home() {
 
   const hoje = dataAtualSP();
 
+  // Janela do gráfico "Capacidade Produtiva" (tela Performance) — mesma
+  // largura de DIAS_JANELA usada em components/views/evolucao.tsx (90 dias).
+  // Corte com folga (95 dias) porque o bucket por dia é feito no client em
+  // horário local (mesmo critério de isoLocal em evolucao.tsx) — a folga
+  // evita perder o primeiro dia da janela por causa da diferença de fuso
+  // entre o corte aqui (servidor) e o agrupamento lá.
+  const cutoffCapacidade = new Date();
+  cutoffCapacidade.setDate(cutoffCapacidade.getDate() - 95);
+
   const [
     uhs,
     checklistItems,
@@ -62,6 +71,8 @@ export default async function Home() {
     conformitySnapshots,
     allCardsForLog,
     auditEvents,
+    ncSurgidasBrutas,
+    ncEliminadasBrutas,
   ] = await Promise.all([
     prisma.uH.findMany({
       where: { tenantId: session.tenantId, ativo: true },
@@ -257,6 +268,25 @@ export default async function Home() {
       where: { tenantId: session.tenantId, module: "MAINTENANCE" },
       select: { id: true, eventType: true, payload: true, createdAt: true },
       orderBy: { createdAt: "desc" },
+    }),
+    // Gráfico "Capacidade Produtiva" (tela Performance) — pedido explícito do
+    // Felipe: NC surgidas vs eliminadas por dia. "Surgida" = createdAt do
+    // card de Correção, que nasce no instante em que um item vira
+    // NAO_CONFORME, em QUALQUER ponto de entrada (Inspeção, UH 3D, NC
+    // avulsa, flag de Manutenção via Governança) — ver
+    // packages/core/src/maintenanceCorrection.ts, createCorrectionCardForItem.
+    prisma.maintenanceCorrectionCard.findMany({
+      where: { tenantId: session.tenantId, createdAt: { gte: cutoffCapacidade } },
+      select: { createdAt: true },
+    }),
+    // "Eliminada" = createdAt de MaintenanceCorrection — a ÚNICA tabela que
+    // cobre todos os caminhos de resolução (kanban Execução/Serviços
+    // Externos, botão Corrigir, edição direta via UH 3D). Diferente de
+    // MaintenanceCorrectionCard.executedAt, que fica desatualizado no
+    // caminho de edição via UH 3D (editarSpotInspecaoImpl não toca no card).
+    prisma.maintenanceCorrection.findMany({
+      where: { tenantId: session.tenantId, createdAt: { gte: cutoffCapacidade } },
+      select: { createdAt: true },
     }),
   ]);
 
@@ -744,6 +774,8 @@ export default async function Home() {
       hojeSP={hoje}
       conformitySnapshots={conformitySnapshotsView}
       logEventos={logEventos}
+      ncSurgidasEm={ncSurgidasBrutas.map((c) => c.createdAt.toISOString())}
+      ncEliminadasEm={ncEliminadasBrutas.map((c) => c.createdAt.toISOString())}
     />
   );
 }
