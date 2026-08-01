@@ -83,6 +83,7 @@ export function Informacoes({
   itemInfos,
   itemInfoLogs,
   inspectionItemIdsComCard,
+  uhIdsLiberadasHoje,
 }: {
   podeOperar: boolean
   unidades: UnitOption[]
@@ -97,6 +98,14 @@ export function Informacoes({
   // pedido do Felipe pra não ter tela de triagem retroativa dedicada, e sim
   // um botão aqui mesmo (ver triandoItem abaixo).
   inspectionItemIdsComCard: string[]
+  // UHs selecionadas hoje pelo Atendimento na tela Seleção e Liberação
+  // (Governança) — mesma origem usada no Kanban de Execução (ver
+  // apps/maintenance/src/app/page.tsx, prisma.dailyUHSelection). Pedido
+  // explícito do Felipe: "se a UH estará livre para inspeção hj (selecionada
+  // para limpeza pelo atendimento)" — o critério é a SELEÇÃO em si (existe
+  // uma linha de DailyUHSelection pra hoje), não a liberação (etapa
+  // posterior, mais estrita, que confirma a UH fisicamente vazia).
+  uhIdsSelecionadasHoje: string[]
 }) {
   const [pending, startTransition] = useTransition()
   const [triandoItem, setTriandoItem] = useState<{ unidade: UnitOption; item: InspectionItem } | null>(null)
@@ -167,6 +176,8 @@ export function Informacoes({
     return m
   }, [itens])
 
+  const selecionadasHojeSet = useMemo(() => new Set(uhIdsSelecionadasHoje), [uhIdsSelecionadasHoje])
+
   const todasAsLinhas = useMemo(() => {
     return unidades.map((u) => {
       const ult = ultimaMap.get(u.id)
@@ -178,9 +189,10 @@ export function Informacoes({
         dias,
         pendente,
         historico: inspecoesPorUnidade.get(u.id) ?? [],
+        livreHoje: selecionadasHojeSet.has(u.id),
       }
     })
-  }, [unidades, ultimaMap, inspecoesPorUnidade, maxDias])
+  }, [unidades, ultimaMap, inspecoesPorUnidade, maxDias, selecionadasHojeSet])
 
   const pendentesCount = todasAsLinhas.filter((l) => l.pendente).length
   const emDiaCount = unidades.length - pendentesCount
@@ -539,7 +551,7 @@ export function Informacoes({
             </button>
           </div>
           <div className="divide-y divide-border/70">
-          {linhas.map(({ unidade, ultima, dias, pendente, historico: historicoDaUnidade }) => {
+          {linhas.map(({ unidade, ultima, dias, pendente, historico: historicoDaUnidade, livreHoje }) => {
             const aberta = expandida === unidade.id
             return (
               <div key={unidade.id} className="py-3">
@@ -563,6 +575,16 @@ export function Informacoes({
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge
+                      variant="outline"
+                      className={
+                        livreHoje
+                          ? 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
+                          : 'border-border bg-muted text-muted-foreground'
+                      }
+                    >
+                      {livreHoje ? 'Livre hoje' : 'Ocupada hoje'}
+                    </Badge>
                     <Badge
                       variant="outline"
                       className={
@@ -648,12 +670,13 @@ export function Informacoes({
                   </button>
                 </th>
                 <th className="pb-3 pr-4 font-medium">Prazo da Inspeção</th>
+                <th className="pb-3 pr-4 font-medium">Livre hoje</th>
                 <th className="pb-3 pr-4 font-medium">Situação</th>
                 <th className="pb-3 font-medium" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border/70">
-              {linhas.map(({ unidade, ultima, dias, pendente, historico: historicoDaUnidade }) => {
+              {linhas.map(({ unidade, ultima, dias, pendente, historico: historicoDaUnidade, livreHoje }) => {
                 const aberta = expandida === unidade.id
                 return (
                   <Fragment key={unidade.id}>
@@ -685,6 +708,18 @@ export function Informacoes({
                           }
                         >
                           {pendente ? 'Em Atraso' : 'Em dia'}
+                        </Badge>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Badge
+                          variant="outline"
+                          className={
+                            livreHoje
+                              ? 'border-[var(--success)]/30 bg-[var(--success)]/12 text-[var(--success)]'
+                              : 'border-border bg-muted text-muted-foreground'
+                          }
+                        >
+                          {livreHoje ? 'Livre hoje' : 'Ocupada hoje'}
                         </Badge>
                       </td>
                       <td className="py-3 pr-4">
@@ -723,7 +758,7 @@ export function Informacoes({
                     </tr>
                     {aberta && (
                       <tr key={`${unidade.id}-detalhe`}>
-                        <td colSpan={6} className="bg-muted/30 px-4 py-3">
+                        <td colSpan={7} className="bg-muted/30 px-4 py-3">
                           <DetalheHistorico unidade={unidade} historicoDaUnidade={historicoDaUnidade} />
                         </td>
                       </tr>

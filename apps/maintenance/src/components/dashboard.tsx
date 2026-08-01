@@ -464,6 +464,7 @@ export function Dashboard({
               itemInfos={itemInfos}
               itemInfoLogs={itemInfoLogs}
               inspectionItemIdsComCard={inspectionItemIdsComCard}
+              uhIdsSelecionadasHoje={uhIdsSelecionadasHoje}
             />
           )}
           {view === 'correcao' && (
