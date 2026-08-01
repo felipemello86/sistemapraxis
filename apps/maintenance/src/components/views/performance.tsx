@@ -30,6 +30,14 @@ import type { DailyCommitmentView } from '@/lib/types'
 const DIAS_JANELA_CAPACIDADE = 90
 const DIAS_COMPACTO_CAPACIDADE = 7
 
+// Pedido explícito do Felipe: cada dia do gráfico de Capacidade Produtiva
+// passou a ser a MÉDIA MÓVEL do próprio dia + os 6 anteriores (janela de 7),
+// não mais a contagem bruta daquele dia isolado — suaviza picos de um único
+// dia ruidoso. Coincide numericamente com DIAS_COMPACTO_CAPACIDADE (7), mas
+// são conceitos independentes: um é o tamanho da janela de suavização, o
+// outro é quantos pontos já suavizados aparecem no card compacto.
+const JANELA_MEDIA_MOVEL_CAPACIDADE = 7
+
 function formatarDiaMes(data: string) {
   const [, mes, dia] = data.split('-')
   return `${dia}/${mes}`
@@ -45,6 +53,12 @@ function formatarHora(iso: string) {
 // bucketizar aqui dentro; não precisa bater com nenhum formato salvo no banco.
 function chaveDiaLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Arredonda pra 1 casa decimal — a média móvel deixa de ser um número
+// inteiro (ex.: 2.3 NC/dia), diferente da contagem bruta de antes.
+function arredondar1(n: number) {
+  return Math.round(n * 10) / 10
 }
 
 // Verde (positivo: mais NC eliminadas que surgidas no dia) / vermelho
@@ -121,9 +135,12 @@ export function Performance({
   // "Capacidade Produtiva" — NC surgidas vs eliminadas por dia, últimos
   // DIAS_JANELA_CAPACIDADE dias corridos (não amarrado a dia com
   // MaintenanceDailyCommitment fechado, diferente de serieDiaria acima).
-  // minValor/diffValor formam a "banda" empilhada (Area stackId) que
-  // preenche visualmente a região entre as duas linhas — minValor fica
-  // transparente (só empurra a base), diffValor é a parte colorida em cima.
+  // Cada dia exibido é a MÉDIA MÓVEL de JANELA_MEDIA_MOVEL_CAPACIDADE dias
+  // (o próprio dia + os 6 anteriores) — pedido explícito do Felipe, pra
+  // suavizar picos de um único dia ruidoso. minValor/diffValor formam a
+  // "banda" empilhada (Area stackId) que preenche visualmente a região
+  // entre as duas linhas — minValor fica transparente (só empurra a base),
+  // diffValor é a parte colorida em cima.
   const serieCapacidade = useMemo(() => {
     const surgidasPorDia = new Map<string, number>()
     for (const iso of ncSurgidasEm) {
@@ -138,14 +155,32 @@ export function Performance({
 
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
-    const dias: PontoCapacidade[] = []
-    for (let i = DIAS_JANELA_CAPACIDADE - 1; i >= 0; i--) {
+
+    // Contagem BRUTA por dia, com folga de JANELA_MEDIA_MOVEL_CAPACIDADE-1
+    // dias ANTES do início da janela exibida — sem essa folga, o primeiro
+    // dia exibido não teria histórico suficiente pra uma média de 7 dias
+    // completa. Array em ordem crescente (mais antigo primeiro); o page.tsx
+    // já busca dados com folga extra pra cobrir isso (ver cutoffCapacidade).
+    const totalComFolga = DIAS_JANELA_CAPACIDADE + JANELA_MEDIA_MOVEL_CAPACIDADE - 1
+    const bruto: { data: Date; ncSurgidas: number; ncEliminadas: number }[] = []
+    for (let i = totalComFolga - 1; i >= 0; i--) {
       const d = new Date(hoje)
       d.setDate(d.getDate() - i)
       const chave = chaveDiaLocal(d)
-      const label = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(d)
-      const ncSurgidas = surgidasPorDia.get(chave) ?? 0
-      const ncEliminadas = eliminadasPorDia.get(chave) ?? 0
+      bruto.push({
+        data: d,
+        ncSurgidas: surgidasPorDia.get(chave) ?? 0,
+        ncEliminadas: eliminadasPorDia.get(chave) ?? 0,
+      })
+    }
+
+    const dias: PontoCapacidade[] = []
+    for (let p = 0; p < DIAS_JANELA_CAPACIDADE; p++) {
+      const janela = bruto.slice(p, p + JANELA_MEDIA_MOVEL_CAPACIDADE)
+      const diaAtual = janela[janela.length - 1].data
+      const label = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(diaAtual)
+      const ncSurgidas = arredondar1(janela.reduce((s, v) => s + v.ncSurgidas, 0) / janela.length)
+      const ncEliminadas = arredondar1(janela.reduce((s, v) => s + v.ncEliminadas, 0) / janela.length)
       dias.push({
         dia: label,
         ncSurgidas,
@@ -302,7 +337,7 @@ export function Performance({
       {!expandidoCapacidade ? (
         <Panel
           title="Capacidade Produtiva"
-          description={`NC eliminadas vs. NC surgidas — últimos ${DIAS_COMPACTO_CAPACIDADE} dias. Verde = eliminação maior que surgimento; vermelha = o contrário.`}
+          description={`Média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias — NC eliminadas vs. surgidas, últimos ${DIAS_COMPACTO_CAPACIDADE} dias. Verde = eliminação maior que surgimento; vermelha = o contrário.`}
           action={
             !temDadosCapacidade ? undefined : (
               <button
@@ -333,7 +368,7 @@ export function Performance({
         <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 md:p-6">
           <Panel
             title="Capacidade Produtiva"
-            description={`NC eliminadas vs. NC surgidas — últimos ${DIAS_JANELA_CAPACIDADE} dias (3 meses), janela inteira visível abaixo.`}
+            description={`Média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias — NC eliminadas vs. surgidas, últimos ${DIAS_JANELA_CAPACIDADE} dias (3 meses), janela inteira visível abaixo.`}
             action={
               <button
                 type="button"
