@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -189,19 +189,15 @@ export function Evolucao({
     [unidades, itens, atribuicoes],
   )
 
-  // Largura mínima do gráfico diário — cada dia precisa de espaço pra
-  // legenda não amontoar, mesma lógica aplicada no gráfico de UHs da Visão
-  // Gerencial (rolagem só dentro do bloco do gráfico, não na tela inteira).
-  // Usada só no modo COMPACTO (card pequeno) — no modo expandido o gráfico
-  // ocupa a tela toda, então cabe a janela inteira sem precisar rolar (ver
-  // `intervaloExpandido` abaixo).
-  const larguraGraficoDiario = Math.max(serieDiaria.length * 44, 600)
-
-  // No modo expandido, mostrar TODOS os dias como rótulo (interval={0})
-  // amontoaria ~90 legendas na largura da tela. Em vez de forçar rolagem
-  // (que foi a reclamação do Felipe: "a janela está muito curta, só 1 mês"
-  // — na real ele só via o final da rolagem), pulamos rótulos pra caber a
-  // janela inteira de uma vez, mirando ~15 legendas visíveis.
+  // Mostrar TODOS os dias como rótulo (interval={0}) amontoaria ~90 legendas
+  // na largura disponível. Em vez de forçar rolagem (que foi a reclamação
+  // original do Felipe sobre o modo expandido, e agora também sobre o card
+  // compacto: "aplica o histórico de 3 meses na exibição do gráfico também
+  // antes de maximizar" — ele quer a janela inteira visível de cara, sem
+  // precisar arrastar), pulamos rótulos pra caber a janela inteira de uma vez
+  // nos dois modos. O card compacto é mais estreito que a tela cheia, então
+  // mira menos legendas visíveis (~8) que o modo expandido (~15).
+  const intervaloCompacto = Math.max(0, Math.ceil(serieDiaria.length / 8) - 1)
   const intervaloExpandido = Math.max(0, Math.ceil(serieDiaria.length / 15) - 1)
 
   // Modo maximizado do gráfico "Conformidade ao longo do tempo" — pedido
@@ -226,20 +222,6 @@ export function Evolucao({
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [expandido])
-
-  // O dia mais recente (hoje) é o último ponto da série, então já nasce
-  // rolado pro final — sem isso o usuário abre a tela e cai no dia mais
-  // antigo, tendo que arrastar manualmente até achar "hoje" (pedido
-  // explícito pra abrir direto no dia mais recente).
-  // Mesmo ref usado nos dois modos (compacto/expandido) — só um dos dois
-  // divs de scroll está montado por vez (ver `expandido` acima), então não
-  // há conflito. `expandido` entra nas dependências pra rolar de novo pro
-  // final ao trocar de modo (o outro div nasce com scrollLeft=0 senão).
-  const scrollGraficoRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = scrollGraficoRef.current
-    if (el) el.scrollLeft = el.scrollWidth
-  }, [serieDiaria, expandido])
 
   // Conteúdo do gráfico em si — extraído numa função (não uma variável fixa)
   // pra não duplicar o AreaChart inteiro entre o card normal e o overlay
@@ -324,7 +306,7 @@ export function Evolucao({
       {!expandido ? (
         <Panel
           title="Conformidade ao longo do tempo"
-          description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias). Arraste pros lados pra ver os outros dias.`}
+          description={`Percentual de itens conformes por dia (${DIAS_JANELA} dias) — janela inteira visível abaixo.`}
           action={
             <button
               type="button"
@@ -336,18 +318,20 @@ export function Evolucao({
             </button>
           }
         >
-          <div className="overflow-x-auto" ref={scrollGraficoRef}>
-            <div style={{ minWidth: larguraGraficoDiario }}>
-              <ChartContainer
-                config={{
-                  conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
-                }}
-                className="h-72 w-full"
-              >
-                {renderGraficoConformidade(0)}
-              </ChartContainer>
-            </div>
-          </div>
+          {/* Mesmo tratamento do modo expandido (ver comentário abaixo): sem
+              rolagem, janela inteira de 3 meses cabendo na largura do card
+              já no card compacto — pedido explícito do Felipe: "aplica o
+              histórico de 3 meses na exibição do gráfico também antes de
+              maximizar" (antes, só o modo expandido cabia a janela inteira;
+              o card compacto exigia arrastar pros lados). */}
+          <ChartContainer
+            config={{
+              conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
+            }}
+            className="h-72 w-full"
+          >
+            {renderGraficoConformidade(intervaloCompacto)}
+          </ChartContainer>
         </Panel>
       ) : (
         // Só um dos dois (compacto OU expandido) fica montado por vez —
@@ -377,7 +361,7 @@ export function Evolucao({
                 curta, só mostra 1 mês" — o problema era precisar rolar pra
                 ver o resto). O gráfico ocupa 100% da largura disponível e
                 os rótulos do eixo X pulam de acordo com intervaloExpandido. */}
-            <div className="min-h-0 flex-1" ref={scrollGraficoRef}>
+            <div className="min-h-0 flex-1">
               <ChartContainer
                 config={{
                   conformidade: { label: 'Conformidade', color: 'var(--chart-2)' },
