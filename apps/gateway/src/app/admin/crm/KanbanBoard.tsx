@@ -17,6 +17,28 @@ function IconeLixeira() {
   );
 }
 
+// Pedido do Felipe (31/07/2026): trocar os emojis ✅/❌ dos botões rápidos de
+// ganho/perdido por ícones "mais bem elaborados", mantendo cor — mesmo
+// padrão do IconeLixeira acima (SVG inline com currentColor, sem lib nova).
+// A cor de cada um fica no `color` do <button> que o envolve, não fixa aqui.
+function IconeGanho({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8.25 12.5 2.5 2.5 5-5.5" />
+    </svg>
+  );
+}
+
+function IconePerdido({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="m9.5 9.5 5 5M14.5 9.5l-5 5" />
+    </svg>
+  );
+}
+
 type Etapa = { id: string; nome: string };
 type Lead = {
   id: string;
@@ -222,17 +244,17 @@ export function KanbanBoard({
                           type="button"
                           title="Marcar como ganho"
                           onClick={() => marcarGanho(lead)}
-                          style={{ border: "none", background: "none", cursor: "pointer", padding: 2, fontSize: 13, lineHeight: 1 }}
+                          style={{ border: "none", background: "none", color: "#1a7f37", cursor: "pointer", padding: 2, display: "flex" }}
                         >
-                          ✅
+                          <IconeGanho />
                         </button>
                         <button
                           type="button"
                           title="Marcar como perdido"
                           onClick={() => marcarPerdido(lead)}
-                          style={{ border: "none", background: "none", cursor: "pointer", padding: 2, fontSize: 13, lineHeight: 1 }}
+                          style={{ border: "none", background: "none", color: "#d70015", cursor: "pointer", padding: 2, display: "flex" }}
                         >
-                          ❌
+                          <IconePerdido />
                         </button>
                         <button
                           type="button"
@@ -339,6 +361,9 @@ export function KanbanBoard({
                     </div>
                     <span
                       style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
                         fontSize: 11,
                         fontWeight: 700,
                         padding: "2px 9px",
@@ -348,7 +373,8 @@ export function KanbanBoard({
                         flexShrink: 0,
                       }}
                     >
-                      {lead.desfecho === "GANHO" ? "✅ Ganho" : "❌ Perdido"}
+                      {lead.desfecho === "GANHO" ? <IconeGanho size={11} /> : <IconePerdido size={11} />}
+                      {lead.desfecho === "GANHO" ? "Ganho" : "Perdido"}
                     </span>
                     <button
                       type="button"
