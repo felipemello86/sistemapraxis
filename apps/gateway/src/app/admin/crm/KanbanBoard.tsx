@@ -64,11 +64,16 @@ const PALETA_ETAPAS = ["#F2C94C", "#BB6BD9", "#2F80ED", "#56CCF2", "#F2994A", "#
 // <select> já usava, então o comportamento de permissão/histórico
 // (LeadActivity) continua idêntico.
 //
-// Ganho/perdido (30/07/2026, 2ª rodada): não são mais colunas — um lead
-// marcado ✅/❌ continua na mesma etapa, só sai da visão normal do board e
-// vai pra área recolhível "Finalizados" no rodapé (filtrável por
-// ganho/perdido/todos). Reabrir devolve ele pro board normal, na mesma
-// coluna de sempre.
+// Ganho/perdido (31/07/2026, 3ª rodada, pedido do Felipe): em vez de sumir
+// pra uma área recolhível embaixo do board, um lead marcado ✅/❌ agora vai
+// pra uma coluna "Finalizados" FIXA, sempre por último na linha de colunas —
+// diferente das etapas de verdade (PipelineStage), não é editável/excluível
+// em "Gerenciar etapas" porque simplesmente não é uma PipelineStage, é
+// hardcoded aqui. Sem drag-and-drop pra dentro dela (sem onDragOver/onDrop
+// nessa coluna) — o único jeito de finalizar um lead continua sendo os
+// botões ✅/❌ do card (evita a ambiguidade de "virou ganho ou perdido?" ao
+// simplesmente soltar um card lá). Reabrir devolve o lead pro board normal,
+// na mesma coluna/etapa de sempre (marcarDesfecho nunca mexe em stageId).
 export function KanbanBoard({
   etapas,
   leadsIniciais,
@@ -89,7 +94,6 @@ export function KanbanBoard({
   const [leads, setLeads] = useState(leadsIniciais);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [sobreEtapaId, setSobreEtapaId] = useState<string | null>(null);
-  const [mostrarFinalizados, setMostrarFinalizados] = useState(false);
   const [filtroFinalizados, setFiltroFinalizados] = useState<"TODOS" | "GANHO" | "PERDIDO">("TODOS");
 
   // Ressincroniza com o servidor sempre que a página recarrega os dados
@@ -281,46 +285,49 @@ export function KanbanBoard({
             </div>
           );
         })}
-      </div>
 
-      <div style={{ marginTop: 16, flexShrink: 0 }}>
-        <button
-          type="button"
-          onClick={() => setMostrarFinalizados((v) => !v)}
+        {/* Coluna fixa "Finalizados" — sempre por último, sem
+            onDragOver/onDrop (drop nela fica bloqueado pelo comportamento
+            padrão do HTML5 DnD; só os botões ✅/❌ dos cards abertos marcam
+            ganho/perdido). Cor da barra neutra (#1d1d1f) em vez de vir de
+            PALETA_ETAPAS — ela não é uma etapa cíclica, é fixa. */}
+        <div
           style={{
+            flex: "0 0 280px",
+            background: "#f5f5f7",
+            border: "1px solid transparent",
+            borderRadius: 14,
+            padding: 12,
+            boxSizing: "border-box",
             display: "flex",
-            alignItems: "center",
-            gap: 8,
-            border: "none",
-            background: "none",
-            cursor: "pointer",
-            padding: "8px 4px",
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#1d1d1f",
+            flexDirection: "column",
+            minHeight: 0,
           }}
         >
-          <span style={{ display: "inline-block", transform: mostrarFinalizados ? "rotate(90deg)" : "none", transition: "transform 0.1s" }}>
-            ▶
-          </span>
-          Finalizados ({leads.filter((l) => l.desfecho !== "ABERTO").length})
-        </button>
-
-        {mostrarFinalizados && (
-          <div style={{ background: "#f5f5f7", borderRadius: 14, padding: 12 }}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <div style={{ padding: "0 4px", marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 13, color: "#1d1d1f" }}>Finalizados</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <span style={{ fontSize: 11.5, color: "#6e6e73", fontWeight: 600 }}>
+                  {formatValorBRLCompacto(leadsFinalizados.reduce((soma, l) => soma + l.valor, 0))}
+                </span>
+                <span style={{ fontSize: 12, color: "#6e6e73", fontWeight: 600 }}>{leadsFinalizados.length}</span>
+              </span>
+            </div>
+            <div style={{ height: 3, borderRadius: 999, background: "#1d1d1f", marginTop: 8 }} />
+            <div style={{ display: "flex", gap: 4, marginTop: 8 }}>
               {(["TODOS", "GANHO", "PERDIDO"] as const).map((f) => (
                 <button
                   key={f}
                   type="button"
                   onClick={() => setFiltroFinalizados(f)}
                   style={{
-                    padding: "5px 12px",
+                    padding: "3px 8px",
                     borderRadius: 999,
                     border: filtroFinalizados === f ? "1px solid #1d1d1f" : "1px solid #d2d2d7",
                     background: filtroFinalizados === f ? "#1d1d1f" : "#fff",
                     color: filtroFinalizados === f ? "#fff" : "#1d1d1f",
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: 600,
                     cursor: "pointer",
                   }}
@@ -329,74 +336,82 @@ export function KanbanBoard({
                 </button>
               ))}
             </div>
-
-            {leadsFinalizados.length === 0 ? (
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", minHeight: 0, flex: 1 }}>
+            {leadsFinalizados.length === 0 && (
               <p style={{ fontSize: 12, color: "#a1a1a6", padding: "0 4px" }}>Nenhum lead finalizado aqui.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto" }}>
-                {leadsFinalizados.map((lead) => (
-                  <div
-                    key={lead.id}
+            )}
+            {leadsFinalizados.map((lead) => (
+              <div
+                key={lead.id}
+                style={{
+                  background: "#fff",
+                  borderRadius: 12,
+                  padding: 12,
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
+                  <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f", flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
+                    <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
+                    {lead.valor > 0 && (
+                      <div style={{ fontSize: 12, color: "#1a7f37", fontWeight: 700, marginTop: 2 }}>
+                        {formatValorBRL(lead.valor)}
+                      </div>
+                    )}
+                  </Link>
+                  <button
+                    type="button"
+                    title="Reabrir (volta pro board)"
+                    onClick={() => reabrir(lead)}
                     style={{
+                      border: "1px solid #d2d2d7",
+                      borderRadius: 7,
                       background: "#fff",
-                      borderRadius: 12,
-                      padding: 12,
-                      boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      flexWrap: "wrap",
+                      color: "#1d1d1f",
+                      cursor: "pointer",
+                      padding: "3px 7px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      flexShrink: 0,
                     }}
                   >
-                    <div style={{ minWidth: 200, flex: 1 }}>
-                      <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f" }}>
-                        <span style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</span>{" "}
-                        <span style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</span>
-                      </Link>
-                      <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "#a1a1a6" }}>
-                        {lead.stageId ? nomeEtapa.get(lead.stageId) ?? "—" : "—"}
-                        {lead.desfecho === "PERDIDO" && lead.motivoPerda ? ` · “${lead.motivoPerda}”` : ""}
-                      </p>
-                    </div>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "2px 9px",
-                        borderRadius: 999,
-                        color: lead.desfecho === "GANHO" ? "#1a7f37" : "#d70015",
-                        background: lead.desfecho === "GANHO" ? "#1a7f371a" : "#d700151a",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {lead.desfecho === "GANHO" ? <IconeGanho size={11} /> : <IconePerdido size={11} />}
-                      {lead.desfecho === "GANHO" ? "Ganho" : "Perdido"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => reabrir(lead)}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #d2d2d7",
-                        background: "#fff",
-                        fontSize: 12,
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      Reabrir
-                    </button>
-                  </div>
-                ))}
+                    ↩
+                  </button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "2px 9px",
+                      borderRadius: 999,
+                      color: lead.desfecho === "GANHO" ? "#1a7f37" : "#d70015",
+                      background: lead.desfecho === "GANHO" ? "#1a7f371a" : "#d700151a",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {lead.desfecho === "GANHO" ? <IconeGanho size={11} /> : <IconePerdido size={11} />}
+                    {lead.desfecho === "GANHO" ? "Ganho" : "Perdido"}
+                  </span>
+                  {lead.stageId && (
+                    <span style={{ fontSize: 11, color: "#a1a1a6" }}>{nomeEtapa.get(lead.stageId) ?? "—"}</span>
+                  )}
+                </div>
+                {lead.desfecho === "PERDIDO" && lead.motivoPerda && (
+                  <p style={{ margin: 0, fontSize: 11.5, color: "#a1a1a6" }}>“{lead.motivoPerda}”</p>
+                )}
               </div>
-            )}
+            ))}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

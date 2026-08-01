@@ -534,6 +534,45 @@ export async function atualizarDadosLeadAction(
   redirect(`/admin/crm/${leadId}`);
 }
 
+// ─── Parceiro do lead (quando fonte="Indicação") ─────────────────────────────
+// Mesmo padrão do FonteSelect (../EtapaSelect.tsx style): <select> que já
+// dispara a action no onChange, sem <form>. Ver ParceiroSelect.tsx.
+export async function atualizarParceiroAction(leadId: string, parceiroId: string) {
+  await requireAdminSession();
+  const id = parceiroId.trim();
+  await prisma.demoLead.update({ where: { id: leadId }, data: { parceiroId: id || null } });
+  redirect(`/admin/crm/${leadId}`);
+}
+
+// ─── Parceiros & Vendedores (/admin/crm) ─────────────────────────────────────
+// Cadastro simples de quem indica/vende hotéis pra Praxis (31/07/2026,
+// pedido do Felipe) — vive na mesma tela do board, no lugar onde antes era a
+// lista recolhível de leads Finalizados (ver ParceirosSection.tsx e
+// KanbanBoard.tsx).
+export async function criarParceiroAction(
+  _prevState: AdminActionResult | null,
+  formData: FormData
+): Promise<AdminActionResult> {
+  await requireAdminSession();
+  const nome = String(formData.get("nome") ?? "").trim().slice(0, 120);
+  const telefone = String(formData.get("telefone") ?? "").trim().slice(0, 40);
+  const observacao = String(formData.get("observacao") ?? "").trim().slice(0, 500);
+  if (!nome) return { ok: false, error: "Dê o nome do parceiro/vendedor." };
+
+  await prisma.crmParceiro.create({
+    data: { nome, telefone: telefone || null, observacao: observacao || null },
+  });
+  redirect("/admin/crm");
+}
+
+// onDelete: SetNull no schema (DemoLead.parceiroId) — excluir um parceiro
+// não apaga nem trava os leads que ele já trouxe, só desassocia.
+export async function excluirParceiroAction(parceiroId: string) {
+  await requireAdminSession();
+  await prisma.crmParceiro.delete({ where: { id: parceiroId } }).catch(() => {});
+  redirect("/admin/crm");
+}
+
 // Cria um lead direto no CRM, sem passar pelo formulário público da landing
 // page — pra contatos que chegaram por telefone, indicação, evento etc.
 // E-mail é opcional aqui (diferente do POST /api/demo) porque nem sempre dá
@@ -555,6 +594,10 @@ export async function criarLeadManualAction(
   const fonte = String(formData.get("fonte") ?? "").trim().slice(0, 60);
   const valorStr = String(formData.get("valor") ?? "").replace(",", ".").trim();
   const valor = valorStr ? Number(valorStr) : 0;
+  // Só faz sentido junto de fonte="Indicação" (ver NovoLeadForm.tsx, campo só
+  // aparece nesse caso), mas opcional mesmo assim (pedido do Felipe) — string
+  // vazia vira null, nunca grava um parceiroId inválido/inexistente.
+  const parceiroIdBruto = String(formData.get("parceiroId") ?? "").trim();
 
   if (!nome || !hotel || !telefone) {
     return { ok: false, error: "Preencha nome, hotel e telefone." };
@@ -579,9 +622,26 @@ export async function criarLeadManualAction(
   const telefoneFormatado = formatarTelefoneExibicao(telefone);
 
   const primeiraEtapa = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "asc" } });
+  // Confirma que o parceiro escolhido existe de verdade antes de gravar —
+  // evita um parceiroId órfão se o <select> do client chegou a mandar algo
+  // fora da lista atual (ex.: parceiro excluído entre o carregamento da
+  // página e o submit).
+  const parceiro = parceiroIdBruto
+    ? await prisma.crmParceiro.findUnique({ where: { id: parceiroIdBruto }, select: { id: true } })
+    : null;
 
   const lead = await prisma.demoLead.create({
-    data: { nome, hotel, email, telefone: telefoneFormatado, mensagem: mensagem || null, fonte, valor, stageId: primeiraEtapa?.id },
+    data: {
+      nome,
+      hotel,
+      email,
+      telefone: telefoneFormatado,
+      mensagem: mensagem || null,
+      fonte,
+      valor,
+      stageId: primeiraEtapa?.id,
+      parceiroId: parceiro?.id,
+    },
   });
 
   await prisma.leadActivity.create({
@@ -593,6 +653,12 @@ export async function criarLeadManualAction(
 
 // ─── Gestão das etapas do funil (/admin/crm/etapas) ─────────────────────────
 
+// "Finalizados" é reservado — vira a coluna fixa de ganho/perdido no board
+// (31/07/2026, pedido do Felipe: fixa, não editável, sempre por último), não
+// uma PipelineStage de verdade. Bloqueia aqui pra ninguém criar/renomear uma
+// etapa de verdade com esse nome e confundir com a coluna fixa.
+const NOME_ETAPA_RESERVADO = "finalizados";
+
 export async function criarEtapaAction(
   _prevState: AdminActionResult | null,
   formData: FormData
@@ -600,6 +666,9 @@ export async function criarEtapaAction(
   await requireAdminSession();
   const nome = String(formData.get("nome") ?? "").trim();
   if (!nome) return { ok: false, error: "Dê um nome pra etapa." };
+  if (nome.toLowerCase() === NOME_ETAPA_RESERVADO) {
+    return { ok: false, error: '"Finalizados" é reservado pra coluna fixa de ganho/perdido — escolha outro nome.' };
+  }
 
   const ultima = await prisma.pipelineStage.findFirst({ orderBy: { ordem: "desc" } });
   await prisma.pipelineStage.create({
@@ -617,6 +686,9 @@ export async function renomearEtapaAction(
   await requireAdminSession();
   const nome = String(formData.get("nome") ?? "").trim();
   if (!nome) return { ok: false, error: "Dê um nome pra etapa." };
+  if (nome.toLowerCase() === NOME_ETAPA_RESERVADO) {
+    return { ok: false, error: '"Finalizados" é reservado pra coluna fixa de ganho/perdido — escolha outro nome.' };
+  }
 
   await prisma.pipelineStage.update({ where: { id: stageId }, data: { nome } });
   redirect("/admin/crm/etapas");

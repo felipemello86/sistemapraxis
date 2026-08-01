@@ -43,11 +43,20 @@ function SubmitButton() {
 // criarLeadManualAction em ../actions.ts.
 export function NovoLeadForm({
   action,
+  parceiros,
 }: {
   action: (prevState: AdminActionResult | null, formData: FormData) => Promise<AdminActionResult>;
+  // Lista de parceiros/vendedores cadastrados (ver ParceirosSection.tsx) —
+  // só usada pro <select> "Parceiro", que só aparece quando a Fonte
+  // escolhida é "Indicação" (pedido do Felipe, 31/07/2026).
+  parceiros: Array<{ id: string; nome: string }>;
 }) {
   const [aberto, setAberto] = useState(false);
   const [state, formAction] = useFormState(action, initialState);
+  // Controlado (em vez do <select> solto de antes) só pra decidir se mostra
+  // o campo Parceiro — o valor em si ainda viaja pro server via FormData
+  // normal (name="fonte"), sem passar por esse state.
+  const [fonte, setFonte] = useState("");
 
   if (!aberto) {
     return (
@@ -103,7 +112,13 @@ export function NovoLeadForm({
           placeholder="Valor (R$)"
           style={{ ...inputStyle, minWidth: 120, maxWidth: 140 }}
         />
-        <select name="fonte" required defaultValue="" style={{ ...inputStyle, maxWidth: 160 }}>
+        <select
+          name="fonte"
+          required
+          defaultValue=""
+          onChange={(e) => setFonte(e.target.value)}
+          style={{ ...inputStyle, maxWidth: 160 }}
+        >
           <option value="" disabled>
             Fonte...
           </option>
@@ -113,6 +128,16 @@ export function NovoLeadForm({
             </option>
           ))}
         </select>
+        {fonte === "Indicação" && (
+          <select name="parceiroId" defaultValue="" style={{ ...inputStyle, maxWidth: 200 }}>
+            <option value="">Parceiro (opcional)</option>
+            {parceiros.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <textarea
         name="mensagem"

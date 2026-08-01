@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getAdminSession, prisma } from "@praxis/core";
 import { garantirCrmPronto } from "../data";
 import { FonteSelect } from "./FonteSelect";
+import { ParceiroSelect } from "./ParceiroSelect";
 import { ValorInput } from "./ValorInput";
 import { LeadInfoEditavel } from "./LeadInfoEditavel";
 import { NotaForm } from "./NotaForm";
@@ -15,6 +16,7 @@ import {
   atualizarValorAction,
   atualizarTelefoneAction,
   atualizarDadosLeadAction,
+  atualizarParceiroAction,
   criarNotaAction,
   marcarPerdidoAction,
   marcarGanhoDetalheAction,
@@ -40,7 +42,7 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
 
   await garantirCrmPronto();
 
-  const [lead, etapas, campos] = await Promise.all([
+  const [lead, etapas, campos, parceiros] = await Promise.all([
     prisma.demoLead.findUnique({
       where: { id: leadId },
       include: {
@@ -52,6 +54,7 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
     }),
     prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } }),
     prisma.leadCampoPersonalizado.findMany({ orderBy: { ordem: "asc" } }),
+    prisma.crmParceiro.findMany({ orderBy: { nome: "asc" } }),
   ]);
 
   if (!lead) notFound();
@@ -119,6 +122,17 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
           <ValorInput leadId={lead.id} valorAtual={lead.valor} action={atualizarValorAction} />
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Fonte:</span>
           <FonteSelect leadId={lead.id} fonteAtual={lead.fonte} action={atualizarFonteAction} />
+          {lead.fonte === "Indicação" && (
+            <>
+              <span style={{ fontSize: 13, color: "#6e6e73" }}>Parceiro:</span>
+              <ParceiroSelect
+                leadId={lead.id}
+                parceiroIdAtual={lead.parceiroId}
+                parceiros={parceiros}
+                action={atualizarParceiroAction}
+              />
+            </>
+          )}
           {lead.desfecho === "ABERTO" && (
             <>
               <form action={marcarGanhoComId}>

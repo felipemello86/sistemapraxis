@@ -2576,6 +2576,13 @@ model DemoLead {
   stageId String?
   stage   PipelineStage? @relation(fields: [stageId], references: [id])
 
+  // Parceiro/vendedor que indicou o lead (31/07/2026, pedido do Felipe) —
+  // só faz sentido junto de fonte="Indicação", mas fica opcional mesmo
+  // nesse caso (pode preencher depois). onDelete: SetNull — excluir um
+  // parceiro do cadastro não pode apagar/travar os leads que ele já trouxe.
+  parceiroId String?
+  parceiro   CrmParceiro? @relation(fields: [parceiroId], references: [id], onDelete: SetNull)
+
   // De onde veio o lead — obrigatório (30/07/2026, pedido do Felipe;
   // substituiu o campo "responsável", removido). POST /api/demo (formulário
   // da landing page) sempre grava "Site" automaticamente; leads criados
@@ -2607,6 +2614,26 @@ model DemoLead {
 
   @@index([createdAt])
   @@index([stageId])
+  @@index([parceiroId])
+}
+
+// Parceiros & Vendedores (31/07/2026, pedido do Felipe) — lista de contatos
+// cadastrados que indicam/vendem hotéis pra Praxis. Existe pra dar um lugar
+// pra escolher o parceiro quando fonte="Indicação" (ver DemoLead.parceiroId
+// acima), em vez de digitar o nome livre toda vez. Fica na tela do board,
+// no espaço onde antes era a lista recolhível de leads Finalizados (que
+// virou uma coluna fixa do Kanban — ver KanbanBoard.tsx).
+model CrmParceiro {
+  id         String  @id @default(cuid())
+  nome       String
+  telefone   String?
+  observacao String?
+
+  createdAt DateTime @default(now())
+
+  leads DemoLead[]
+
+  @@index([nome])
 }
 
 enum WhatsAppDirecao {

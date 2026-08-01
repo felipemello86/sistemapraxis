@@ -8,9 +8,12 @@ import {
   marcarGanhoAction,
   marcarPerdidoRapidoAction,
   reabrirLeadAction,
+  criarParceiroAction,
+  excluirParceiroAction,
 } from "../actions";
 import { NovoLeadForm } from "./NovoLeadForm";
 import { KanbanBoard } from "./KanbanBoard";
+import { ParceirosSection } from "./ParceirosSection";
 
 export default async function CrmBoard() {
   const admin = await getAdminSession();
@@ -18,12 +21,13 @@ export default async function CrmBoard() {
 
   await garantirCrmPronto();
 
-  const [etapas, leads] = await Promise.all([
+  const [etapas, leads, parceiros] = await Promise.all([
     prisma.pipelineStage.findMany({ orderBy: { ordem: "asc" } }),
     prisma.demoLead.findMany({
       orderBy: { createdAt: "desc" },
       include: { stage: true },
     }),
+    prisma.crmParceiro.findMany({ orderBy: { nome: "asc" } }),
   ]);
 
   return (
@@ -60,7 +64,7 @@ export default async function CrmBoard() {
             </h1>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <NovoLeadForm action={criarLeadManualAction} />
+            <NovoLeadForm action={criarLeadManualAction} parceiros={parceiros} />
             <a
               href="/admin/crm/campos"
               style={{
@@ -105,6 +109,8 @@ export default async function CrmBoard() {
           marcarPerdidoRapidoAction={marcarPerdidoRapidoAction}
           reabrirLeadAction={reabrirLeadAction}
         />
+
+        <ParceirosSection parceiros={parceiros} criarAction={criarParceiroAction} excluirAction={excluirParceiroAction} />
       </div>
     </main>
   );
