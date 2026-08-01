@@ -5,10 +5,9 @@ import { FonteSelect } from "./FonteSelect";
 import { ParceiroSelect } from "./ParceiroSelect";
 import { ValorInput } from "./ValorInput";
 import { LeadInfoEditavel } from "./LeadInfoEditavel";
+import { LeadAcoesIcones } from "./LeadAcoesIcones";
 import { NotaForm } from "./NotaForm";
-import { PerdidoForm } from "./PerdidoForm";
 import { CamposPersonalizadosForm } from "./CamposPersonalizadosForm";
-import { ExcluirLeadButton } from "./ExcluirLeadButton";
 import { WhatsAppChat } from "./WhatsAppChat";
 import {
   moverEtapaDetalheAction,
@@ -18,7 +17,7 @@ import {
   atualizarDadosLeadAction,
   atualizarParceiroAction,
   criarNotaAction,
-  marcarPerdidoAction,
+  marcarPerdidoRapidoDetalheAction,
   marcarGanhoDetalheAction,
   reabrirLeadDetalheAction,
   salvarCamposLeadAction,
@@ -59,7 +58,7 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
 
   if (!lead) notFound();
 
-  const marcarPerdidoComId = marcarPerdidoAction.bind(null, lead.id);
+  const marcarPerdidoRapidoComId = marcarPerdidoRapidoDetalheAction.bind(null, lead.id);
   const marcarGanhoComId = marcarGanhoDetalheAction.bind(null, lead.id);
   const reabrirComId = reabrirLeadDetalheAction.bind(null, lead.id);
   const criarNotaComId = criarNotaAction.bind(null, lead.id);
@@ -78,45 +77,51 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
     createdAt: m.createdAt.toISOString(),
   }));
 
-  const botaoAcaoStyle: React.CSSProperties = {
-    padding: "8px 14px",
-    borderRadius: 9,
-    border: "1px solid #d2d2d7",
-    background: "#fff",
-    color: "#1d1d1f",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-  };
-
   return (
     <>
       <div style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" }}>
-        <LeadInfoEditavel
-          leadId={lead.id}
-          hotelAtual={lead.hotel}
-          nomeAtual={lead.nome}
-          emailAtual={lead.email ?? ""}
-          mensagemAtual={lead.mensagem ?? ""}
-          telefoneAtual={lead.telefone}
-          criadoEmLabel={lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
-          etapaAtualId={lead.stageId}
-          etapas={etapas}
-          moverEtapaAction={moverEtapaDetalheAction}
-          atualizarTelefoneAction={atualizarTelefoneAction}
-          atualizarDadosAction={atualizarDadosLeadAction}
+        {/* Canto superior esquerdo do popup (pedido do Felipe, 31/07/2026):
+            os mesmos 3 ícones do card do Kanban, em vez dos antigos botões
+            com texto que ficavam embaixo perto de Valor/Fonte. */}
+        <LeadAcoesIcones
+          hotelNome={lead.hotel}
+          desfecho={lead.desfecho}
+          marcarGanho={marcarGanhoComId}
+          marcarPerdido={marcarPerdidoRapidoComId}
+          reabrir={reabrirComId}
+          excluir={excluirComId}
         />
 
+        <div style={{ marginTop: 10 }}>
+          <LeadInfoEditavel
+            leadId={lead.id}
+            hotelAtual={lead.hotel}
+            nomeAtual={lead.nome}
+            emailAtual={lead.email ?? ""}
+            mensagemAtual={lead.mensagem ?? ""}
+            telefoneAtual={lead.telefone}
+            criadoEmLabel={lead.createdAt.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+            etapaAtualId={lead.stageId}
+            etapas={etapas}
+            moverEtapaAction={moverEtapaDetalheAction}
+            atualizarTelefoneAction={atualizarTelefoneAction}
+            atualizarDadosAction={atualizarDadosLeadAction}
+          />
+        </div>
+
         {lead.desfecho === "GANHO" && (
-          <p style={{ margin: "10px 0 0", fontSize: 13, fontWeight: 700, color: "#1a7f37" }}>✅ Lead ganho</p>
+          <p style={{ margin: "10px 0 0", fontSize: 13, fontWeight: 700, color: "#1a7f37" }}>Lead ganho</p>
         )}
         {lead.desfecho === "PERDIDO" && (
           <p style={{ margin: "10px 0 0", fontSize: 13, color: "#d70015" }}>
-            <strong>❌ Lead perdido.</strong>
+            <strong>Lead perdido.</strong>
             {lead.motivoPerda ? ` Motivo: ${lead.motivoPerda}` : ""}
           </p>
         )}
 
+        {/* Valor/Fonte/Parceiro numa linha só (pedido do Felipe) — cabem
+            tranquilo agora que os botões de ação saíram daqui pros ícones
+            de cima. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, color: "#6e6e73" }}>Valor (R$):</span>
           <ValorInput leadId={lead.id} valorAtual={lead.valor} action={atualizarValorAction} />
@@ -133,20 +138,6 @@ export async function LeadDetalheConteudo({ leadId }: { leadId: string }) {
               />
             </>
           )}
-          {lead.desfecho === "ABERTO" && (
-            <>
-              <form action={marcarGanhoComId}>
-                <button type="submit" style={botaoAcaoStyle}>✅ Marcar ganho</button>
-              </form>
-              <PerdidoForm action={marcarPerdidoComId} />
-            </>
-          )}
-          {lead.desfecho !== "ABERTO" && (
-            <form action={reabrirComId}>
-              <button type="submit" style={botaoAcaoStyle}>↩ Reabrir</button>
-            </form>
-          )}
-          <ExcluirLeadButton nomeHotel={lead.hotel} action={excluirComId} />
         </div>
       </div>
 

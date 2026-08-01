@@ -31,6 +31,11 @@ export function Modal({ children }: { children: React.ReactNode }) {
         background: "rgba(0,0,0,0.4)",
         display: "flex",
         justifyContent: "center",
+        // alignItems: "flex-start" (pedido do Felipe, 31/07/2026) — antes
+        // sem essa propriedade o popup ficava centralizado verticalmente
+        // (comportamento padrão do flex em bloco único); agora abre
+        // encostado no topo, logo abaixo do padding.
+        alignItems: "flex-start",
         padding: "40px 16px",
         overflowY: "auto",
         zIndex: 1000,

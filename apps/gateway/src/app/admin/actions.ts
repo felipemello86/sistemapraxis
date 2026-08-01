@@ -372,6 +372,18 @@ export async function marcarPerdidoRapidoAction(leadId: string, motivo: string) 
   redirect("/admin/crm");
 }
 
+// Mesma lógica de marcarPerdidoRapidoAction, mas chamada de dentro da tela
+// de detalhe (31/07/2026, pedido do Felipe: os 3 ícones do board — ganho,
+// perdido, excluir — repetidos no canto superior esquerdo do popup, no
+// lugar do antigo PerdidoForm com textarea) — redireciona de volta pra lá
+// em vez de pro board.
+export async function marcarPerdidoRapidoDetalheAction(leadId: string, motivo: string) {
+  const admin = await requireAdminSession();
+  const motivoFinal = motivo.trim() || "Não informado";
+  await marcarDesfecho(admin.nome, leadId, "PERDIDO", { motivoPerda: motivoFinal, sufixoLog: ` (${motivoFinal})` });
+  redirect(`/admin/crm/${leadId}`);
+}
+
 // Desfaz um desfecho (ganho ou perdido) — volta o lead pra "ABERTO",
 // limpando motivoPerda, sem mexer na etapa/coluna atual. Usado tanto na área
 // de "Finalizados" do board quanto na tela de detalhe.
