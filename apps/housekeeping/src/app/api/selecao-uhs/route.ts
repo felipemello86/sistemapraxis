@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ativarManutencaoUH, emitEvent, getSession, hasModuleAccess, prisma, sendPushToUser } from "@praxis/core";
+import {
+  ativarManutencaoUH,
+  cancelarCardsPorExclusaoDeUh,
+  emitEvent,
+  getSession,
+  hasModuleAccess,
+  prisma,
+  sendPushToUser,
+} from "@praxis/core";
 import { notificarQueixa } from "@/lib/telegram";
 import { liberarLateCheckoutsVencidos } from "@/lib/late-checkout";
 import { liberarSelecionadasAoMeioDia } from "@/lib/liberacao-automatica";
@@ -694,6 +702,19 @@ export async function PATCH(req: NextRequest) {
     }
 
     await prisma.dailyUHSelection.delete({ where: { data_uhId: { data, uhId } } });
+
+    // Repercute a exclusão no módulo de Manutenção (pedido explícito do
+    // Felipe, 01/08/2026): cancela (não apaga) qualquer card de NC em aberto
+    // dessa UH no Kanban de Execução e notifica o perfil Manutenção — ver
+    // comentário completo em cancelarCardsPorExclusaoDeUh
+    // (packages/core/src/maintenanceCancelamentoPorLiberacao.ts). Best-effort
+    // de propósito (try/catch): a renovação da UH em Housekeeping não pode
+    // falhar por causa de um problema do lado de Manutenção.
+    try {
+      await cancelarCardsPorExclusaoDeUh({ tenantId, uhId, data, atorNome: session.nome });
+    } catch (e) {
+      console.error("[cancelarCardsPorExclusaoDeUh] falha ao cancelar cards de manutenção:", e);
+    }
 
     // TODO: auto-trigger de relatório PDF + ranking do dia quando todas as UHs
     // restantes terminam (v1: envia PDF via react-pdf + ranking via Telegram) —

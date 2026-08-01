@@ -1,6 +1,6 @@
 'use client'
 
-import { BedDouble, Siren, Unlock } from 'lucide-react'
+import { BedDouble, Ban, Siren, Unlock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { corCategoria } from '@/lib/domain'
 import type { CorrectionCardView } from '@/lib/types'
@@ -61,7 +61,9 @@ export function CorrectionCardHeader({
     >
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-sm font-medium">
-          Unidade {card.uhName}
+          <span className={card.canceladoPorLiberacao ? 'line-through decoration-2' : undefined}>
+            Unidade {card.uhName}
+          </span>
           {card.urgente && (
             <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
               <Siren className="h-2.5 w-2.5" />
@@ -80,6 +82,17 @@ export function CorrectionCardHeader({
               Liberada
             </span>
           )}
+          {/* UH saiu da lista do dia em Housekeeping (ver
+              cancelarCardsPorExclusaoDeUh, packages/core) — card cancelado,
+              mas continua visível e executável (pedido explícito do Felipe,
+              01/08/2026). Some no lugar do badge "Não previsto" (extraBadge
+              em kanban-execucao.tsx), já que este caso é mais específico. */}
+          {card.canceladoPorLiberacao && (
+            <span className="flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              <Ban className="h-2.5 w-2.5" />
+              UH removida do dia
+            </span>
+          )}
           {extraBadge}
         </p>
         {card.checklistItemCategory && (
@@ -92,7 +105,9 @@ export function CorrectionCardHeader({
           </Badge>
         )}
       </div>
-      <p className="text-sm text-muted-foreground">{card.checklistItemName ?? 'Item removido do catálogo'}</p>
+      <p className={`text-sm text-muted-foreground ${card.canceladoPorLiberacao ? 'line-through' : ''}`}>
+        {card.checklistItemName ?? 'Item removido do catálogo'}
+      </p>
       {card.comment && <p className="text-xs text-muted-foreground">{card.comment}</p>}
       {children}
     </div>

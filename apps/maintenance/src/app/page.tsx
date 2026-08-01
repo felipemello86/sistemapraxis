@@ -420,6 +420,7 @@ export default async function Home() {
       dailyCommitmentId: c.dailyCommitmentId,
       blockForReservation: c.blockForReservation,
       previsto: c.previsto,
+      canceladoPorLiberacao: c.canceladoPorLiberacao,
       executedDescription: c.executedDescription,
       executedPhotos: safeParsePhotos(c.executedPhotos),
       executedAt: c.executedAt ? c.executedAt.toISOString() : null,

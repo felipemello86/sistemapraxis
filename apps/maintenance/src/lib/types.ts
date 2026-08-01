@@ -216,6 +216,11 @@ export type CorrectionCardView = {
   // dia (intempestivos/urgentes, pedido explícito) — ver
   // MaintenanceDailyCommitment.totalPrevisto pro denominador congelado do %.
   previsto: boolean;
+  // Cancelado porque a UH saiu da lista do dia em Housekeeping (ver
+  // cancelarCardsPorExclusaoDeUh, packages/core) — card continua existindo e
+  // executável, só aparece esmaecido/tachado no Kanban de Execução (ver
+  // kanban-execucao.tsx). Sempre vem acompanhado de previsto=false.
+  canceladoPorLiberacao: boolean;
 
   executedDescription: string | null;
   executedPhotos: string[];

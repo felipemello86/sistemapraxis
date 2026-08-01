@@ -1722,6 +1722,21 @@ model MaintenanceCorrectionCard {
   // pctRealizacao), então cards com previsto=false só contam se executados,
   // nunca reduzem o percentual.
   previsto            Boolean                     @default(true)
+  // Pedido explícito do Felipe (01/08/2026): quando a UH desse card é
+  // excluída da lista do dia na tela Seleção e Liberação (Housekeeping,
+  // botão de lixeira — ver cancelarCardsPorExclusaoDeUh em
+  // packages/core/src/maintenanceCancelamentoPorLiberacao.ts), o card NÃO é
+  // apagado — continua visível (esmaecido/tachado na UI, ver
+  // kanban-execucao.tsx) e ainda pode ser "Marcado como executado". Só marca
+  // que ele foi cancelado por esse motivo específico — diferente de
+  // `previsto=false`, que sozinho também é usado pelos cards intempestivos
+  // (trabalho novo e legítimo, que não deve parecer cancelado). Cards
+  // cancelados por aqui TAMBÉM ganham previsto=false (reaproveita o mesmo
+  // denominador congelado, ver MaintenanceDailyCommitment.totalPrevisto) —
+  // se mesmo assim forem executados, entram automaticamente como "Não
+  // previsto" no relatório, sem precisar duplicar essa lógica de cálculo.
+  canceladoPorLiberacao Boolean                   @default(false)
+  canceladoEm           DateTime?
 
   // Preenchimento comum do passo "executado" — tanto do kanban de Serviços
   // Externos quanto do de Execução — volta o MaintenanceInspectionItem pra

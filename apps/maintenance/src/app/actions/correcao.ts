@@ -297,6 +297,8 @@ async function fecharProgramacaoDiaImpl(input: {
       inspectionItem: { select: { comment: true } },
     },
   });
+  // `include` acima já traz todas as colunas escalares do card, inclusive
+  // `canceladoPorLiberacao` — usado abaixo pra montar totalPrevisto.
   if (cards.length !== input.cardIds.length) throw new Error("Algum card selecionado não foi encontrado.");
 
   for (const card of cards) {
@@ -313,13 +315,20 @@ async function fecharProgramacaoDiaImpl(input: {
 
   const conformidadeAntes = await calcularConformidadeAtual(session.tenantId);
 
+  // Cards cancelados por exclusão de UH (ver cancelarCardsPorExclusaoDeUh em
+  // packages/core) não devem entrar no denominador congelado do % de
+  // realização, mesmo que alguém ainda os selecione aqui — mesmo tratamento
+  // que já reservávamos pra "previsto=false" nos cards intempestivos
+  // (adicionarCardUrgenteImpl), só que aplicado já na hora do fechamento.
+  const totalPrevisto = cards.filter((c) => !c.canceladoPorLiberacao).length;
+
   const commitment = await prisma.maintenanceDailyCommitment.create({
     data: {
       tenantId: session.tenantId,
       data,
       closedById: session.userId,
       conformidadeAntes,
-      totalPrevisto: cards.length,
+      totalPrevisto,
     },
   });
 

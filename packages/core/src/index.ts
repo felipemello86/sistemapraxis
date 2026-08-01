@@ -9,6 +9,7 @@ export * from "./maintenanceCorrection";
 export * from "./timezone";
 export * from "./notify";
 export * from "./maintenanceUrgente";
+export * from "./maintenanceCancelamentoPorLiberacao";
 export * from "./aiEvents";
 export * from "./stripe";
 export * from "./channel-manager";

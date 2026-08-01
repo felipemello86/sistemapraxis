@@ -77,8 +77,18 @@ export function KanbanExecucao({
   commitmentHoje: DailyCommitmentView | null
   onVerDetalhe: (card: CorrectionCardView) => void
 }) {
+  // Cards cancelados (UH saiu da lista do dia, ver
+  // cancelarCardsPorExclusaoDeUh em packages/core) continuam aparecendo
+  // aqui mesmo depois que uhId sai de uhIdsSelecionadasHoje — pedido
+  // explícito do Felipe: o card não desaparece, fica esmaecido/tachado
+  // (ver renderização abaixo e CorrectionCardHeader).
   const aFazer = useMemo(
-    () => cards.filter((c) => c.executionStatus === 'A_FAZER' && uhIdsSelecionadasHoje.includes(c.uhId)),
+    () =>
+      cards.filter(
+        (c) =>
+          c.executionStatus === 'A_FAZER' &&
+          (uhIdsSelecionadasHoje.includes(c.uhId) || c.canceladoPorLiberacao),
+      ),
     [cards, uhIdsSelecionadasHoje],
   )
   // Filtra os cards completos (CorrectionCardView, com categoria/comentário/
@@ -241,14 +251,17 @@ export function KanbanExecucao({
                 aFazer.map((card) => {
                   const expandido = selecionandoUrgente === card.id
                   return (
-                    <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
+                    <div
+                      key={card.id}
+                      className={`rounded-xl border border-border/70 bg-background p-3 ${card.canceladoPorLiberacao ? 'opacity-60' : ''}`}
+                    >
                       <CorrectionCardHeader
                         card={card}
                         temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                         liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                         onVerDetalhe={onVerDetalhe}
                       />
-                      {expandido ? (
+                      {card.canceladoPorLiberacao ? null : expandido ? (
                         <div className="mt-2 space-y-2">
                           <div className="flex items-center justify-between rounded-lg bg-muted/60 px-2.5 py-1.5">
                             <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -325,13 +338,21 @@ export function KanbanExecucao({
             <>
               <div className="space-y-3 overflow-y-auto pr-1">
               {aFazer.map((card) => (
-                <div key={card.id} className="rounded-xl border border-border/70 bg-background p-3">
+                <div
+                  key={card.id}
+                  className={`rounded-xl border border-border/70 bg-background p-3 ${card.canceladoPorLiberacao ? 'opacity-60' : ''}`}
+                >
                   <label className="flex items-start gap-2">
                     <input
                       type="checkbox"
                       className="mt-1"
                       checked={selecionados.has(card.id)}
-                      disabled={!podeOperar}
+                      // Cancelado por exclusão de UH: não deve entrar numa
+                      // NOVA programação do dia (pedido do Felipe: sai do
+                      // somatório de previstos) — fica visível mas
+                      // não-selecionável.
+                      disabled={!podeOperar || card.canceladoPorLiberacao}
+                      title={card.canceladoPorLiberacao ? 'UH removida da lista do dia — card cancelado.' : undefined}
                       onChange={() => alternarSelecao(card.id)}
                     />
                     <div className="flex-1">
@@ -398,14 +419,21 @@ export function KanbanExecucao({
               <p className="py-6 text-center text-sm text-muted-foreground">Nenhum item planejado pra hoje ainda.</p>
             ) : (
               planejadas.map((card) => (
-                <div key={card.id} className="rounded-xl border border-primary/30 bg-primary/5 p-3">
+                <div
+                  key={card.id}
+                  className={`rounded-xl border border-primary/30 bg-primary/5 p-3 ${card.canceladoPorLiberacao ? 'opacity-60' : ''}`}
+                >
                   <CorrectionCardHeader
                     card={card}
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                     liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
                     extraBadge={
-                      !card.previsto && (
+                      // O badge "UH removida do dia" (ver
+                      // CorrectionCardHeader) já cobre o caso cancelado —
+                      // evita mostrar os dois badges juntos (canceladoPorLiberacao
+                      // sempre implica previsto=false).
+                      !card.previsto && !card.canceladoPorLiberacao && (
                         <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">
                           <Plus className="h-2.5 w-2.5" />
                           Não previsto
@@ -413,6 +441,11 @@ export function KanbanExecucao({
                       )
                     }
                   />
+                  {/* Pedido explícito do Felipe: mesmo cancelado, ainda deve
+                      ser possível Marcar como Executado (entra como "Não
+                      previsto" no relatório do dia — ver
+                      cancelarCardsPorExclusaoDeUh). Botão continua 100%
+                      clicável, só o card em volta fica esmaecido. */}
                   <Button
                     size="sm"
                     className="mt-3 w-full rounded-xl"
