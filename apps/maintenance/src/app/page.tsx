@@ -627,6 +627,8 @@ export default async function Home() {
     "maintenance.log.programacao_fechada": "programacao_fechada",
     "maintenance.log.programacao_reaberta": "programacao_reaberta",
     "maintenance.log.card_urgente_adicionado": "card_urgente_adicionado",
+    "maintenance.log.card_retirado_da_programacao": "card_retirado_da_programacao",
+    "maintenance.log.cards_cancelados_por_liberacao": "cards_cancelados_por_liberacao",
     "maintenance.log.material_comprado": "material_comprado",
     "maintenance.log.cotacao_registrada": "cotacao_registrada",
     "maintenance.log.servico_agendado": "servico_agendado",
@@ -689,6 +691,14 @@ export default async function Home() {
           ? "Card intempestivo adicionado à programação do dia — UH marcada para bloqueio."
           : "Card intempestivo adicionado à programação do dia.";
         break;
+      case "card_retirado_da_programacao":
+        detalhe = "Card retirado da programação de hoje — voltou pra \"A Fazer\".";
+        break;
+      case "cards_cancelados_por_liberacao": {
+        const totalCancelados = typeof payload.totalCancelados === "number" ? payload.totalCancelados : 0;
+        detalhe = `UH removida da lista do dia em Housekeeping — ${totalCancelados} ${totalCancelados === 1 ? "card cancelado" : "cards cancelados"} no Kanban de Execução.`;
+        break;
+      }
       case "material_comprado":
         detalhe = "Material marcado como comprado.";
         break;

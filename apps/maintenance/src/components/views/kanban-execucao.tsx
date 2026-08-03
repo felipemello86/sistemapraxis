@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Camera, CheckCircle2, ClipboardList, Inbox, Lock, Loader2, ListChecks, Plus, RotateCcw } from 'lucide-react'
+import { Camera, CheckCircle2, ClipboardList, Inbox, Lock, Loader2, ListChecks, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
@@ -19,6 +19,7 @@ import {
   executarCardExecucaoAction,
   fecharProgramacaoDiaAction,
   reabrirProgramacaoDiaAction,
+  retirarCardDaProgramacaoAction,
   triarCardAProcessarAction,
 } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
@@ -111,6 +112,12 @@ export function KanbanExecucao({
   const [reabrindo, setReabrindo] = useState(false)
   const [cardExecutando, setCardExecutando] = useState<{ id: string; uhName: string; checklistItemName: string | null } | null>(null)
   const [cardTriando, setCardTriando] = useState<CorrectionCardView | null>(null)
+  // "Retirar da programação" — pedido explícito do Felipe (01/08/2026):
+  // opção de excluir um card individual da coluna "Planejadas", diferente de
+  // "Reabrir programação do dia" (que desfaz o fechamento inteiro). Ver
+  // retirarCardDaProgramacaoAction.
+  const [cardRetirando, setCardRetirando] = useState<CorrectionCardView | null>(null)
+  const [retirando, setRetirando] = useState(false)
   const [adicionandoUrgente, setAdicionandoUrgente] = useState<string | null>(null)
   // Igual ao blockMap do fechamento normal (abaixo) — só que aqui é por
   // card individual, já que "Adicionar à programação de hoje" não passa
@@ -178,6 +185,20 @@ export function KanbanExecucao({
       toast.error(e instanceof Error ? e.message : 'Erro ao reabrir a programação.')
     } finally {
       setReabrindo(false)
+    }
+  }
+
+  async function confirmarRetirada() {
+    if (!cardRetirando) return
+    setRetirando(true)
+    try {
+      unwrapSafeAction(await retirarCardDaProgramacaoAction({ cardId: cardRetirando.id }))
+      toast.success('Card retirado da programação de hoje.')
+      setCardRetirando(null)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao retirar o card da programação.')
+    } finally {
+      setRetirando(false)
     }
   }
 
@@ -442,20 +463,36 @@ export function KanbanExecucao({
                     }
                   />
                   {/* Pedido explícito do Felipe: mesmo cancelado, ainda deve
-                      ser possível Marcar como Executado (entra como "Não
-                      previsto" no relatório do dia — ver
-                      cancelarCardsPorExclusaoDeUh). Botão continua 100%
-                      clicável, só o card em volta fica esmaecido. */}
-                  <Button
-                    size="sm"
-                    className="mt-3 w-full rounded-xl"
-                    disabled={!podeOperar}
-                    title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
-                    onClick={() => setCardExecutando(card)}
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Marcar como executada
-                  </Button>
+                      ser possível Executar (entra como "Imprevisto" no
+                      relatório do dia — ver cancelarCardsPorExclusaoDeUh).
+                      Botão continua 100% clicável, só o card em volta fica
+                      esmaecido. */}
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 rounded-xl"
+                      disabled={!podeOperar}
+                      title={!podeOperar ? 'Você não tem acesso para operar este módulo' : undefined}
+                      onClick={() => setCardExecutando(card)}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Executar
+                    </Button>
+                    {/* Retirar da programação do dia — pedido explícito do
+                        Felipe (01/08/2026): card volta pra "A Fazer", como
+                        se nunca tivesse entrado no fechamento de hoje (ver
+                        retirarCardDaProgramacaoAction). */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="rounded-xl px-2.5 text-destructive hover:text-destructive"
+                      disabled={!podeOperar}
+                      title="Retirar da programação do dia"
+                      onClick={() => setCardRetirando(card)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))
             )}
@@ -549,6 +586,27 @@ export function KanbanExecucao({
             </Button>
             <Button onClick={confirmarReabertura} disabled={reabrindo} variant="destructive" className="rounded-xl">
               {reabrindo ? 'Reabrindo...' : 'Confirmar reabertura'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cardRetirando !== null} onOpenChange={(open) => !open && setCardRetirando(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Retirar da programação do dia</DialogTitle>
+            <DialogDescription>
+              {cardRetirando ? `Unidade ${cardRetirando.uhName} — ${cardRetirando.checklistItemName ?? 'item'}` : ''}
+              {' '}volta pra &quot;A Fazer&quot;, como se não tivesse entrado no fechamento de hoje. Dá pra adicionar de
+              novo depois, se precisar.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setCardRetirando(null)} disabled={retirando} className="rounded-xl">
+              Cancelar
+            </Button>
+            <Button onClick={confirmarRetirada} disabled={retirando} variant="destructive" className="rounded-xl">
+              {retirando ? 'Retirando...' : 'Confirmar retirada'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -713,7 +771,7 @@ function DialogExecutarCard({
     <Dialog open={card !== null} onOpenChange={(open) => !open && fechar()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Marcar como executada</DialogTitle>
+          <DialogTitle>Executar</DialogTitle>
           <DialogDescription>
             {card ? `Unidade ${card.uhName} — ${card.checklistItemName ?? 'item'}` : ''}
           </DialogDescription>

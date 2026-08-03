@@ -622,6 +622,61 @@ async function adicionarCardUrgenteImpl(input: { cardId: string; block?: boolean
 }
 export const adicionarCardUrgenteAction = safeAction(adicionarCardUrgenteImpl);
 
+/* --------------------- Retirar card da programação do dia ----------------- */
+// Pedido explícito do Felipe (01/08/2026): opção de excluir/retirar um card
+// individual da coluna "Planejadas" — diferente de "Reabrir programação do
+// dia" (reabrirProgramacaoDiaImpl), que desfaz o fechamento inteiro. Aqui só
+// este card sai: volta pra "A Fazer" (sem dailyCommitmentId), como se nunca
+// tivesse sido incluído no fechamento de hoje. Se ele estava contando no
+// denominador congelado (previsto=true, ver MaintenanceDailyCommitment.
+// totalPrevisto), decrementa agora — senão o % de realização do dia ficaria
+// artificialmente mais baixo por um card que foi legitimamente retirado, não
+// deixado pra trás. Também limpa canceladoPorLiberacao/canceladoEm (ver
+// cancelarCardsPorExclusaoDeUh, packages/core): ao sair da programação de
+// hoje por completo, esse motivo específico deixa de fazer sentido.
+async function retirarCardDaProgramacaoImpl(input: { cardId: string }) {
+  const session = await requireModuleSession();
+  const card = await getCardOrThrow(input.cardId, session.tenantId);
+
+  if (card.executionStatus !== "PLANEJADA" || !card.dailyCommitmentId) {
+    throw new Error("Este card não está na programação de hoje.");
+  }
+
+  const dailyCommitmentId = card.dailyCommitmentId;
+
+  await prisma.maintenanceCorrectionCard.update({
+    where: { id: card.id },
+    data: {
+      executionStatus: "A_FAZER",
+      dailyCommitmentId: null,
+      blockForReservation: null,
+      previsto: true,
+      canceladoPorLiberacao: false,
+      canceladoEm: null,
+    },
+  });
+
+  if (card.previsto) {
+    await prisma.maintenanceDailyCommitment.update({
+      where: { id: dailyCommitmentId },
+      data: { totalPrevisto: { decrement: 1 } },
+    });
+  }
+
+  const { uhNumero, itemNome } = await nomesDoCard(card);
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.card_retirado_da_programacao",
+    entityType: "MaintenanceCorrectionCard",
+    entityId: card.id,
+    payload: { uhNumero, itemNome, atorNome: session.nome },
+  });
+
+  revalidatePath("/");
+}
+export const retirarCardDaProgramacaoAction = safeAction(retirarCardDaProgramacaoImpl);
+
 /* --------------------------- Corrigir (atalho) ----------------------------- */
 // Botão "Corrigir" disponível em Visão Gerencial, Inspeções e UH 3D — resolve
 // a NC direto a partir do item de inspeção, sem depender de em que
