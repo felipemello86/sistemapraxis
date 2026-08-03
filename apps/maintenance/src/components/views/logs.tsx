@@ -24,6 +24,8 @@ import {
   ClipboardPenLine,
   ListChecks,
   Settings,
+  Trash2,
+  Ban,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -71,6 +73,8 @@ const TIPO_INFO: Record<
   programacao_fechada: { label: 'Programação fechada', icon: Lock, className: 'text-slate-700 bg-slate-200' },
   programacao_reaberta: { label: 'Programação reaberta', icon: LockOpen, className: 'text-amber-700 bg-amber-100' },
   card_urgente_adicionado: { label: 'Card urgente adicionado', icon: Zap, className: 'text-[var(--destructive)] bg-[var(--destructive)]/10' },
+  card_retirado_da_programacao: { label: 'Card retirado da programação', icon: Trash2, className: 'text-amber-700 bg-amber-100' },
+  cards_cancelados_por_liberacao: { label: 'Cards cancelados (UH removida)', icon: Ban, className: 'text-muted-foreground bg-accent' },
   material_comprado: { label: 'Material comprado', icon: ShoppingCart, className: 'text-blue-600 bg-blue-100' },
   cotacao_registrada: { label: 'Cotação registrada', icon: FileText, className: 'text-blue-600 bg-blue-100' },
   servico_agendado: { label: 'Serviço agendado', icon: CalendarCheck, className: 'text-purple-600 bg-purple-100' },
@@ -94,6 +98,8 @@ const TIPO_FILTRO_OPCOES: { value: 'todos' | LogEvento['tipo']; label: string }[
   { value: 'programacao_fechada', label: 'Programação fechada' },
   { value: 'programacao_reaberta', label: 'Programação reaberta' },
   { value: 'card_urgente_adicionado', label: 'Card urgente adicionado' },
+  { value: 'card_retirado_da_programacao', label: 'Card retirado da programação' },
+  { value: 'cards_cancelados_por_liberacao', label: 'Cards cancelados (UH removida)' },
   { value: 'material_comprado', label: 'Material comprado' },
   { value: 'cotacao_registrada', label: 'Cotação registrada' },
   { value: 'servico_agendado', label: 'Serviço agendado' },
