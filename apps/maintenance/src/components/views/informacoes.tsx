@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useState, useTransition } from 'react'
+import { Fragment, useEffect, useMemo, useState, useTransition } from 'react'
 import {
   Search,
   ChevronDown,
@@ -16,14 +16,20 @@ import {
   MapPin,
   Siren,
   Wrench,
+  Pencil,
+  X,
+  Camera,
+  Loader2,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -46,8 +52,9 @@ import {
   temPendencia,
   ultimaInspecaoRealPorUnidade,
 } from '@/lib/domain'
-import { deleteInspecaoAction, triarCorrecaoCardAction } from '@/app/actions/data'
+import { deleteInspecaoAction, editarSpotInspecaoAction, triarCorrecaoCardAction } from '@/app/actions/data'
 import { unwrapSafeAction } from '@/lib/safeAction'
+import { uploadFoto } from '@/lib/uploadFoto'
 import { InspecaoWizard } from '@/components/inspecao-wizard'
 import { ItemInfoField } from '@/components/item-info-field'
 import { DialogCorrigirItem } from '@/components/dialog-corrigir-item'
@@ -153,6 +160,19 @@ export function Informacoes({
     inspectionItemId: string
     uhName: string
     itemName: string | null
+  } | null>(null)
+  // Botão "Editar" — pedido explícito do Felipe (01/08/2026): corrigir a
+  // INFORMAÇÃO registrada num item já avaliado (status/descrição/fotos/
+  // urgência) — diferente de "Corrigir" (DialogCorrigirItem), que resolve a
+  // NC de verdade (reparo concluído). Reaproveita editarSpotInspecaoAction
+  // (mesma Server Action já usada pela tela UH 3D), que já sabe: editar
+  // descrição/fotos de uma NC existente sem tocar no card de Correção,
+  // registrar uma NC nova se o status virar NAO_CONFORME agora, ou marcar
+  // como resolvida se virar CONFORME.
+  const [editandoItem, setEditandoItem] = useState<{
+    unidade: UnitOption
+    item: InspectionItem
+    itemNome: string | null
   } | null>(null)
 
   // Só conta Inspeção real (avulsa=false) pro cálculo de "última
@@ -457,6 +477,18 @@ export function Informacoes({
                           >
                             <Wrench className="h-3.5 w-3.5" />
                             Corrigir
+                          </button>
+                        )}
+                        {podeOperar && (
+                          <button
+                            onClick={() =>
+                              setEditandoItem({ unidade, item: it, itemNome: catalogo?.name ?? null })
+                            }
+                            title="Corrigir a informação registrada nesse item (não é a correção da NC em si)"
+                            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
                           </button>
                         )}
                         {catalogo && (
@@ -950,6 +982,316 @@ export function Informacoes({
       </Dialog>
 
       <DialogCorrigirItem item={corrigindoItem} onClose={() => setCorrigindoItem(null)} />
+
+      <DialogEditarItemInspecao
+        podeOperar={podeOperar}
+        aberto={editandoItem}
+        onClose={() => setEditandoItem(null)}
+      />
     </div>
+  )
+}
+
+const MAX_FOTOS_EDICAO_ITEM = 4
+
+// Pedido explícito do Felipe (01/08/2026): depois de uma inspeção
+// finalizada, poder corrigir a informação registrada num item específico
+// dela (status/descrição/fotos/urgência) — "não seria uma correção da NC em
+// si, mas uma simples correção da informação prestada na inspeção". Mesma
+// Server Action já usada pela edição de spot na tela UH 3D
+// (editarSpotInspecaoAction) — ela já cobre exatamente os 3 casos possíveis
+// aqui: editar descrição/fotos de uma NC que já existia (não mexe no card de
+// Correção, só corrige o registro), virar NAO_CONFORME agora (registra NC
+// nova, pergunta material/serviço) ou virar CONFORME agora (marca como
+// resolvida, gera o histórico de correção — equivalente a "na verdade
+// estava tudo certo, o item foi marcado errado na inspeção").
+function DialogEditarItemInspecao({
+  podeOperar,
+  aberto,
+  onClose,
+}: {
+  podeOperar: boolean
+  aberto: { unidade: UnitOption; item: InspectionItem; itemNome: string | null } | null
+  onClose: () => void
+}) {
+  const [status, setStatus] = useState<'CONFORME' | 'NAO_CONFORME'>('CONFORME')
+  const [comentario, setComentario] = useState('')
+  const [fotos, setFotos] = useState<string[]>([])
+  const [needsMaterial, setNeedsMaterial] = useState<boolean | null>(null)
+  const [needsExternalService, setNeedsExternalService] = useState<boolean | null>(null)
+  const [urgente, setUrgente] = useState<boolean | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+
+  // Reseta pros valores atuais do item toda vez que um novo item é aberto
+  // pra edição — mesmo padrão de iniciarEdicao() usado em
+  // LeadInfoEditavel.tsx (CRM): evita reaparecer uma edição não salva de uma
+  // sessão anterior.
+  useEffect(() => {
+    if (!aberto) return
+    setStatus(aberto.item.status)
+    setComentario(aberto.item.comment ?? '')
+    setFotos(aberto.item.photos ?? [])
+    setNeedsMaterial(null)
+    setNeedsExternalService(null)
+    setUrgente(aberto.item.status === 'NAO_CONFORME' ? aberto.item.urgente : null)
+  }, [aberto])
+
+  const statusOriginal = aberto?.item.status ?? 'CONFORME'
+  const eraNovoRegistro = status === 'NAO_CONFORME' && statusOriginal !== 'NAO_CONFORME'
+
+  async function adicionarFotos(files: FileList | null) {
+    if (!files || files.length === 0) return
+    const restante = MAX_FOTOS_EDICAO_ITEM - fotos.length
+    if (restante <= 0) {
+      toast.error(`Máximo de ${MAX_FOTOS_EDICAO_ITEM} fotos.`)
+      return
+    }
+    const arquivos = Array.from(files).slice(0, restante)
+    setUploading(true)
+    try {
+      const urls: string[] = []
+      for (const file of arquivos) {
+        if (file.size > 8 * 1024 * 1024) {
+          toast.error(`"${file.name}" é maior que 8MB — pulada.`)
+          continue
+        }
+        const data = await uploadFoto(file, 'inspecao-edicoes', 'inspecao')
+        urls.push(data.url)
+      }
+      setFotos((f) => [...f, ...urls])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível enviar a(s) foto(s).')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function salvar() {
+    if (!aberto) return
+    const comentarioLimpo = comentario.trim()
+    if (status === 'NAO_CONFORME' && comentarioLimpo.length < 5) {
+      toast.error('Descreva a não conformidade (mínimo 5 caracteres).')
+      return
+    }
+    if (eraNovoRegistro && (needsMaterial === null || needsExternalService === null)) {
+      toast.error('Informe se precisa de material e de serviço externo.')
+      return
+    }
+    if (status === 'NAO_CONFORME' && urgente === null) {
+      toast.error('Informe se é uma NC impeditiva ao uso (urgente).')
+      return
+    }
+    setSalvando(true)
+    try {
+      unwrapSafeAction(
+        await editarSpotInspecaoAction({
+          inspectionItemId: aberto.item.id,
+          status,
+          comment: comentarioLimpo,
+          photos: fotos,
+          needsMaterial: eraNovoRegistro ? needsMaterial ?? undefined : undefined,
+          needsExternalService: eraNovoRegistro ? needsExternalService ?? undefined : undefined,
+          urgente: status === 'NAO_CONFORME' ? urgente ?? undefined : undefined,
+        }),
+      )
+      toast.success('Item atualizado.')
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível salvar.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <Dialog open={aberto !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{aberto?.itemNome ?? 'Item removido do catálogo'}</DialogTitle>
+          <DialogDescription>
+            Unidade {aberto?.unidade.name} — corrige a informação registrada nesta inspeção, não é o reparo da
+            não conformidade em si.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={status === 'CONFORME' ? 'default' : 'outline'}
+              disabled={!podeOperar}
+              className="flex-1 rounded-xl"
+              onClick={() => setStatus('CONFORME')}
+            >
+              <Check className="h-4 w-4" />
+              Conforme
+            </Button>
+            <Button
+              type="button"
+              variant={status === 'NAO_CONFORME' ? 'destructive' : 'outline'}
+              disabled={!podeOperar}
+              className="flex-1 rounded-xl"
+              onClick={() => setStatus('NAO_CONFORME')}
+            >
+              <X className="h-4 w-4" />
+              Não conforme
+            </Button>
+          </div>
+
+          {status === 'NAO_CONFORME' && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-bold text-red-600">Falha *</label>
+                <Textarea
+                  value={comentario}
+                  onChange={(e) => setComentario(e.target.value)}
+                  placeholder="O que está não conforme?"
+                  className="min-h-24 rounded-xl border-red-200 focus-visible:ring-red-400"
+                  disabled={!podeOperar}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Fotos (opcional)</label>
+                <div className="flex flex-wrap gap-2">
+                  {fotos.map((url) => (
+                    <div key={url} className="group/foto relative h-16 w-16 overflow-hidden rounded-lg border border-border/70">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="Evidência" className="h-full w-full object-cover" />
+                      {podeOperar && (
+                        <button
+                          type="button"
+                          onClick={() => setFotos((f) => f.filter((p) => p !== url))}
+                          className="absolute right-0.5 top-0.5 rounded-full bg-foreground/70 p-0.5 text-background opacity-0 transition-opacity group-hover/foto:opacity-100"
+                          aria-label="Remover foto"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {podeOperar && fotos.length < MAX_FOTOS_EDICAO_ITEM && (
+                    <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border text-muted-foreground hover:bg-accent">
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        multiple
+                        className="hidden"
+                        disabled={uploading}
+                        onChange={(e) => {
+                          adicionarFotos(e.target.files)
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 rounded-xl border-2 border-red-300 bg-red-50/60 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-bold text-red-700">
+                  <Siren className="h-3.5 w-3.5" />
+                  É uma NC impeditiva ao uso (urgente)? *
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={urgente === true ? 'destructive' : 'outline'}
+                    disabled={!podeOperar}
+                    className="rounded-xl"
+                    onClick={() => setUrgente(true)}
+                  >
+                    Sim, urgente
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={urgente === false ? 'default' : 'outline'}
+                    disabled={!podeOperar}
+                    className="rounded-xl"
+                    onClick={() => setUrgente(false)}
+                  >
+                    Não
+                  </Button>
+                </div>
+              </div>
+
+              {eraNovoRegistro && (
+                <div className="space-y-3 rounded-xl bg-muted/60 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Essa unidade não estava marcada como não conforme nesse item — informe abaixo pra já entrar
+                    no fluxo de Correção.
+                  </p>
+                  <div>
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Precisa de material/peça? *</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={needsMaterial === true ? 'default' : 'outline'}
+                        className="rounded-xl"
+                        onClick={() => setNeedsMaterial(true)}
+                      >
+                        Sim
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={needsMaterial === false ? 'default' : 'outline'}
+                        className="rounded-xl"
+                        onClick={() => setNeedsMaterial(false)}
+                      >
+                        Não
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Precisa de serviço externo? *</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={needsExternalService === true ? 'default' : 'outline'}
+                        className="rounded-xl"
+                        onClick={() => setNeedsExternalService(true)}
+                      >
+                        Sim
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={needsExternalService === false ? 'default' : 'outline'}
+                        className="rounded-xl"
+                        onClick={() => setNeedsExternalService(false)}
+                      >
+                        Não
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {status === 'CONFORME' && statusOriginal === 'NAO_CONFORME' && (
+            <p className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
+              Isso marca o item como resolvido (mesmo histórico de quando uma NC é corrigida pelo Kanban de
+              Correção) — use só se o item foi mesmo marcado errado na inspeção.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={onClose} disabled={salvando} className="rounded-xl">
+            Cancelar
+          </Button>
+          <Button onClick={salvar} disabled={salvando || !podeOperar} className="rounded-xl">
+            {salvando ? 'Salvando...' : 'Salvar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
