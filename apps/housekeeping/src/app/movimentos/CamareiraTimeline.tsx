@@ -175,8 +175,10 @@ export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTim
         </div>
       </div>
       <div className="relative w-full min-w-0">
-        {/* Tags de UH (azul, 2 linhas empilhadas) e vãos (laranja, texto
-            vertical) — tudo "acima da linha", alinhado pela base. */}
+        {/* Tags de UH (azul, 3 linhas empilhadas: número / tempo na UH /
+            pontuação — o tempo na UH ficou de fora da 1ª versão, pedido do
+            Felipe pra incluir) e vãos (laranja, texto vertical) — tudo
+            "acima da linha", alinhado pela base. */}
         <div className="relative h-14 flex items-end">
           {segmentos.map((s, i) =>
             s.tipo === "limpeza" ? (
@@ -191,6 +193,7 @@ export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTim
                 title={`UH ${s.uhNumero} · ${formatarHora(s.inicio)}–${formatarHora(s.fim)}${s.excluido ? " · excluído do score" : ""}`}
               >
                 <span className="text-[9px] font-bold whitespace-nowrap">{s.uhNumero}</span>
+                <span className="text-[8px] whitespace-nowrap opacity-90">{formatarDuracaoCurta((s.fim - s.inicio) / 1000)}</span>
                 <span className="text-[8px] whitespace-nowrap">{s.score}pts</span>
               </div>
             ) : (
