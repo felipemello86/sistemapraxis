@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
         },
         include: {
           checklistItem: { select: { name: true, category: true } },
-          inspectionItem: { select: { comment: true, urgente: true } },
+          inspectionItem: { select: { comment: true, urgente: true, prioridade: true } },
         },
         orderBy: { createdAt: "asc" },
       })
@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
       itemCategory: c.checklistItem?.category ?? null,
       comment: c.inspectionItem?.comment ?? null,
       urgente: c.inspectionItem?.urgente ?? false,
+      prioridade: c.inspectionItem?.prioridade ?? false,
       executionStatus: c.executionStatus,
       executedAt: c.executedAt,
       canceladoPorLiberacao: c.canceladoPorLiberacao,

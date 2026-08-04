@@ -179,6 +179,9 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   // NC impeditiva ao uso — pedido explícito: bloqueia a UH automaticamente
   // e notifica todos os usuários (ver packages/core/src/maintenanceUrgente.ts).
   const [ehUrgenteManutencao, setEhUrgenteManutencao] = useState<boolean | null>(null);
+  // Flag "defeito prioritário" — mesma obrigatoriedade de urgente, sem
+  // efeito de bloqueio (pedido explícito do Felipe, 04/08/2026).
+  const [ehPrioridadeManutencao, setEhPrioridadeManutencao] = useState<boolean | null>(null);
   const [uploadandoFotoManutencao, setUploadandoFotoManutencao] = useState(false);
   const [enviandoManutencao, setEnviandoManutencao] = useState(false);
   const [resultadoManutencao, setResultadoManutencao] = useState<{ jaRegistrado: boolean; itemNome: string } | null>(null);
@@ -444,6 +447,7 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     setDescricaoManutencao("");
     setFotosManutencao([]);
     setEhUrgenteManutencao(null);
+    setEhPrioridadeManutencao(null);
     setManutencaoSubFase("descrever");
   }
 
@@ -472,7 +476,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
       !itemManutencaoSelecionado ||
       !sessaoAtiva ||
       descricaoManutencao.trim().length < 5 ||
-      ehUrgenteManutencao === null
+      ehUrgenteManutencao === null ||
+      ehPrioridadeManutencao === null
     )
       return;
     setEnviandoManutencao(true);
@@ -486,6 +491,7 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
           descricao: descricaoManutencao.trim(),
           fotos: fotosManutencao,
           urgente: ehUrgenteManutencao,
+          prioridade: ehPrioridadeManutencao,
         }),
       });
       const json = await res.json();
@@ -1036,6 +1042,23 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                       </button>
                     </div>
                   </div>
+                  <div className="card mt-3 border-2 border-violet-300 bg-violet-50">
+                    <p className="text-xs text-violet-700 font-bold mb-1.5">É um defeito prioritário? *</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setEhPrioridadeManutencao(true)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${ehPrioridadeManutencao === true ? "border-violet-600 bg-violet-100 text-violet-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Sim, prioritário
+                      </button>
+                      <button
+                        onClick={() => setEhPrioridadeManutencao(false)}
+                        className={`py-2.5 rounded-lg border font-medium text-sm ${ehPrioridadeManutencao === false ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-gray-300 text-gray-600"}`}
+                      >
+                        Não
+                      </button>
+                    </div>
+                  </div>
                   <div className="flex gap-2 mt-3">
                     <button
                       onClick={() => setManutencaoSubFase("selecionar")}
@@ -1051,7 +1074,8 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                         enviandoManutencao ||
                         uploadandoFotoManutencao ||
                         !podeOperar ||
-                        ehUrgenteManutencao === null
+                        ehUrgenteManutencao === null ||
+                        ehPrioridadeManutencao === null
                       }
                       title={!podeOperar ? tituloSemAcesso : undefined}
                       className="flex-[2] py-3 rounded-xl bg-orange-500 text-white font-bold disabled:opacity-50"

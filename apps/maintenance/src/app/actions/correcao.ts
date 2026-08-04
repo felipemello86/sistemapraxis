@@ -767,6 +767,41 @@ async function retirarUrgenciaImpl(input: { cardId: string }) {
 }
 export const retirarUrgenciaAction = safeAction(retirarUrgenciaImpl);
 
+// Pedido explícito do Felipe (04/08/2026): mesmo botão "Retirar" da flag
+// irmã (urgência) acima, agora pra "Prioridade" — sem nenhum efeito de
+// bloqueio/notificação envolvido (prioridade é puramente informativa), só
+// desmarca o item e registra no Log do Sistema.
+async function retirarPrioridadeImpl(input: { cardId: string }) {
+  const session = await requireModuleSession();
+  const card = await getCardOrThrow(input.cardId, session.tenantId);
+
+  const item = await prisma.maintenanceInspectionItem.findUnique({
+    where: { id: card.inspectionItemId },
+    select: { id: true, prioridade: true },
+  });
+  if (!item || !item.prioridade) {
+    throw new Error("Este card não está marcado como prioridade.");
+  }
+
+  await prisma.maintenanceInspectionItem.update({
+    where: { id: item.id },
+    data: { prioridade: false },
+  });
+
+  const { uhNumero, itemNome } = await nomesDoCard(card);
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.prioridade_retirada",
+    entityType: "MaintenanceCorrectionCard",
+    entityId: card.id,
+    payload: { uhNumero, itemNome, atorNome: session.nome },
+  });
+
+  revalidatePath("/");
+}
+export const retirarPrioridadeAction = safeAction(retirarPrioridadeImpl);
+
 /* --------------------------- Corrigir (atalho) ----------------------------- */
 // Botão "Corrigir" disponível em Visão Gerencial, Inspeções e UH 3D — resolve
 // a NC direto a partir do item de inspeção, sem depender de em que

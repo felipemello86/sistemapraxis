@@ -361,6 +361,10 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   const [manutencaoModal, setManutencaoModal] = useState<UHSel | null>(null);
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
   const [manutencaoItemIdInput, setManutencaoItemIdInput] = useState("");
+  // Urgência e prioridade — mesma pergunta obrigatória dos outros pontos de
+  // entrada de NC (pedido explícito do Felipe, 04/08/2026).
+  const [manutencaoUrgenteInput, setManutencaoUrgenteInput] = useState<boolean | null>(null);
+  const [manutencaoPrioridadeInput, setManutencaoPrioridadeInput] = useState<boolean | null>(null);
   // Popup "Manutenção de hoje" (pedido explícito do Felipe, 04/08/2026) —
   // diferente de manutencaoModal (formulário pra ABRIR uma nova
   // manutenção): este é só leitura dos cards já programados pra essa UH
@@ -579,16 +583,29 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
     if (!podeOperar) return;
     setManutencaoDescricaoInput("");
     setManutencaoItemIdInput("");
+    setManutencaoUrgenteInput(null);
+    setManutencaoPrioridadeInput(null);
     setManutencaoModal(uh);
   }
 
-  async function confirmarManutencao(uh: UHSel, descricao: string | null, checklistItemId: string | null) {
+  async function confirmarManutencao(
+    uh: UHSel,
+    descricao: string | null,
+    checklistItemId: string | null,
+    // Só usados no caminho "solicitar" (novo registro) — pedido explícito
+    // do Felipe, 04/08/2026: esse atalho passou a perguntar urgência e
+    // prioridade também, igual aos outros pontos de entrada de NC.
+    // encerrarManutencaoHoje (desligar) não passa esses dois — a ação
+    // "desligar" no servidor nem olha pra eles.
+    urgente?: boolean,
+    prioridade?: boolean,
+  ) {
     if (!podeOperar) return;
     setManutencaoModal(null);
     await apiFetch("/api/selecao-uhs", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "toggle_manutencao", data, uhId: uh.uhId, descricao, checklistItemId }),
+      body: JSON.stringify({ action: "toggle_manutencao", data, uhId: uh.uhId, descricao, checklistItemId, urgente, prioridade }),
     });
     // Ligar marca a UH em manutenção na hora (sem aprovação — pedido
     // explícito do Felipe) e já cria a NC no item real escolhido. carregar()
@@ -932,6 +949,40 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-400"
               rows={3}
             />
+            <div className="mt-3 rounded-lg border-2 border-red-300 bg-red-50 p-3">
+              <p className="text-xs font-bold text-red-700 mb-1.5">É uma falha impeditiva ao uso (urgente)? *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setManutencaoUrgenteInput(true)}
+                  className={`py-2 rounded-lg border text-sm font-medium ${manutencaoUrgenteInput === true ? "border-red-600 bg-red-100 text-red-700" : "border-gray-300 text-gray-600"}`}
+                >
+                  Sim, urgente
+                </button>
+                <button
+                  onClick={() => setManutencaoUrgenteInput(false)}
+                  className={`py-2 rounded-lg border text-sm font-medium ${manutencaoUrgenteInput === false ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-600"}`}
+                >
+                  Não
+                </button>
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg border-2 border-violet-300 bg-violet-50 p-3">
+              <p className="text-xs font-bold text-violet-700 mb-1.5">É um defeito prioritário? *</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setManutencaoPrioridadeInput(true)}
+                  className={`py-2 rounded-lg border text-sm font-medium ${manutencaoPrioridadeInput === true ? "border-violet-600 bg-violet-100 text-violet-700" : "border-gray-300 text-gray-600"}`}
+                >
+                  Sim, prioritário
+                </button>
+                <button
+                  onClick={() => setManutencaoPrioridadeInput(false)}
+                  className={`py-2 rounded-lg border text-sm font-medium ${manutencaoPrioridadeInput === false ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-600"}`}
+                >
+                  Não
+                </button>
+              </div>
+            </div>
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => setManutencaoModal(null)}
@@ -940,9 +991,23 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                 Cancelar
               </button>
               <button
-                disabled={!manutencaoDescricaoInput.trim() || !manutencaoItemIdInput || !podeOperar}
+                disabled={
+                  !manutencaoDescricaoInput.trim() ||
+                  !manutencaoItemIdInput ||
+                  manutencaoUrgenteInput === null ||
+                  manutencaoPrioridadeInput === null ||
+                  !podeOperar
+                }
                 title={!podeOperar ? tituloSemAcesso : undefined}
-                onClick={() => confirmarManutencao(manutencaoModal, manutencaoDescricaoInput.trim(), manutencaoItemIdInput)}
+                onClick={() =>
+                  confirmarManutencao(
+                    manutencaoModal,
+                    manutencaoDescricaoInput.trim(),
+                    manutencaoItemIdInput,
+                    manutencaoUrgenteInput ?? undefined,
+                    manutencaoPrioridadeInput ?? undefined,
+                  )
+                }
                 className="flex-1 py-2 rounded-lg bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Enviar solicitação

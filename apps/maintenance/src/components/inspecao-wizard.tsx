@@ -13,6 +13,7 @@ import {
   ClipboardList,
   History,
   Siren,
+  Flag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -56,6 +57,10 @@ type Resposta = {
   // pode mudar — urgência pode escalar ou desescalar entre inspeções,
   // pedido explícito do Felipe). null = ainda não respondeu.
   urgente: boolean | null
+  // Flag "defeito prioritário" — mesma regra de urgente (sempre perguntada,
+  // reavaliável a cada inspeção), sem efeito de bloqueio (pedido explícito
+  // do Felipe, 04/08/2026).
+  prioridade: boolean | null
 }
 
 export function InspecaoWizard({
@@ -72,7 +77,7 @@ export function InspecaoWizard({
   // (não corrigidos ainda) — usado pra pré-preencher a tela de execução com
   // o relato atual em vez de partir de "Conforme" em branco. Ver comentário
   // em respostas abaixo.
-  pendenciasAtuais?: Record<string, { comment: string; photos: string[]; urgente: boolean }>
+  pendenciasAtuais?: Record<string, { comment: string; photos: string[]; urgente: boolean; prioridade: boolean }>
   // checklistItemId cujo item NAO_CONFORME atual já tem um card de Correção
   // aberto cuidando dele — critério que precisa bater exatamente com o do
   // servidor (createInspecaoImpl) pra decidir se pula a pergunta de
@@ -113,6 +118,7 @@ export function InspecaoWizard({
                 needsMaterial: null,
                 needsExternalService: null,
                 urgente: pendencia.urgente,
+                prioridade: pendencia.prioridade,
               }
             : {
                 status: 'CONFORME' as const,
@@ -121,6 +127,7 @@ export function InspecaoWizard({
                 needsMaterial: null,
                 needsExternalService: null,
                 urgente: null,
+                prioridade: null,
               },
         ]
       }),
@@ -148,6 +155,10 @@ export function InspecaoWizard({
 
   function setUrgente(itemId: string, urgente: boolean) {
     setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], urgente } }))
+  }
+
+  function setPrioridade(itemId: string, prioridade: boolean) {
+    setRespostas((r) => ({ ...r, [itemId]: { ...r[itemId], prioridade } }))
   }
 
   async function adicionarFotos(itemId: string, files: FileList | null) {
@@ -241,6 +252,7 @@ export function InspecaoWizard({
         needsMaterial: resp?.status === 'NAO_CONFORME' ? resp.needsMaterial ?? undefined : undefined,
         needsExternalService: resp?.status === 'NAO_CONFORME' ? resp.needsExternalService ?? undefined : undefined,
         urgente: resp?.status === 'NAO_CONFORME' ? resp.urgente ?? undefined : undefined,
+        prioridade: resp?.status === 'NAO_CONFORME' ? resp.prioridade ?? undefined : undefined,
       }
     })
 
@@ -479,6 +491,41 @@ export function InspecaoWizard({
                 </div>
               </div>
 
+              {/* Flag "defeito prioritário" (pedido explícito do Felipe,
+                  04/08/2026) — mesma obrigatoriedade e regra de reavaliação
+                  de `urgente` acima, mas sem nenhum efeito de
+                  bloqueio/notificação: só dá destaque visual ao card. Violeta
+                  pra não colidir visualmente com o âmbar já usado por
+                  "Não conforme"/"Imprevisto" nem com o vermelho de Urgente. */}
+              <div className="space-y-1.5 rounded-xl border-2 border-violet-500/40 bg-violet-500/8 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-violet-600">
+                  <Flag className="h-3.5 w-3.5" />
+                  É um defeito prioritário? *
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setPrioridade(item.id, true)}
+                    className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                      resp?.prioridade === true
+                        ? 'border-violet-500 bg-violet-500/15 text-violet-600'
+                        : 'border-border text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    Sim, prioritário
+                  </button>
+                  <button
+                    onClick={() => setPrioridade(item.id, false)}
+                    className={`rounded-xl border-2 py-2 text-sm font-medium transition-colors ${
+                      resp?.prioridade === false
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-accent'
+                    }`}
+                  >
+                    Não
+                  </button>
+                </div>
+              </div>
+
               {/* Só pula a pergunta quando já existe um card de Correção
                   cuidando desse item (jaTemCard) — não basta estar não
                   conforme (pendenciaAtual): item legado, de antes dessa
@@ -598,6 +645,7 @@ export function InspecaoWizard({
               naoConforme &&
               (!resp?.comment?.trim() ||
                 resp?.urgente === null ||
+                resp?.prioridade === null ||
                 (!jaTemCard && (resp?.needsMaterial === null || resp?.needsExternalService === null)))
             }
             className="h-11 flex-1 rounded-xl"

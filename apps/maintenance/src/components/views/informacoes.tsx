@@ -20,6 +20,7 @@ import {
   X,
   Camera,
   Loader2,
+  Flag,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -316,7 +317,7 @@ export function Informacoes({
         .filter((it) => it.status === 'NAO_CONFORME' && it.checklistItemId)
         .map((it) => [
           it.checklistItemId as string,
-          { comment: it.comment ?? '', photos: it.photos, urgente: it.urgente },
+          { comment: it.comment ?? '', photos: it.photos, urgente: it.urgente, prioridade: it.prioridade },
         ]),
     )
     // Diferente de pendenciasAtuais acima (qualquer item ainda NAO_CONFORME,
@@ -449,6 +450,12 @@ export function Informacoes({
                           <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
                             <Siren className="h-2.5 w-2.5" />
                             Urgente
+                          </span>
+                        )}
+                        {it.status === 'NAO_CONFORME' && it.prioridade && (
+                          <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+                            <Flag className="h-2.5 w-2.5" />
+                            Prioridade
                           </span>
                         )}
                         {it.status === 'NAO_CONFORME' && !idsComCard.has(it.id) && podeOperar && (
@@ -1020,6 +1027,7 @@ function DialogEditarItemInspecao({
   const [needsMaterial, setNeedsMaterial] = useState<boolean | null>(null)
   const [needsExternalService, setNeedsExternalService] = useState<boolean | null>(null)
   const [urgente, setUrgente] = useState<boolean | null>(null)
+  const [prioridade, setPrioridade] = useState<boolean | null>(null)
   const [uploading, setUploading] = useState(false)
   const [salvando, setSalvando] = useState(false)
 
@@ -1035,6 +1043,7 @@ function DialogEditarItemInspecao({
     setNeedsMaterial(null)
     setNeedsExternalService(null)
     setUrgente(aberto.item.status === 'NAO_CONFORME' ? aberto.item.urgente : null)
+    setPrioridade(aberto.item.status === 'NAO_CONFORME' ? aberto.item.prioridade : null)
   }, [aberto])
 
   const statusOriginal = aberto?.item.status ?? 'CONFORME'
@@ -1082,6 +1091,10 @@ function DialogEditarItemInspecao({
       toast.error('Informe se é uma NC impeditiva ao uso (urgente).')
       return
     }
+    if (status === 'NAO_CONFORME' && prioridade === null) {
+      toast.error('Informe se é um defeito prioritário.')
+      return
+    }
     setSalvando(true)
     try {
       unwrapSafeAction(
@@ -1093,6 +1106,7 @@ function DialogEditarItemInspecao({
           needsMaterial: eraNovoRegistro ? needsMaterial ?? undefined : undefined,
           needsExternalService: eraNovoRegistro ? needsExternalService ?? undefined : undefined,
           urgente: status === 'NAO_CONFORME' ? urgente ?? undefined : undefined,
+          prioridade: status === 'NAO_CONFORME' ? prioridade ?? undefined : undefined,
         }),
       )
       toast.success('Item atualizado.')
@@ -1212,6 +1226,33 @@ function DialogEditarItemInspecao({
                     disabled={!podeOperar}
                     className="rounded-xl"
                     onClick={() => setUrgente(false)}
+                  >
+                    Não
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 rounded-xl border-2 border-violet-300 bg-violet-50/60 p-3">
+                <p className="flex items-center gap-1.5 text-xs font-bold text-violet-700">
+                  <Flag className="h-3.5 w-3.5" />
+                  É um defeito prioritário? *
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={prioridade === true ? 'default' : 'outline'}
+                    disabled={!podeOperar}
+                    className={`rounded-xl ${prioridade === true ? 'bg-violet-600 hover:bg-violet-700' : ''}`}
+                    onClick={() => setPrioridade(true)}
+                  >
+                    Sim, prioritário
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={prioridade === false ? 'default' : 'outline'}
+                    disabled={!podeOperar}
+                    className="rounded-xl"
+                    onClick={() => setPrioridade(false)}
                   >
                     Não
                   </Button>

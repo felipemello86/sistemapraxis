@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { X, Wrench, Siren, CheckCircle2, Clock, Loader2 } from "lucide-react";
+import { X, Wrench, Siren, CheckCircle2, Clock, Loader2, Flag } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Popup "Manutenção de hoje" (pedido explícito do Felipe, 04/08/2026): ao
@@ -21,6 +21,7 @@ type ManutencaoCard = {
   itemCategory: string | null;
   comment: string | null;
   urgente: boolean;
+  prioridade: boolean;
   executionStatus: string; // PLANEJADA | EXECUTADA
   executedAt: string | null;
   canceladoPorLiberacao: boolean;
@@ -137,6 +138,11 @@ export default function ManutencaoHojeModal({
                     {c.urgente && (
                       <span className="flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600 flex-shrink-0">
                         <Siren className="w-2.5 h-2.5" /> Urgente
+                      </span>
+                    )}
+                    {c.prioridade && (
+                      <span className="flex items-center gap-0.5 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600 flex-shrink-0">
+                        <Flag className="w-2.5 h-2.5" /> Prioridade
                       </span>
                     )}
                   </div>

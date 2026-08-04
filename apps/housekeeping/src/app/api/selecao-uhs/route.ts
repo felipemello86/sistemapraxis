@@ -292,7 +292,7 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida, checklistItemId } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida, checklistItemId, urgente, prioridade } = await req.json();
 
   const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao", "desbloquear"];
   if (!isGerente && !acoesGovernanta.includes(action)) {
@@ -460,6 +460,22 @@ export async function PATCH(req: NextRequest) {
     if (!descricao?.trim()) {
       return NextResponse.json({ error: "Descrição obrigatória para solicitar manutenção." }, { status: 400 });
     }
+    // Urgência e prioridade — pedido explícito do Felipe (04/08/2026): esse
+    // atalho passou a perguntar as duas flags também, igual aos outros
+    // pontos de entrada de NC (antes o item nascia sempre urgente=false/
+    // prioridade=false por padrão do schema, sem perguntar nada).
+    if (typeof urgente !== "boolean") {
+      return NextResponse.json(
+        { error: "Informe se essa não conformidade é impeditiva ao uso (urgente)." },
+        { status: 400 },
+      );
+    }
+    if (typeof prioridade !== "boolean") {
+      return NextResponse.json(
+        { error: "Informe se essa não conformidade é um defeito prioritário." },
+        { status: 400 },
+      );
+    }
 
     // Item de checklist obrigatório (pedido explícito do Felipe: "todo
     // defeito de manutenção aberto na tela de seleção e liberação deve ser
@@ -496,6 +512,8 @@ export async function PATCH(req: NextRequest) {
       descricao: descricao.trim(),
       solicitanteNome: session.nome,
       registradoPorId: session.userId,
+      urgente,
+      prioridade,
     });
 
     await emitEvent({
@@ -510,6 +528,8 @@ export async function PATCH(req: NextRequest) {
         descricao: descricao.trim(),
         itemNome: itemCatalogo.name,
         atorNome: session.nome,
+        urgente,
+        prioridade,
       },
     });
 

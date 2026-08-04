@@ -1607,6 +1607,14 @@ model MaintenanceInspectionItem {
   // comment/photos abaixo, limpos na resolução).
   urgente Boolean @default(false)
 
+  // Flag de "defeito prioritário" — pedido explícito do Felipe (04/08/2026),
+  // irmã de `urgente` acima mas SEM nenhum efeito colateral de bloqueio de
+  // UH/notificação: puramente informativa, só pra dar destaque visual ao
+  // card em todo lugar que ele aparece. Sempre respondida (Sim/Não) nos
+  // mesmos pontos de entrada de NC que perguntam `urgente`, mesma regra de
+  // reavaliação a cada nova inspeção e reset pra false na resolução.
+  prioridade Boolean @default(false)
+
   // Preenchido quando uma MaintenanceCorrection resolve este item (o status
   // acima volta pra CONFORME e este campo guarda quando isso aconteceu —
   // mesmo comportamento do REGISTER_CORRECAO do protótipo standalone).

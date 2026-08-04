@@ -240,8 +240,14 @@ export async function ativarManutencaoUH(params: {
   descricao: string;
   solicitanteNome: string;
   registradoPorId: string;
+  // Pedido explícito do Felipe (04/08/2026): esse atalho passou a perguntar
+  // as duas flags também, igual aos outros pontos de entrada de NC — antes
+  // o item nascia sempre urgente=false/prioridade=false por padrão do
+  // schema, sem perguntar nada.
+  urgente: boolean;
+  prioridade: boolean;
 }) {
-  const { tenantId, uhId, checklistItemId, descricao, solicitanteNome, registradoPorId } = params;
+  const { tenantId, uhId, checklistItemId, descricao, solicitanteNome, registradoPorId, urgente, prioridade } = params;
 
   const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
   if (!uh) return;
@@ -323,6 +329,8 @@ export async function ativarManutencaoUH(params: {
           checklistItemId,
           status: "NAO_CONFORME",
           comment: descricaoFlag,
+          urgente,
+          prioridade,
         },
       });
       inspectionItemId = novoItem.id;
@@ -338,7 +346,7 @@ export async function ativarManutencaoUH(params: {
           // deve contar como "UH inspecionada" pro prazo de conformidade
           // (ver comentário no schema, MaintenanceInspection.avulsa).
           avulsa: true,
-          items: { create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoFlag }] },
+          items: { create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoFlag, urgente, prioridade }] },
         },
         include: { items: true },
       });
@@ -360,5 +368,18 @@ export async function ativarManutencaoUH(params: {
       body: `UH ${uh.numero}: ${descricaoFlag}`,
       data: { view: "correcao" },
     });
+
+    // Mesmo tratamento dos outros pontos de entrada de NC — se marcada como
+    // urgente aqui, também dispara o pedido de bloqueio pro Atendimento
+    // decidir (ver aplicarBloqueioPorUrgencia).
+    if (urgente) {
+      await aplicarBloqueioPorUrgencia({
+        tenantId,
+        uhId,
+        checklistItemId,
+        comment: descricaoFlag,
+        solicitanteNome,
+      });
+    }
   }
 }

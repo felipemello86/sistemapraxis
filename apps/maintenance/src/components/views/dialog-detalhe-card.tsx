@@ -1,6 +1,6 @@
 'use client'
 
-import { BedDouble, CheckCircle2, Clock, History, Lock, Phone, Siren, Unlock } from 'lucide-react'
+import { BedDouble, CheckCircle2, Clock, History, Lock, Phone, Siren, Unlock, Flag } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -63,6 +63,12 @@ export function DialogDetalheCard({
                   <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
                     <Siren className="h-2.5 w-2.5" />
                     Urgente
+                  </span>
+                )}
+                {card.prioridade && (
+                  <span className="flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+                    <Flag className="h-2.5 w-2.5" />
+                    Prioridade
                   </span>
                 )}
                 {temReserva && (

@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { BedDouble, Ban, Siren, Unlock, X } from 'lucide-react'
+import { BedDouble, Ban, Siren, Unlock, X, Flag } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { corCategoria } from '@/lib/domain'
-import { retirarUrgenciaAction } from '@/app/actions/correcao'
+import { retirarUrgenciaAction, retirarPrioridadeAction } from '@/app/actions/correcao'
 import { unwrapSafeAction } from '@/lib/safeAction'
 import { toast } from 'sonner'
 import type { CorrectionCardView } from '@/lib/types'
@@ -51,6 +51,7 @@ export function CorrectionCardHeader({
   podeOperar?: boolean
 }) {
   const [retirandoUrgencia, setRetirandoUrgencia] = useState(false)
+  const [retirandoPrioridade, setRetirandoPrioridade] = useState(false)
 
   async function retirarUrgencia(e: React.MouseEvent) {
     // Esse botão fica dentro da área clicável do card (onVerDetalhe) —
@@ -65,6 +66,23 @@ export function CorrectionCardHeader({
       toast.error(err instanceof Error ? err.message : 'Erro ao retirar a urgência.')
     } finally {
       setRetirandoUrgencia(false)
+    }
+  }
+
+  // Botão "Retirar prioridade" — mesmo padrão de retirarUrgencia acima
+  // (pedido explícito do Felipe, 04/08/2026), sem nenhum efeito de
+  // bloqueio/notificação envolvido.
+  async function retirarPrioridade(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setRetirandoPrioridade(true)
+    try {
+      unwrapSafeAction(await retirarPrioridadeAction({ cardId: card.id }))
+      toast.success('Prioridade retirada do card.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao retirar a prioridade.')
+    } finally {
+      setRetirandoPrioridade(false)
     }
   }
 
@@ -108,7 +126,7 @@ export function CorrectionCardHeader({
           flags juntas (pedido do Felipe, 01/08/2026: "as flags não estão
           cabendo no card"). flex-wrap deixa quebrar em quantas linhas
           precisar, em vez de estourar a largura do card. */}
-      {(card.urgente || temReserva || liberada || card.canceladoPorLiberacao || extraBadge) && (
+      {(card.urgente || card.prioridade || temReserva || liberada || card.canceladoPorLiberacao || extraBadge) && (
         <div className="flex flex-wrap items-center gap-1.5">
           {card.urgente && (
             <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
@@ -132,6 +150,29 @@ export function CorrectionCardHeader({
             >
               <X className="h-2.5 w-2.5" />
               {retirandoUrgencia ? 'Retirando...' : 'Retirar urgência'}
+            </button>
+          )}
+          {/* Flag "defeito prioritário" (pedido explícito do Felipe,
+              04/08/2026) — irmã de Urgente acima, sem efeito de
+              bloqueio/notificação: só destaque visual. Violeta pra não
+              colidir com o vermelho de Urgente nem o âmbar de
+              Imprevisto/UH removida abaixo. */}
+          {card.prioridade && (
+            <span className="flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+              <Flag className="h-2.5 w-2.5" />
+              Prioridade
+            </span>
+          )}
+          {card.prioridade && podeOperar && (
+            <button
+              type="button"
+              onClick={retirarPrioridade}
+              disabled={retirandoPrioridade}
+              title="Retirar a classificação de prioridade deste card"
+              className="flex items-center gap-0.5 rounded-full border border-violet-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600 transition-colors hover:bg-violet-500/10 disabled:opacity-50"
+            >
+              <X className="h-2.5 w-2.5" />
+              {retirandoPrioridade ? 'Retirando...' : 'Retirar prioridade'}
             </button>
           )}
           {temReserva && (

@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso a este módulo" }, { status: 403 });
   }
 
-  const { uhId, checklistItemId, descricao, fotos, urgente } = await req.json();
+  const { uhId, checklistItemId, descricao, fotos, urgente, prioridade } = await req.json();
 
   if (!uhId || !checklistItemId || !descricao || String(descricao).trim().length < 5) {
     return NextResponse.json({ error: "Descreva a falha detectada (mínimo 5 caracteres)." }, { status: 400 });
@@ -44,6 +44,14 @@ export async function POST(req: NextRequest) {
   if (typeof urgente !== "boolean") {
     return NextResponse.json(
       { error: "Informe se essa não conformidade é impeditiva ao uso (urgente)." },
+      { status: 400 },
+    );
+  }
+  // Flag "defeito prioritário" — mesma obrigatoriedade de urgente, sem
+  // efeito de bloqueio (pedido explícito do Felipe, 04/08/2026).
+  if (typeof prioridade !== "boolean") {
+    return NextResponse.json(
+      { error: "Informe se essa não conformidade é um defeito prioritário." },
       { status: 400 },
     );
   }
@@ -82,7 +90,7 @@ export async function POST(req: NextRequest) {
     if (itemAtual) {
       await prisma.maintenanceInspectionItem.update({
         where: { id: itemAtual.id },
-        data: { status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, corrigidoEm: null, urgente },
+        data: { status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, corrigidoEm: null, urgente, prioridade },
       });
       inspectionItemId = itemAtual.id;
     } else {
@@ -94,6 +102,7 @@ export async function POST(req: NextRequest) {
           comment: descricaoLimpa,
           photos: fotosJson,
           urgente,
+          prioridade,
         },
       });
       inspectionItemId = novoItem.id;
@@ -110,7 +119,7 @@ export async function POST(req: NextRequest) {
         // de conformidade (ver MaintenanceInspection.avulsa no schema).
         avulsa: true,
         items: {
-          create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, urgente }],
+          create: [{ checklistItemId, status: "NAO_CONFORME", comment: descricaoLimpa, photos: fotosJson, urgente, prioridade }],
         },
       },
       include: { items: true },
@@ -152,6 +161,7 @@ export async function POST(req: NextRequest) {
       itemNome: item.name,
       descricao: descricaoLimpa,
       urgente,
+      prioridade,
       atorNome: session.nome,
     },
   });

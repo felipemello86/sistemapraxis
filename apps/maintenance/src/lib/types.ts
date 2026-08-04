@@ -29,6 +29,11 @@ export type InspectionItem = {
   // (ver packages/core/src/maintenanceUrgente.ts). Sempre false quando
   // status = CONFORME.
   urgente: boolean;
+  // Flag "defeito prioritário" (pedido explícito do Felipe, 04/08/2026) —
+  // irmã de `urgente`, sem efeito de bloqueio/notificação: só dá destaque
+  // visual ao card em todo lugar que ele aparece. Sempre false quando
+  // status = CONFORME.
+  prioridade: boolean;
 };
 
 export type InspecaoComUnidade = {
@@ -190,6 +195,10 @@ export type CorrectionCardView = {
   // NC impeditiva ao uso — evidenciada em todo lugar que exibe a NC (pedido
   // explícito). Vem do MaintenanceInspectionItem, não duplicada no card.
   urgente: boolean;
+  // Flag "defeito prioritário" (pedido explícito do Felipe, 04/08/2026) —
+  // mesma origem/tratamento de `urgente` acima, evidenciada em todo lugar
+  // que exibe o card.
+  prioridade: boolean;
 
   // null = ainda não triado (nasceu do módulo Governança — camareira,
   // governanta, flag de manutenção — que não pergunta isso). Aparece na
@@ -259,6 +268,7 @@ export type LogEvento = {
     | "card_retirado_da_programacao" // retirarCardDaProgramacaoImpl — card individual tirado de "Planejadas", volta pra "A Fazer"
     | "cards_cancelados_por_liberacao" // cancelarCardsPorExclusaoDeUh (packages/core) — UH saiu da lista do dia em Housekeeping
     | "urgencia_retirada" // retirarUrgenciaImpl — botão "Retirar Urgência" nos kanbans de Correção
+    | "prioridade_retirada" // retirarPrioridadeImpl — botão "Retirar prioridade" nos kanbans de Correção
     | "material_comprado" // comprarMaterialImpl
     | "cotacao_registrada" // registrarCotacaoImpl
     | "servico_agendado" // agendarServicoImpl — só a 1ª vez (reagendamentos seguintes já viram "reagendamento")
@@ -274,6 +284,7 @@ export type LogEvento = {
   atorNome: string | null;
   detalhe: string | null;
   urgente: boolean;
+  prioridade: boolean;
 };
 
 export type DailyCommitmentView = {
@@ -295,6 +306,7 @@ export type DailyCommitmentView = {
     executionStatus: "A_FAZER" | "PLANEJADA" | "EXECUTADA";
     executedAt: string | null; // ISO
     urgente: boolean;
+    prioridade: boolean;
     previsto: boolean;
   }[];
   // Não conformidades (IV) identificadas nesse dia (createdAt do card de
@@ -311,6 +323,7 @@ export type DailyCommitmentView = {
     comment: string | null;
     createdAt: string; // ISO
     urgente: boolean;
+    prioridade: boolean;
   }[];
   // Retrato das UHs com inspeção em atraso no momento em que este relatório
   // foi enviado (ver uhsEmAtrasoSnapshot no schema + listarUHsEmAtraso em

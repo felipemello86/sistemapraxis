@@ -159,7 +159,7 @@ export default async function Home() {
     prisma.maintenanceCorrectionCard.findMany({
       where: { tenantId: session.tenantId, inspectionItem: { status: "NAO_CONFORME" } },
       include: {
-        inspectionItem: { select: { comment: true, photos: true, urgente: true } },
+        inspectionItem: { select: { comment: true, photos: true, urgente: true, prioridade: true } },
         uh: { select: { id: true, numero: true } },
         checklistItem: { select: { id: true, name: true, category: true } },
         hiredSupplier: { select: { id: true, nome: true } },
@@ -205,7 +205,7 @@ export default async function Home() {
           include: {
             uh: { select: { numero: true } },
             checklistItem: { select: { name: true } },
-            inspectionItem: { select: { urgente: true } },
+            inspectionItem: { select: { urgente: true, prioridade: true } },
           },
         },
       },
@@ -238,7 +238,7 @@ export default async function Home() {
         executedDescription: true,
         uh: { select: { numero: true } },
         checklistItem: { select: { name: true } },
-        inspectionItem: { select: { comment: true, urgente: true } },
+        inspectionItem: { select: { comment: true, urgente: true, prioridade: true } },
         triagedBy: { select: { nome: true } },
         executedBy: { select: { nome: true } },
         schedulingLogs: {
@@ -329,6 +329,7 @@ export default async function Home() {
       photos: safeParsePhotos(it.photos),
       corrigidoEm: it.corrigidoEm ? it.corrigidoEm.toISOString() : null,
       urgente: it.urgente,
+      prioridade: it.prioridade,
     })),
   }));
 
@@ -392,6 +393,7 @@ export default async function Home() {
       photos: safeParsePhotos(c.inspectionItem.photos),
       createdAt: c.createdAt.toISOString(),
       urgente: c.inspectionItem.urgente,
+      prioridade: c.inspectionItem.prioridade,
       needsMaterial: c.needsMaterial,
       needsExternalService: c.needsExternalService,
       materialStatus: c.materialStatus as "A_ADQUIRIR" | "COMPRADO",
@@ -450,7 +452,7 @@ export default async function Home() {
     ? await prisma.maintenanceCorrectionCard.findMany({
         where: { tenantId: session.tenantId, executionStatus: "EXECUTADA", dailyCommitmentId: commitmentHojeId },
         include: {
-          inspectionItem: { select: { comment: true, photos: true, urgente: true } },
+          inspectionItem: { select: { comment: true, photos: true, urgente: true, prioridade: true } },
           uh: { select: { id: true, numero: true } },
           checklistItem: { select: { id: true, name: true, category: true } },
           hiredSupplier: { select: { id: true, nome: true } },
@@ -508,6 +510,7 @@ export default async function Home() {
       executionStatus: card.executionStatus as "A_FAZER" | "PLANEJADA" | "EXECUTADA",
       executedAt: card.executedAt ? card.executedAt.toISOString() : null,
       urgente: card.inspectionItem.urgente,
+      prioridade: card.inspectionItem.prioridade,
       previsto: card.previsto,
     })),
     naoConformidadesIdentificadas: (naoConformidadesPorDia.get(cm.data) ?? []).map((c) => ({
@@ -517,6 +520,7 @@ export default async function Home() {
       comment: c.inspectionItem.comment,
       createdAt: c.createdAt.toISOString(),
       urgente: c.inspectionItem.urgente,
+      prioridade: c.inspectionItem.prioridade,
     })),
     uhsEmAtraso: cm.uhsEmAtrasoSnapshot ? JSON.parse(cm.uhsEmAtrasoSnapshot) : null,
   }));
@@ -549,12 +553,14 @@ export default async function Home() {
         ? insp.items[0]?.comment ?? "Relato avulso registrado."
         : `Inspeção completa — ${ncCount} não conformidade${ncCount === 1 ? "" : "s"} de ${insp.items.length} ${insp.items.length === 1 ? "item verificado" : "itens verificados"}.`,
       urgente: insp.items.some((it) => it.status === "NAO_CONFORME" && it.urgente),
+      prioridade: insp.items.some((it) => it.status === "NAO_CONFORME" && it.prioridade),
     });
   }
 
   for (const c of allCardsForLog) {
     const itemNome = c.checklistItem?.name ?? "Relato avulso";
     const urgente = c.inspectionItem.urgente;
+    const prioridade = c.inspectionItem.prioridade;
     logEventos.push({
       id: `card-criado-${c.id}`,
       tipo: "correcao_criada",
@@ -564,6 +570,7 @@ export default async function Home() {
       atorNome: null,
       detalhe: c.inspectionItem.comment,
       urgente,
+      prioridade,
     });
     if (c.triagedAt) {
       logEventos.push({
@@ -575,6 +582,7 @@ export default async function Home() {
         atorNome: c.triagedBy?.nome ?? null,
         detalhe: `Precisa de material: ${c.needsMaterial ? "sim" : "não"} · Precisa de serviço externo: ${c.needsExternalService ? "sim" : "não"}`,
         urgente,
+        prioridade,
       });
     }
     if (c.executedAt) {
@@ -587,6 +595,7 @@ export default async function Home() {
         atorNome: c.executedBy?.nome ?? null,
         detalhe: c.executedDescription,
         urgente,
+        prioridade,
       });
     }
     for (const l of c.schedulingLogs) {
@@ -601,6 +610,7 @@ export default async function Home() {
         atorNome: l.author?.nome ?? null,
         detalhe: `${de} → ${para}`,
         urgente,
+        prioridade,
       });
     }
   }
@@ -615,6 +625,7 @@ export default async function Home() {
       atorNome: l.author?.nome ?? null,
       detalhe: l.newInfo,
       urgente: false,
+      prioridade: false,
     });
   }
 
@@ -630,6 +641,7 @@ export default async function Home() {
     "maintenance.log.card_retirado_da_programacao": "card_retirado_da_programacao",
     "maintenance.log.cards_cancelados_por_liberacao": "cards_cancelados_por_liberacao",
     "maintenance.log.urgencia_retirada": "urgencia_retirada",
+    "maintenance.log.prioridade_retirada": "prioridade_retirada",
     "maintenance.log.material_comprado": "material_comprado",
     "maintenance.log.cotacao_registrada": "cotacao_registrada",
     "maintenance.log.servico_agendado": "servico_agendado",
@@ -703,6 +715,9 @@ export default async function Home() {
       case "urgencia_retirada":
         detalhe = "Classificação de urgente removida do card — não é mais uma NC impeditiva ao uso.";
         break;
+      case "prioridade_retirada":
+        detalhe = "Classificação de prioridade removida do card.";
+        break;
       case "material_comprado":
         detalhe = "Material marcado como comprado.";
         break;
@@ -760,6 +775,7 @@ export default async function Home() {
       atorNome,
       detalhe,
       urgente: false,
+      prioridade: false,
     });
   }
 

@@ -154,6 +154,11 @@ async function createInspecaoImpl(input: {
     // (pedido explícito do Felipe). Ver comparação com o valor anterior
     // mais abaixo.
     urgente?: boolean;
+    // Flag de "defeito prioritário" (pedido explícito do Felipe,
+    // 04/08/2026) — irmã de `urgente`, mesma obrigatoriedade e mesma regra
+    // de reavaliação a cada inspeção, mas SEM nenhum efeito colateral de
+    // bloqueio/notificação: puramente informativa no card.
+    prioridade?: boolean;
   }[];
 }) {
   const session = await requireModuleSession();
@@ -166,6 +171,9 @@ async function createInspecaoImpl(input: {
   for (const it of input.itens) {
     if (it.status === "NAO_CONFORME" && typeof it.urgente !== "boolean") {
       throw new Error("Informe se cada não conformidade é impeditiva ao uso (urgente).");
+    }
+    if (it.status === "NAO_CONFORME" && typeof it.prioridade !== "boolean") {
+      throw new Error("Informe se cada não conformidade é um defeito prioritário.");
     }
   }
 
@@ -182,6 +190,7 @@ async function createInspecaoImpl(input: {
           comment: it.comment ?? null,
           photos: JSON.stringify(it.photos ?? []),
           urgente: it.status === "NAO_CONFORME" ? Boolean(it.urgente) : false,
+          prioridade: it.status === "NAO_CONFORME" ? Boolean(it.prioridade) : false,
         })),
       },
     },
@@ -767,6 +776,10 @@ async function editarSpotInspecaoImpl(input: {
   // nova ou edição — urgência pode mudar (pedido explícito). Comparado com
   // o valor anterior do item pra decidir se escala/desescala o bloqueio.
   urgente?: boolean;
+  // Flag de "defeito prioritário" — mesma obrigatoriedade de `urgente`,
+  // sem efeito colateral de bloqueio/notificação (pedido explícito do
+  // Felipe, 04/08/2026).
+  prioridade?: boolean;
 }) {
   const session = await requireModuleSession();
 
@@ -795,6 +808,9 @@ async function editarSpotInspecaoImpl(input: {
   if (input.status === "NAO_CONFORME" && typeof input.urgente !== "boolean") {
     throw new Error("Informe se essa não conformidade é impeditiva ao uso (urgente).");
   }
+  if (input.status === "NAO_CONFORME" && typeof input.prioridade !== "boolean") {
+    throw new Error("Informe se essa não conformidade é um defeito prioritário.");
+  }
 
   const now = new Date();
 
@@ -815,7 +831,7 @@ async function editarSpotInspecaoImpl(input: {
       }),
       prisma.maintenanceInspectionItem.update({
         where: { id: item.id },
-        data: { status: "CONFORME", corrigidoEm: now, comment: null, photos: "[]", urgente: false },
+        data: { status: "CONFORME", corrigidoEm: now, comment: null, photos: "[]", urgente: false, prioridade: false },
       }),
     ]);
     // Resolveu direto pelo UH 3D (bypassa os kanbans de Correção) — se
@@ -845,6 +861,7 @@ async function editarSpotInspecaoImpl(input: {
         photos: input.status === "NAO_CONFORME" ? JSON.stringify(input.photos ?? []) : "[]",
         corrigidoEm: input.status === "CONFORME" ? now : null,
         urgente: input.status === "NAO_CONFORME" ? Boolean(input.urgente) : false,
+        prioridade: input.status === "NAO_CONFORME" ? Boolean(input.prioridade) : false,
       },
     });
 
@@ -916,6 +933,7 @@ async function registrarNcAvulsaImpl(input: {
   needsMaterial: boolean;
   needsExternalService: boolean;
   urgente: boolean;
+  prioridade: boolean;
 }) {
   const session = await requireModuleSession();
 
@@ -929,6 +947,9 @@ async function registrarNcAvulsaImpl(input: {
   }
   if (typeof input.urgente !== "boolean") {
     throw new Error("Informe se essa não conformidade é impeditiva ao uso (urgente).");
+  }
+  if (typeof input.prioridade !== "boolean") {
+    throw new Error("Informe se essa não conformidade é um defeito prioritário.");
   }
 
   const ultimaInspecao = await prisma.maintenanceInspection.findFirst({
@@ -963,6 +984,7 @@ async function registrarNcAvulsaImpl(input: {
               comment,
               photos: JSON.stringify(input.photos ?? []),
               urgente: input.urgente,
+              prioridade: input.prioridade,
             },
           ],
         },
@@ -981,6 +1003,7 @@ async function registrarNcAvulsaImpl(input: {
         comment,
         photos: JSON.stringify(input.photos ?? []),
         urgente: input.urgente,
+        prioridade: input.prioridade,
       },
     });
     inspectionItemId = novoItem.id;
@@ -990,7 +1013,13 @@ async function registrarNcAvulsaImpl(input: {
     const existente = ultimaInspecao.items[0];
     await prisma.maintenanceInspectionItem.update({
       where: { id: existente.id },
-      data: { status: "NAO_CONFORME", comment, photos: JSON.stringify(input.photos ?? []), urgente: input.urgente },
+      data: {
+        status: "NAO_CONFORME",
+        comment,
+        photos: JSON.stringify(input.photos ?? []),
+        urgente: input.urgente,
+        prioridade: input.prioridade,
+      },
     });
     inspectionItemId = existente.id;
   }

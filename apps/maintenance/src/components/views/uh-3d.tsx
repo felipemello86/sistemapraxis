@@ -17,6 +17,7 @@ import {
   ShowerHead,
   Siren,
   ClipboardList,
+  Flag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -356,6 +357,14 @@ export function Uh3D({
     return it?.status === 'NAO_CONFORME' && it.urgente === true
   }
 
+  // Flag "defeito prioritário" — mesmo padrão de sinalização de urgenteDoSpot
+  // acima, mas sem efeito de bloqueio (pedido explícito do Felipe,
+  // 04/08/2026).
+  function prioridadeDoSpot(spot: UhSpot): boolean {
+    const it = statusPorItem.get(spot.checklistItemId)
+    return it?.status === 'NAO_CONFORME' && it.prioridade === true
+  }
+
   const { maxX: maxPanX, maxY: maxPanY } = getMaxPan(zoom)
   const podeArrastar = maxPanX > 0 || maxPanY > 0
   const displayed = getDisplayedSize(zoom)
@@ -427,6 +436,7 @@ export function Uh3D({
             spotsDaImagem.map((spot) => {
               const status = statusDoSpot(spot)
               const urgente = urgenteDoSpot(spot)
+              const prioridade = prioridadeDoSpot(spot)
               const item = itemPorId.get(spot.checklistItemId)
               const offsetX = (spot.x / 100 - 0.5) * displayed.w
               const offsetY = (spot.y / 100 - 0.5) * displayed.h
@@ -480,9 +490,15 @@ export function Uh3D({
                       <Siren className="h-2 w-2 text-white" strokeWidth={3} />
                     </span>
                   )}
+                  {prioridade && (
+                    <span className="absolute -bottom-1 -right-1 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet-600 ring-2 ring-black/40">
+                      <Flag className="h-2 w-2 text-white" strokeWidth={3} />
+                    </span>
+                  )}
                   <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-popover px-2 py-1 text-xs text-popover-foreground shadow-lg ring-1 ring-foreground/10 group-hover:block">
                     {item?.name ?? 'Item removido do catálogo'}
                     {urgente && <span className="ml-1 font-semibold text-red-500">· urgente</span>}
+                    {prioridade && <span className="ml-1 font-semibold text-violet-500">· prioridade</span>}
                   </span>
                 </button>
               )
@@ -786,6 +802,11 @@ function SpotDetailDialog({
   const [urgente, setUrgente] = useState<boolean | null>(
     inspectionItem?.status === 'NAO_CONFORME' ? inspectionItem.urgente : null,
   )
+  // Flag "defeito prioritário" — mesma regra de urgente acima, sem efeito
+  // de bloqueio (pedido explícito do Felipe, 04/08/2026).
+  const [prioridade, setPrioridade] = useState<boolean | null>(
+    inspectionItem?.status === 'NAO_CONFORME' ? inspectionItem.prioridade : null,
+  )
   const eraNovoRegistro = status === 'NAO_CONFORME' && inspectionItem?.status !== 'NAO_CONFORME'
 
   useEffect(() => {
@@ -795,6 +816,7 @@ function SpotDetailDialog({
     setNeedsMaterial(null)
     setNeedsExternalService(null)
     setUrgente(inspectionItem?.status === 'NAO_CONFORME' ? inspectionItem.urgente : null)
+    setPrioridade(inspectionItem?.status === 'NAO_CONFORME' ? inspectionItem.prioridade : null)
   }, [inspectionItem])
 
   async function adicionarFotos(files: FileList | null) {
@@ -838,6 +860,10 @@ function SpotDetailDialog({
       toast.error('Informe se é uma NC impeditiva ao uso (urgente).')
       return
     }
+    if (status === 'NAO_CONFORME' && prioridade === null) {
+      toast.error('Informe se é um defeito prioritário.')
+      return
+    }
     setSalvando(true)
     try {
       if (inspectionItem) {
@@ -850,6 +876,7 @@ function SpotDetailDialog({
             needsMaterial: eraNovoRegistro ? needsMaterial ?? undefined : undefined,
             needsExternalService: eraNovoRegistro ? needsExternalService ?? undefined : undefined,
             urgente: status === 'NAO_CONFORME' ? urgente ?? undefined : undefined,
+            prioridade: status === 'NAO_CONFORME' ? prioridade ?? undefined : undefined,
           }),
         )
       } else {
@@ -865,6 +892,7 @@ function SpotDetailDialog({
             needsMaterial: needsMaterial as boolean,
             needsExternalService: needsExternalService as boolean,
             urgente: urgente as boolean,
+            prioridade: prioridade as boolean,
           }),
         )
       }
@@ -1016,6 +1044,33 @@ function SpotDetailDialog({
                       disabled={!podeOperar}
                       className="rounded-xl"
                       onClick={() => setUrgente(false)}
+                    >
+                      Não
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 rounded-xl border-2 border-violet-300 bg-violet-50/60 p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-violet-700">
+                    <Flag className="h-3.5 w-3.5" />
+                    É um defeito prioritário? *
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant={prioridade === true ? 'default' : 'outline'}
+                      disabled={!podeOperar}
+                      className={`rounded-xl ${prioridade === true ? 'bg-violet-600 hover:bg-violet-700' : ''}`}
+                      onClick={() => setPrioridade(true)}
+                    >
+                      Sim, prioritário
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={prioridade === false ? 'default' : 'outline'}
+                      disabled={!podeOperar}
+                      className="rounded-xl"
+                      onClick={() => setPrioridade(false)}
                     >
                       Não
                     </Button>

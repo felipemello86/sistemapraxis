@@ -111,7 +111,7 @@ export async function resolveCorrectionCard(params: {
   await prisma.$transaction([
     prisma.maintenanceInspectionItem.update({
       where: { id: card.inspectionItemId },
-      data: { status: "CONFORME", corrigidoEm: now, urgente: false },
+      data: { status: "CONFORME", corrigidoEm: now, urgente: false, prioridade: false },
     }),
     prisma.maintenanceCorrection.create({
       data: {
@@ -239,7 +239,7 @@ export async function corrigirItemDireto(params: {
   await prisma.$transaction([
     prisma.maintenanceInspectionItem.update({
       where: { id: item.id },
-      data: { status: "CONFORME", corrigidoEm: now, urgente: false },
+      data: { status: "CONFORME", corrigidoEm: now, urgente: false, prioridade: false },
     }),
     prisma.maintenanceCorrection.create({
       data: {

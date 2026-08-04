@@ -13,6 +13,7 @@ import {
   Minimize2,
   Siren,
   TrendingUp,
+  Flag,
 } from 'lucide-react'
 import type { DailyCommitmentView } from '@/lib/types'
 
@@ -543,6 +544,12 @@ export function Performance({
                                 <span className="flex items-center gap-0.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">
                                   <Siren className="h-2.5 w-2.5" />
                                   Urgente
+                                </span>
+                              )}
+                              {item.prioridade && (
+                                <span className="flex items-center gap-0.5 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-600">
+                                  <Flag className="h-2.5 w-2.5" />
+                                  Prioridade
                                 </span>
                               )}
                             </span>

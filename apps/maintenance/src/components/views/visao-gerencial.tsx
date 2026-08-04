@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Siren,
   Wrench,
+  Flag,
 } from 'lucide-react'
 import {
   Bar,
@@ -72,6 +73,10 @@ type NcRow = {
   // NC impeditiva ao uso — evidenciada em todo lugar que exibe a NC (pedido
   // explícito), inclusive na barra de Conformidade por UH abaixo.
   urgente: boolean
+  // Flag "defeito prioritário" (pedido explícito do Felipe, 04/08/2026) —
+  // irmã de `urgente` acima, evidenciada nos mesmos lugares (exceto a
+  // sinalização 🔴 na barra do gráfico, que continua específica de urgência).
+  prioridade: boolean
 }
 
 export function VisaoGerencial({
@@ -189,6 +194,7 @@ export function VisaoGerencial({
           photos: it.photos,
           date: insp.date,
           urgente: it.urgente,
+          prioridade: it.prioridade,
         })
       }
     }
@@ -370,16 +376,28 @@ export function VisaoGerencial({
                       </Badge>
                     </td>
                     <td className="py-2">
-                      {r.urgente && (
-                        <Badge
-                          variant="outline"
-                          className="gap-1 border-destructive/40 text-destructive"
-                          title="NC impeditiva ao uso (urgente)"
-                        >
-                          <Siren className="h-3 w-3" />
-                          Urgente
-                        </Badge>
-                      )}
+                      <div className="flex flex-wrap gap-1">
+                        {r.urgente && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-destructive/40 text-destructive"
+                            title="NC impeditiva ao uso (urgente)"
+                          >
+                            <Siren className="h-3 w-3" />
+                            Urgente
+                          </Badge>
+                        )}
+                        {r.prioridade && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-violet-500/40 text-violet-600"
+                            title="Defeito prioritário"
+                          >
+                            <Flag className="h-3 w-3" />
+                            Prioridade
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -409,6 +427,12 @@ export function VisaoGerencial({
                     <Badge variant="outline" className="gap-1 border-destructive/40 text-destructive">
                       <Siren className="h-3 w-3" />
                       Urgente
+                    </Badge>
+                  )}
+                  {ncSelecionado.prioridade && (
+                    <Badge variant="outline" className="gap-1 border-violet-500/40 text-violet-600">
+                      <Flag className="h-3 w-3" />
+                      Prioridade
                     </Badge>
                   )}
                 </DialogTitle>

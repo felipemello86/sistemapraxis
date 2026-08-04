@@ -184,6 +184,8 @@ function Descricao({ ev }: { ev: LogEvento }) {
           <b>{ev.atoreNome}</b> marcou a UH <b>{ev.uhNumero}</b> em manutenção
           {extra?.itemNome ? ` · ${extra.itemNome}` : ""}
           {extra?.descricao ? ` — "${extra.descricao}"` : ""}
+          {extra?.urgente ? <span className="text-red-500 font-semibold"> · urgente</span> : ""}
+          {extra?.prioridade ? <span className="text-violet-500 font-semibold"> · prioridade</span> : ""}
         </span>
       ) : (
         <span><b>{ev.atoreNome}</b> encerrou a manutenção da UH <b>{ev.uhNumero}</b></span>
@@ -320,6 +322,7 @@ function Descricao({ ev }: { ev: LogEvento }) {
           <b>{ev.atoreNome}</b> reportou não conformidade de manutenção na UH <b>{ev.uhNumero}</b>
           {extra?.itemNome ? ` · ${extra.itemNome}` : ""}
           {extra?.urgente ? <span className="text-red-500 font-semibold"> · urgente</span> : ""}
+          {extra?.prioridade ? <span className="text-violet-500 font-semibold"> · prioridade</span> : ""}
         </span>
       );
     case "SCORE_SESSAO_ALTERADO":
