@@ -292,9 +292,16 @@ export async function PATCH(req: NextRequest) {
   if (!isGerente && !isGovernanta) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   const tenantId = session.tenantId;
 
-  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida, checklistItemId, urgente, prioridade } = await req.json();
+  const { action, data, uhId, assignmentId, descricao, observacoes, comentario, tipo, anexos, titulo, horaSaida, checklistItemId, urgente, prioridade, justificativa } = await req.json();
 
-  const acoesGovernanta = ["toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao", "desbloquear"];
+  const acoesGovernanta = [
+    "toggle_manutencao", "toggle_reserva", "liberar", "desfazer_liberacao", "desbloquear",
+    // Duas ações novas (pedido do Felipe, 04/08/2026): "liberar UH pra
+    // check-in sem inspeção" e "registrar limpeza sem a camareira ter
+    // registrado" — Governanta/Gerente/Atendimento/Master, mesmo grupo de
+    // "desbloquear" acima.
+    "liberar_sem_inspecao", "limpeza_sem_registro",
+  ];
   if (!isGerente && !acoesGovernanta.includes(action)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
@@ -579,6 +586,109 @@ export async function PATCH(req: NextRequest) {
       entityType: "UH",
       entityId: uhId,
       payload: { uhNumero: uh.numero, atorNome: session.nome },
+    });
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Liberar sem inspeção ──────────────────────────────────────────
+  // Pedido do Felipe (04/08/2026): Governanta/Gerente/Atendimento/Master
+  // podem liberar a UH direto pro check-in pulando a etapa de inspeção
+  // (ex.: UH ociosa há muito tempo, urgência operacional). Replica a MESMA
+  // transição de estado que o "finalizar" de InspectionSession faz em
+  // inspecoes/route.ts (DailyAssignment → INSPECIONADO + UH → PRONTO), só
+  // que sem criar/fechar uma InspectionSession de verdade. Justificativa é
+  // obrigatória e vai pro Log do Sistema.
+  if (action === "liberar_sem_inspecao") {
+    if (!justificativa || !justificativa.trim()) {
+      return NextResponse.json({ error: "Justificativa é obrigatória" }, { status: 400 });
+    }
+
+    const uh = await prisma.uH.findUnique({ where: { id: uhId }, select: { numero: true } });
+    if (!uh) return NextResponse.json({ error: "UH não encontrada" }, { status: 404 });
+
+    await prisma.uH.update({ where: { id: uhId }, data: { status: "PRONTO" } });
+
+    if (assignmentId) {
+      await prisma.dailyAssignment.update({
+        where: { id: assignmentId },
+        data: { status: "INSPECIONADO" },
+      });
+    }
+
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.liberado_sem_inspecao",
+      entityType: "UH",
+      entityId: uhId,
+      payload: { uhNumero: uh.numero, atorNome: session.nome, justificativa: justificativa.trim() },
+    });
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Limpeza sem registro ──────────────────────────────────────────
+  // Pedido do Felipe (04/08/2026): cobre o caso em que a camareira limpou
+  // a UH de fato mas não registrou no app (celular descarregou, esqueceu
+  // etc.) — Governanta/Gerente/Atendimento/Master registram a limpeza em
+  // nome dela. NÃO pula a inspeção (diferente da ação acima): UH vai pra
+  // AGUARDANDO_INSPECAO, não PRONTO. A CleaningSession criada tem duração
+  // zerada, então é marcada excluidoDoScore=true pra não gerar bônus
+  // indevido no cálculo de score (ver calcularScoreVelocidade em
+  // lib/scoring.ts — sessão com iniciadaEm===finalizadaEm e não excluída
+  // geraria pontuação artificial).
+  if (action === "limpeza_sem_registro") {
+    if (!justificativa || !justificativa.trim()) {
+      return NextResponse.json({ error: "Justificativa é obrigatória" }, { status: 400 });
+    }
+    if (!assignmentId) {
+      return NextResponse.json({ error: "assignmentId é obrigatório" }, { status: 400 });
+    }
+
+    const assignment = await prisma.dailyAssignment.findUnique({
+      where: { id: assignmentId },
+      select: { id: true, uhId: true, camareiraId: true, status: true },
+    });
+    if (!assignment) return NextResponse.json({ error: "Atribuição não encontrada" }, { status: 404 });
+
+    const uh = await prisma.uH.findUnique({ where: { id: assignment.uhId }, select: { numero: true } });
+
+    const agora = new Date();
+
+    await prisma.cleaningSession.upsert({
+      where: { assignmentId: assignment.id },
+      create: {
+        assignmentId: assignment.id,
+        uhId: assignment.uhId,
+        camareiraId: assignment.camareiraId,
+        iniciadaEm: agora,
+        finalizadaEm: agora,
+        duracaoSegundos: 0,
+        excluidoDoScore: true,
+        justificativaExclusao: justificativa.trim(),
+      },
+      update: {
+        finalizadaEm: agora,
+        duracaoSegundos: 0,
+        excluidoDoScore: true,
+        justificativaExclusao: justificativa.trim(),
+      },
+    });
+
+    await prisma.dailyAssignment.update({
+      where: { id: assignment.id },
+      data: { status: "CONCLUIDO" },
+    });
+    await prisma.uH.update({ where: { id: assignment.uhId }, data: { status: "AGUARDANDO_INSPECAO" } });
+
+    await emitEvent({
+      tenantId,
+      module: "HOUSEKEEPING",
+      eventType: "housekeeping.log.limpeza_sem_registro",
+      entityType: "UH",
+      entityId: assignment.uhId,
+      payload: { uhNumero: uh?.numero, atorNome: session.nome, justificativa: justificativa.trim() },
     });
 
     return NextResponse.json({ ok: true });

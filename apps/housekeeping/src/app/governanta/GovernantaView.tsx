@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, XCircle, AlertTriangle, ChevronRight, ChevronLeft, ChevronDown, ClipboardCheck, ArrowLeft, UserX, Building2, MessageSquare, MessageCircle, ThumbsUp, ThumbsDown, Pencil, Star, Undo2, Flag, Flame, Wrench, HelpCircle, Info, Camera } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { uploadFoto } from "@/lib/uploadFoto";
+import JustificativaModal from "@/components/JustificativaModal";
 
 // Portado de apps/housekeeping/src/app/g/[token]/GovernantaView.tsx (v1),
 // mesclado com o resumo de apps/housekeeping/src/app/governanta/GovernantaAdmin.tsx.
@@ -41,7 +42,7 @@ type Sessao = {
     prioridadePorNome?: string | null;
   };
   camareira: { nome: string };
-  assignment: { data: string };
+  assignment: { id: string; data: string };
   inspection: {
     id: string;
     finalizadaEm: string | null;
@@ -153,6 +154,13 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   const [excluindoUh, setExcluindoUh] = useState<string | null>(null);
   const [justificativaTexto, setJustificativaTexto] = useState("");
   const [salvandoExclusao, setSalvandoExclusao] = useState(false);
+
+  // "Liberar sem inspeção" — pedido do Felipe (04/08/2026): libera a UH
+  // direto pro check-in pulando a inspeção, com justificativa obrigatória
+  // (ver JustificativaModal). Guarda a sessão inteira (não só o id) porque
+  // precisamos de uh.id e assignment.id pra chamar a API.
+  const [liberandoSemInspecao, setLiberandoSemInspecao] = useState<Sessao | null>(null);
+  const [enviandoLiberacaoSemInspecao, setEnviandoLiberacaoSemInspecao] = useState(false);
 
   // Descrição obrigatória ao marcar um item de natureza Gerencial como
   // Falha (vira o texto do card em "Falhas Gerenciais" — ver
@@ -477,6 +485,24 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     setSalvandoExclusao(false);
     setExcluindoUh(null);
     setJustificativaTexto("");
+    await carregar();
+  }
+
+  async function liberarSemInspecao(justificativa: string) {
+    if (!liberandoSemInspecao || !podeOperar) return;
+    setEnviandoLiberacaoSemInspecao(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "liberar_sem_inspecao",
+        uhId: liberandoSemInspecao.uh.id,
+        assignmentId: liberandoSemInspecao.assignment.id,
+        justificativa,
+      }),
+    });
+    setEnviandoLiberacaoSemInspecao(false);
+    setLiberandoSemInspecao(null);
     await carregar();
   }
 
@@ -1349,6 +1375,16 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                     <span>{s.uh.comentario}</span>
                   </p>
                 )}
+                {!somenteLeitura && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setLiberandoSemInspecao(s); }}
+                    disabled={!podeOperar}
+                    title={!podeOperar ? tituloSemAcesso : undefined}
+                    className="mt-2 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 disabled:opacity-40"
+                  >
+                    Liberar sem inspeção
+                  </button>
+                )}
               </div>
               <ChevronRight className="w-5 h-5 text-indigo-400" />
             </div>
@@ -1398,6 +1434,19 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
           </div>
         )}
       </div>
+
+      {liberandoSemInspecao && (
+        <JustificativaModal
+          titulo={`Liberar UH ${liberandoSemInspecao.uh.numero} sem inspeção`}
+          descricao="A UH será liberada direto pro check-in, pulando a etapa de inspeção."
+          placeholder="Ex.: UH ociosa há muito tempo, urgência operacional..."
+          confirmLabel="Liberar sem inspeção"
+          corConfirm="bg-orange-500 hover:bg-orange-600"
+          enviando={enviandoLiberacaoSemInspecao}
+          onConfirmar={liberarSemInspecao}
+          onClose={() => setLiberandoSemInspecao(null)}
+        />
+      )}
     </div>
   );
 }

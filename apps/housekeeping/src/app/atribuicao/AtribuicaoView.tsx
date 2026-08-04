@@ -1,10 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { Plus, Trash2, Send, CheckCircle2, Clock, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Wrench, BedDouble, MessageCircle, Flag } from "lucide-react";
+import { Plus, Trash2, Send, CheckCircle2, Clock, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Wrench, BedDouble, MessageCircle, Flag, ShieldCheck, CheckSquare } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import ManutencaoHojeModal from "@/components/ManutencaoHojeModal";
+import UHDetailModal from "@/components/UHDetailModal";
+import JustificativaModal from "@/components/JustificativaModal";
 
 // Portado de apps/housekeeping/src/app/atribuicao/AtribuicaoView.tsx (v1).
 // Diferenças desta fatia:
@@ -78,6 +80,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 function AssignmentCard({
   a, onRemover, programs, onChangeProgram, onChangeObservacoes, temReserva, outrasCamareiras, data,
+  role, podeOperar, onAbrirDetalhe, onLiberarSemInspecao, onLimpezaSemRegistro,
 }: {
   a: Assignment;
   onRemover?: (id: string) => void;
@@ -91,6 +94,14 @@ function AssignmentCard({
   // mostrar os cards do dia certo mesmo quando o usuário navega pra outra
   // data (pedido explícito do Felipe, 04/08/2026).
   data: string;
+  // Card inteiro clicável (abre o mesmo UHDetailModal de Seleção e
+  // Liberação) + os dois botões novos "Liberar sem inspeção"/"Limpeza sem
+  // Registro" — pedido do Felipe (04/08/2026).
+  role: string;
+  podeOperar: boolean;
+  onAbrirDetalhe: (assignmentId: string) => void;
+  onLiberarSemInspecao: (a: Assignment) => void;
+  onLimpezaSemRegistro: (a: Assignment) => void;
 }) {
   const st = STATUS_LABELS[a.status] ?? { label: a.status, color: "bg-gray-100 text-gray-600" };
   const estaAtivo = a.status === "EM_ANDAMENTO";
@@ -100,6 +111,9 @@ function AssignmentCard({
   const isEspecifica = a.program?.tipo === "LIMPEZA_COMPLETA";
   const podeEditarObs = !!onChangeObservacoes && isEspecifica && !concluido;
   const temMultiplasCamareiras = !!outrasCamareiras && outrasCamareiras.length > 0;
+  // Mesmo conjunto de roles já usado em Seleção e Liberação
+  // (podeDesbloquear) pras duas ações novas.
+  const podeGovernanca = ["MASTER", "GERENTE", "ATENDIMENTO", "GOVERNANTA"].includes(role);
   // Popup "Manutenção de hoje" — só leitura aqui (sem onEncerrar), a
   // Atribuição Diária nunca teve o fluxo de ligar/desligar a flag, só
   // mostra o badge. Estado local (não no pai) porque cada card cuida do seu
@@ -108,14 +122,17 @@ function AssignmentCard({
 
   return (
     <>
-    <div className="card flex items-center gap-4">
+    <div
+      className="card flex items-center gap-4 cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => onAbrirDetalhe(a.id)}
+    >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-gray-900">{a.uh.numero}</span>
           {a.uh.emManutencao && (
             <button
               type="button"
-              onClick={() => setShowManutencaoHoje(true)}
+              onClick={(e) => { e.stopPropagation(); setShowManutencaoHoje(true); }}
               title="Ver manutenção de hoje"
               className="flex items-center gap-0.5 text-xs text-orange-500 font-medium hover:text-orange-600 hover:underline"
             >
@@ -159,6 +176,7 @@ function AssignmentCard({
         {podeEditarPrograma ? (
           <select
             value={a.program?.id ?? ""}
+            onClick={(e) => e.stopPropagation()}
             onChange={(e) => onChangeProgram(a.id, e.target.value)}
             className="mt-1 text-xs border border-gray-200 rounded px-1.5 py-0.5 text-gray-500 bg-white"
           >
@@ -172,6 +190,7 @@ function AssignmentCard({
             rows={2}
             placeholder="Observações para a camareira..."
             defaultValue={a.observacoes ?? ""}
+            onClick={(e) => e.stopPropagation()}
             onBlur={(e) => onChangeObservacoes(a.id, e.target.value)}
             className="mt-1.5 w-full text-xs border border-amber-200 bg-amber-50 rounded px-2 py-1 text-gray-700 resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
           />
@@ -214,10 +233,30 @@ function AssignmentCard({
             )}
           </div>
         )}
+        {podeGovernanca && a.status !== "INSPECIONADO" && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onLiberarSemInspecao(a); }}
+            disabled={!podeOperar}
+            title={!podeOperar ? "Você não tem acesso para operar este módulo" : "Liberar pra check-in pulando a inspeção"}
+            className="flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-800 mt-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ShieldCheck className="w-3 h-3" /> Liberar sem inspeção
+          </button>
+        )}
+        {podeGovernanca && !["CONCLUIDO", "INSPECIONADO"].includes(a.status) && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onLimpezaSemRegistro(a); }}
+            disabled={!podeOperar}
+            title={!podeOperar ? "Você não tem acesso para operar este módulo" : "Registrar limpeza que a camareira fez mas não registrou"}
+            className="flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-900 mt-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <CheckSquare className="w-3 h-3" /> Limpeza sem Registro
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {podeRemover && (
-          <button onClick={() => onRemover(a.id)} className="text-gray-400 hover:text-red-500 p-1.5" title="Remover">
+          <button onClick={(e) => { e.stopPropagation(); onRemover(a.id); }} className="text-gray-400 hover:text-red-500 p-1.5" title="Remover">
             <Trash2 className="w-4 h-4" />
           </button>
         )}
@@ -260,6 +299,15 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
   const [novasObservacoes, setNovasObservacoes] = useState("");
   const [reservaMap, setReservaMap] = useState<Record<string, boolean>>({});
   const [erroAtribuicao, setErroAtribuicao] = useState<string | null>(null);
+
+  // Cards clicáveis (popup de detalhe da UH) + "Liberar sem inspeção" /
+  // "Limpeza sem Registro" — pedido do Felipe (04/08/2026), mesmo padrão de
+  // Seleção e Liberação.
+  const [detalheAssignmentId, setDetalheAssignmentId] = useState<string | null>(null);
+  const [liberandoSemInspecao, setLiberandoSemInspecao] = useState<Assignment | null>(null);
+  const [enviandoLiberacaoSemInspecao, setEnviandoLiberacaoSemInspecao] = useState(false);
+  const [limpezaSemRegistro, setLimpezaSemRegistro] = useState<Assignment | null>(null);
+  const [enviandoLimpezaSemRegistro, setEnviandoLimpezaSemRegistro] = useState(false);
 
   function toggleUH(id: string) {
     setNovasUHs((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -362,6 +410,42 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ data, uhId: a.uh.id, camareiraId: a.camareira.id, programId: a.program?.id, observacoes: observacoes || null }),
     });
+  }
+
+  async function confirmarLiberarSemInspecao(justificativa: string) {
+    if (!liberandoSemInspecao || !podeOperar) return;
+    setEnviandoLiberacaoSemInspecao(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "liberar_sem_inspecao",
+        uhId: liberandoSemInspecao.uh.id,
+        assignmentId: liberandoSemInspecao.id,
+        justificativa,
+      }),
+    });
+    setEnviandoLiberacaoSemInspecao(false);
+    setLiberandoSemInspecao(null);
+    carregar();
+  }
+
+  async function confirmarLimpezaSemRegistro(justificativa: string) {
+    if (!limpezaSemRegistro || !podeOperar) return;
+    setEnviandoLimpezaSemRegistro(true);
+    await apiFetch("/api/selecao-uhs", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "limpeza_sem_registro",
+        uhId: limpezaSemRegistro.uh.id,
+        assignmentId: limpezaSemRegistro.id,
+        justificativa,
+      }),
+    });
+    setEnviandoLimpezaSemRegistro(false);
+    setLimpezaSemRegistro(null);
+    carregar();
   }
 
   async function notificarDia() {
@@ -677,6 +761,11 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
                           .filter((o) => o.uh.id === a.uh.id && o.camareira.id !== a.camareira.id)
                           .map((o) => o.camareira.nome)}
                         data={data}
+                        role={role}
+                        podeOperar={podeOperar}
+                        onAbrirDetalhe={setDetalheAssignmentId}
+                        onLiberarSemInspecao={setLiberandoSemInspecao}
+                        onLimpezaSemRegistro={setLimpezaSemRegistro}
                       />
                     ))}
                   </div>
@@ -685,6 +774,39 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
             );
           })}
         </div>
+      )}
+
+      {detalheAssignmentId && (
+        <UHDetailModal
+          assignmentId={detalheAssignmentId}
+          onClose={() => setDetalheAssignmentId(null)}
+        />
+      )}
+
+      {liberandoSemInspecao && (
+        <JustificativaModal
+          titulo={`Liberar UH ${liberandoSemInspecao.uh.numero} sem inspeção`}
+          descricao="A UH será liberada direto pro check-in, pulando a etapa de inspeção."
+          placeholder="Ex.: UH ociosa há muito tempo, urgência operacional..."
+          confirmLabel="Liberar sem inspeção"
+          corConfirm="bg-orange-500 hover:bg-orange-600"
+          enviando={enviandoLiberacaoSemInspecao}
+          onConfirmar={confirmarLiberarSemInspecao}
+          onClose={() => setLiberandoSemInspecao(null)}
+        />
+      )}
+
+      {limpezaSemRegistro && (
+        <JustificativaModal
+          titulo={`Registrar limpeza sem registro — UH ${limpezaSemRegistro.uh.numero}`}
+          descricao="Use quando a camareira limpou a UH mas não conseguiu registrar no app (celular descarregou, esqueceu etc.). A UH segue pra inspeção normalmente."
+          placeholder="Ex.: Camareira confirmou que limpou, celular descarregou..."
+          confirmLabel="Registrar limpeza"
+          corConfirm="bg-amber-500 hover:bg-amber-600"
+          enviando={enviandoLimpezaSemRegistro}
+          onConfirmar={confirmarLimpezaSemRegistro}
+          onClose={() => setLimpezaSemRegistro(null)}
+        />
       )}
     </div>
   );
