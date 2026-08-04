@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, prisma } from "@praxis/core";
-import { calcularScoreUH, calcularScoreSuperLimpeza } from "@/lib/scoring";
+import { calcularScoreUH, calcularScoreSuperLimpeza, calcularScoreQualidade } from "@/lib/scoring";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { dataAtualSP } from "@/lib/timezone";
 
@@ -248,11 +248,24 @@ export async function GET(req: NextRequest) {
       // o "iniciar" de propósito. duracaoSegundos continua exibido como dado
       // bruto/auditoria, mas não é mais o que decide o score.
       const duracaoEfetivaSegundos = duracaoEfetivaPorSessao.get(s.id) ?? s.duracaoSegundos ?? 0;
+      // Pontuação por tipo de programa (pedido do Felipe, 04/08/2026):
+      // - SUPER_LIMPEZA: 120 pts fixos, só desconta falha (sem tempo).
+      // - LIMPEZA_COMPLETA (Limpeza Específica — atípica, UHs em manutenção
+      //   e outros casos fora do padrão): pontua só falhas, 100 base — sem
+      //   comparar tempo, já que não há um "tempo padrão" pra esse tipo de
+      //   serviço.
+      // - ARRUMACAO / ARRUMACAO_SIMPLES (detalhada e simples — mesma meta de
+      //   tempo do tenant como referência): fórmula normal, 50% velocidade +
+      //   50% qualidade. A diferença entre as duas é só o fluxo (detalhada
+      //   detalha o passo a passo; simples só registra início e fim — ver
+      //   CamareiraView, "Sem etapas: ir direto pra fotos").
       const score = multiplaCamareira
         ? 0
         : s.assignment.program?.tipo === "SUPER_LIMPEZA"
           ? calcularScoreSuperLimpeza(falhas)
-          : calcularScoreUH(duracaoEfetivaSegundos, falhas, targetMinutos);
+          : s.assignment.program?.tipo === "LIMPEZA_COMPLETA"
+            ? calcularScoreQualidade(falhas)
+            : calcularScoreUH(duracaoEfetivaSegundos, falhas, targetMinutos);
       if (!s.excluidoDoScore && !multiplaCamareira) {
         totalFalhas += falhas;
         totalScore += score;

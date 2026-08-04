@@ -223,8 +223,9 @@ export async function criarSolicitacaoManutencao(params: {
 // nenhuma (diferente do fluxo de NC urgente/bloqueio, que continua passando
 // pela Decisão de Bloqueio — isso não mudou, só o de Manutenção).
 //
-// Liga UH.emManutencao, troca o programa do dia ARRUMACAO→LIMPEZA_COMPLETA
-// se for o caso, notifica a camareira atribuída e Governanta/Gerente/Master,
+// Liga UH.emManutencao, troca o programa do dia (ARRUMACAO ou
+// ARRUMACAO_SIMPLES) → LIMPEZA_COMPLETA se for o caso, notifica a camareira
+// atribuída e Governanta/Gerente/Master,
 // e sensibiliza o módulo de Manutenção: marca o item real do checklist,
 // escolhido na Seleção e Liberação, como NAO_CONFORME e cria o card de
 // Correção já em "A Processar" (needsMaterial/needsExternalService ainda
@@ -272,7 +273,12 @@ export async function ativarManutencaoUH(params: {
     prisma.cleaningProgram.findFirst({ where: { tenantId, tipo: "LIMPEZA_COMPLETA" } }),
   ]);
 
-  if (assignment && assignment.program?.tipo === "ARRUMACAO" && programaLimpezaEspecifica) {
+  // Cobre os dois tipos "normais" de arrumação (detalhada e simples — ver
+  // CleaningProgram.tipo no schema) — nenhum dos dois deve continuar
+  // atribuído a uma UH que acabou de entrar em manutenção, pedido do Felipe
+  // (04/08/2026) de estender essa troca automática pra Arrumação Simples
+  // também, não só a detalhada original.
+  if (assignment && ["ARRUMACAO", "ARRUMACAO_SIMPLES"].includes(assignment.program?.tipo ?? "") && programaLimpezaEspecifica) {
     await prisma.dailyAssignment.update({
       where: { id: assignment.id },
       data: { programId: programaLimpezaEspecifica.id },

@@ -37,6 +37,13 @@ type UH = {
 };
 type User = { id: string; nome: string; role: string; foto?: string | null };
 type Program = { id: string; nome: string; tipo: string };
+
+// Os dois tipos "normais" de arrumação (com referencial de tempo) — detalhada
+// (ARRUMACAO, com checklist) e simples (ARRUMACAO_SIMPLES, só início/fim).
+// Nenhum dos dois pode ser usado em UH em manutenção: só Limpeza Específica
+// (LIMPEZA_COMPLETA) tem o campo de observações livre pra descrever o que
+// precisa ser feito nesses casos atípicos. Pedido do Felipe, 04/08/2026.
+const ARRUMACAO_NORMAL = ["ARRUMACAO", "ARRUMACAO_SIMPLES"];
 type Assignment = {
   id: string;
   status: string;
@@ -301,7 +308,13 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
     setCamareiras(todos.filter((u: User) => u.role === "CAMAREIRA" || u.role === "GOVERNANTA"));
     const progs = Array.isArray(p) ? p : [];
     setPrograms(progs);
-    if (!novoPrograma && progs.length > 0) setNovoPrograma(progs[0].id);
+    // "Simples" é o default pra novas atribuições (pedido do Felipe,
+    // 04/08/2026) — cai pro 1º programa da lista só se por algum motivo o
+    // tenant ainda não tiver um programa ARRUMACAO_SIMPLES cadastrado.
+    if (!novoPrograma && progs.length > 0) {
+      const simples = progs.find((pr: Program) => pr.tipo === "ARRUMACAO_SIMPLES");
+      setNovoPrograma((simples ?? progs[0]).id);
+    }
     setLoading(false);
   }
 
@@ -500,12 +513,12 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
               {(() => {
                 const programaSelecionado = programs.find((p) => p.id === novoPrograma);
                 const temManutencaoBloqueada = uhsDisponiveis.some(
-                  (u) => u.emManutencao && programaSelecionado?.tipo === "ARRUMACAO"
+                  (u) => u.emManutencao && ARRUMACAO_NORMAL.includes(programaSelecionado?.tipo ?? "")
                 );
                 return temManutencaoBloqueada ? (
                   <div className="mb-2 flex items-center gap-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
                     <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
-                    UH(s) em manutenção não podem usar <strong>Arrumação Padrão</strong> — selecione <strong>Limpeza Específica</strong> para atribuí-las.
+                    UH(s) em manutenção não podem usar <strong>Arrumação</strong> (detalhada ou simples) — selecione <strong>Limpeza Específica</strong> para atribuí-las.
                   </div>
                 ) : null;
               })()}
@@ -513,7 +526,7 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
                 {uhsDisponiveis.map((u) => {
                   const sel = novasUHs.includes(u.id);
                   const programaSelecionado = programs.find((p) => p.id === novoPrograma);
-                  const bloqueadaManutencao = u.emManutencao && programaSelecionado?.tipo === "ARRUMACAO";
+                  const bloqueadaManutencao = u.emManutencao && ARRUMACAO_NORMAL.includes(programaSelecionado?.tipo ?? "");
                   const temReserva = reservaMap[u.id] ?? false;
                   const jaAtribuida = contagemPorUH[u.id] ?? 0;
                   return (

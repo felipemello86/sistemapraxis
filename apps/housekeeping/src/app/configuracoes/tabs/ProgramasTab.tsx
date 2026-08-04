@@ -10,6 +10,14 @@ import { apiFetch } from "@/lib/apiFetch";
 type Step = { id?: string; titulo: string; descricao: string; ordem: number };
 type Program = { id: string; nome: string; tipo: string; steps: Step[] };
 
+// Programas sem detalhamento de passos, de propósito (pedido do Felipe,
+// 04/08/2026) — não deixa adicionar/remover etapa nem pela tela de config,
+// senão o programa deixa de se comportar como "simples"/"específica" (ver
+// CamareiraView: programa com 0 etapas vai direto pra manutenção → fotos).
+function podeEditarEtapas(tipo: string) {
+  return tipo !== "LIMPEZA_COMPLETA" && tipo !== "ARRUMACAO_SIMPLES";
+}
+
 function DescricaoStep({ texto }: { texto: string }) {
   const linhas = texto.split("\n").filter(Boolean);
   if (linhas.length === 1) return <p className="text-xs text-gray-500 mt-0.5">{texto}</p>;
@@ -74,7 +82,7 @@ export default function ProgramasTab({ somenteLeitura = false }: { somenteLeitur
   return (
     <div className="max-w-2xl space-y-3">
       <p className="text-sm text-gray-500">
-        Edite os passos de cada programa de limpeza. O programa <strong>Limpeza Específica</strong> não tem detalhamento de passos.
+        Edite os passos de cada programa de limpeza. Os programas <strong>Arrumação Simples</strong> e <strong>Limpeza Específica</strong> não têm detalhamento de passos — a camareira só registra início e fim.
       </p>
 
       {programs.map((p) => (
@@ -109,7 +117,7 @@ export default function ProgramasTab({ somenteLeitura = false }: { somenteLeitur
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="label mb-0">Etapas</label>
-                      {p.tipo !== "LIMPEZA_COMPLETA" && (
+                      {podeEditarEtapas(p.tipo) && (
                         <button onClick={addStep} className="text-sm text-blue-600 flex items-center gap-1 hover:text-blue-700">
                           <Plus className="w-3 h-3" /> Adicionar etapa
                         </button>
@@ -127,7 +135,7 @@ export default function ProgramasTab({ somenteLeitura = false }: { somenteLeitur
                               value={s.titulo}
                               onChange={(e) => setEditSteps((prev) => prev.map((x, j) => j === i ? { ...x, titulo: e.target.value } : x))}
                             />
-                            {p.tipo !== "LIMPEZA_COMPLETA" && (
+                            {podeEditarEtapas(p.tipo) && (
                               <button onClick={() => removeStep(i)} className="text-gray-400 hover:text-red-500">
                                 <X className="w-4 h-4" />
                               </button>

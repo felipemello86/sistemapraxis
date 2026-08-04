@@ -17,7 +17,8 @@
     "import:housekeeping-data": "tsx scripts/import-housekeeping-data.ts",
     "seed:housekeeping-test": "tsx scripts/seed-housekeeping-test.ts",
     "grant:housekeeping-access": "tsx scripts/grant-housekeeping-access.ts",
-    "grant:intelligence-access": "tsx scripts/grant-intelligence-access.ts"
+    "grant:intelligence-access": "tsx scripts/grant-intelligence-access.ts",
+    "add:arrumacao-simples": "tsx scripts/add-arrumacao-simples.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

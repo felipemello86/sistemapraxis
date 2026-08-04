@@ -31,7 +31,10 @@ export async function POST(req: NextRequest) {
     data: {
       tenantId: session.tenantId,
       nome,
-      tipo: tipo || "ARRUMACAO",
+      // "Simples" é o default entre os tipos com referencial de tempo
+      // (pedido do Felipe, 04/08/2026) — quem quiser "detalhada" (com
+      // passo a passo) tem que passar tipo="ARRUMACAO" explicitamente.
+      tipo: tipo || "ARRUMACAO_SIMPLES",
       steps: { create: steps || [] },
     },
     include: { steps: { orderBy: { ordem: "asc" } } },

@@ -2,6 +2,13 @@ import { prisma } from "@praxis/core";
 import { format } from "date-fns";
 import { calcularScoreUH } from "./scoring";
 
+// Os dois tipos "normais" de arrumação (detalhada e simples — ambos com
+// referencial de tempo, mesma fórmula de score) — usado pra decidir quais
+// sessões entram nas médias de score/duração dos relatórios abaixo. Etapas
+// (checklist) continuam restritas só à detalhada (ARRUMACAO), já que a
+// simples não tem passo a passo. Pedido do Felipe, 04/08/2026.
+const ARRUMACAO_NORMAL = ["ARRUMACAO", "ARRUMACAO_SIMPLES"];
+
 // Portado de apps/housekeeping/src/lib/relatorio-dados.ts (v1). hotelId →
 // tenantId; model Hotel → Tenant (nome → name). `foto` vem de User.foto
 // (Cadastro de Usuários no gateway). Preservado o mesmo comportamento do
@@ -245,8 +252,8 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
     let totalFalhas = 0, totalFalhasGer = 0;
     const duracoes: number[] = [];
     for (const a of uhs) {
-      // Performance: só Arrumação Padrão e não excluídas do score
-      if (a.program?.tipo !== "ARRUMACAO") continue;
+      // Performance: só arrumação (detalhada ou simples) e não excluídas do score
+      if (!ARRUMACAO_NORMAL.includes(a.program?.tipo ?? "")) continue;
       const cs = a.cleaningSession;
       if (!cs?.duracaoSegundos || cs.excluidoDoScore) continue;
       const f = cs.inspection?.totalFalhas ?? 0;
@@ -270,7 +277,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
   // ── Scores do mês ─────────────────────────────────────────────────────────────
   const camMesMap = new Map<string, { nome: string; foto: string | null; scores: number[]; duracoes: number[]; falhas: number }>();
   for (const a of assignmentsMes) {
-    if (a.program?.tipo !== "ARRUMACAO") continue;
+    if (!ARRUMACAO_NORMAL.includes(a.program?.tipo ?? "")) continue;
     const cs = a.cleaningSession;
     if (!cs?.duracaoSegundos || cs.excluidoDoScore) continue;
     if (!camMesMap.has(a.camareiraId)) {
@@ -296,7 +303,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
   // ── Etapas (excluindo etapas de marcação) ────────────────────────────────────
   const stepMap = new Map<string, { total: number; count: number; ordem: number }>();
   for (const a of assignments) {
-    if (a.program?.tipo !== "ARRUMACAO") continue; // só Arrumação Padrão
+    if (a.program?.tipo !== "ARRUMACAO") continue; // só detalhada — simples não tem passo a passo
     if (a.cleaningSession?.excluidoDoScore) continue; // excluídas manualmente
     for (const ss of a.cleaningSession?.steps ?? []) {
       if (!ss.duracaoSegundos) continue;
@@ -316,7 +323,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
   // ── Etapas por camareira ──────────────────────────────────────────────────────
   const stepCamMap = new Map<string, Map<string, { total: number; count: number }>>();
   for (const a of assignments) {
-    if (a.program?.tipo !== "ARRUMACAO") continue; // só Arrumação Padrão
+    if (a.program?.tipo !== "ARRUMACAO") continue; // só detalhada — simples não tem passo a passo
     if (a.cleaningSession?.excluidoDoScore) continue; // excluídas manualmente
     const camNome = a.camareira.nome.split(" ")[0];
     for (const ss of a.cleaningSession?.steps ?? []) {

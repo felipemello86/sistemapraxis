@@ -166,16 +166,15 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   }
 
   // Pedido de Super Limpeza ⭐️ — mesma mecânica de solicitar_alteracao, só
-  // que com tipo="SUPER_LIMPEZA" e fotos anexadas (a compressão de imagem é
-  // a mesma função usada nas fotos obrigatórias de finalização, ver abaixo).
+  // que com tipo="SUPER_LIMPEZA" e fotos anexadas (compressão de imagem
+  // acontece dentro de uploadFoto, ver lib/uploadFoto.ts).
   async function handleFotoSuperLimpeza(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     setUploadandoSuperLimpeza(true);
     try {
-      const fileComprimido = await comprimirImagem(file);
-      const json = await uploadFoto(fileComprimido, { tipo: "super_limpeza", pasta: "super-limpeza" });
+      const json = await uploadFoto(file, { tipo: "super_limpeza", pasta: "super-limpeza" });
       setSuperLimpezaFotos((prev) => [...prev, json.url]);
     } catch {
       // Foto é opcional — falha silenciosa não impede o pedido.
@@ -371,8 +370,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     if (!file || fotosManutencao.length >= MAX_FOTOS_MANUTENCAO) return;
     setUploadandoFotoManutencao(true);
     try {
-      const fileComprimido = await comprimirImagem(file);
-      const json = await uploadFoto(fileComprimido, { tipo: "manutencao", pasta: "manutencao-camareira" });
+      const json = await uploadFoto(file, { tipo: "manutencao", pasta: "manutencao-camareira" });
       setFotosManutencao((prev) => [...prev, json.url]);
     } catch {
       // Foto é opcional — falha silenciosa não impede o registro.
@@ -434,71 +432,12 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     }
   }
 
-  // Antes disso, uma exceção dentro de img.onload (ex.: canvas.getContext("2d")
-  // retornando null — acontece em fotos muito grandes, comuns em câmeras de
-  // celular atuais) ou o canvas.toBlob simplesmente nunca chamar o callback
-  // (bug conhecido do WebKit/Safari mobile pra canvas grandes) deixava essa
-  // Promise pendurada pra sempre: handleFotoUpload ficava travado no
-  // `await comprimirImagem(file)`, nunca chegava no catch/finally, e o botão
-  // ficava preso em "Enviando..." pra sempre, sem erro nenhum aparecer.
-  // Agora: qualquer falha (exceção ou callback que nunca dispara) cai num
-  // fallback que resolve com o arquivo original sem compressão, e um timeout
-  // de segurança garante que a Promise sempre se resolve em poucos segundos.
-  async function comprimirImagem(file: File, maxWidth = 1200, quality = 0.82): Promise<File> {
-    const tentativa = new Promise<File>((resolve) => {
-      try {
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(file);
-        const falhar = () => {
-          URL.revokeObjectURL(objectUrl);
-          resolve(file);
-        };
-        img.onload = () => {
-          try {
-            URL.revokeObjectURL(objectUrl);
-            const canvas = document.createElement("canvas");
-            let { width, height } = img;
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) {
-              resolve(file);
-              return;
-            }
-            ctx.drawImage(img, 0, 0, width, height);
-            canvas.toBlob(
-              (blob) => {
-                if (blob) {
-                  resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
-                } else {
-                  resolve(file);
-                }
-              },
-              "image/jpeg",
-              quality,
-            );
-          } catch {
-            resolve(file);
-          }
-        };
-        img.onerror = falhar;
-        img.src = objectUrl;
-      } catch {
-        resolve(file);
-      }
-    });
-
-    const timeout = new Promise<File>((resolve) => {
-      setTimeout(() => resolve(file), 8000);
-    });
-
-    return Promise.race([tentativa, timeout]);
-  }
-
+  // A compressão de imagem antes do upload (redimensionar + recomprimir em
+  // JPEG) foi centralizada dentro de uploadFoto (apps/housekeeping/src/lib/
+  // uploadFoto.ts) em 04/08/2026 — antes vivia duplicada aqui e em
+  // GovernantaView.tsx, e só cobria os pontos de upload que lembravam de
+  // chamar comprimirImagem antes. Ver o comentário completo (incluindo os 2
+  // bugs reais de WebKit mobile contornados) direto em uploadFoto.ts.
   async function handleFotoUpload(tipo: string, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !sessaoId) return;
@@ -507,8 +446,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setErroUpload(null);
 
     try {
-      const fileComprimido = await comprimirImagem(file);
-      const { url } = await uploadFoto(fileComprimido, { sessaoId, tipo });
+      const { url } = await uploadFoto(file, { sessaoId, tipo });
       setFotos((prev) => ({ ...prev, [tipo]: [...(prev[tipo] ?? []), url] }));
     } catch (err: any) {
       setErroUpload(`Falha ao enviar foto. Tente novamente. (${err.message})`);
@@ -518,7 +456,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   }
 
   // ─── Edição de fotos de UH já concluída ────────────────────────────────
-  // Reaproveita comprimirImagem/upload iguais a handleFotoUpload — a única
+  // Reaproveita o mesmo uploadFoto (com compressão embutida) de handleFotoUpload — a única
   // diferença é que aqui a sessão já está finalizada, então em vez de
   // acumular em `fotos` (usado só durante o fluxo ativo de limpeza) e
   // enviar tudo junto no "finalizar", cada alteração fica só em memória
@@ -549,8 +487,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
     setErroEdicaoFotos(null);
 
     try {
-      const fileComprimido = await comprimirImagem(file);
-      const { url } = await uploadFoto(fileComprimido, { sessaoId: editandoFotosId, tipo });
+      const { url } = await uploadFoto(file, { sessaoId: editandoFotosId, tipo });
       setFotosEdicao((prev) => ({ ...prev, [tipo]: [...(prev[tipo] ?? []), url] }));
     } catch (err: any) {
       setErroEdicaoFotos(`Falha ao enviar foto. Tente novamente. (${err.message})`);
@@ -589,8 +526,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   async function uploadFotoLavanderia(file: File) {
     setUploadandoFotoLav(true);
     try {
-      const fileComprimido = await comprimirImagem(file);
-      const data = await uploadFoto(fileComprimido, { tipo: "lavanderia", pasta: "lavanderia" });
+      const data = await uploadFoto(file, { tipo: "lavanderia", pasta: "lavanderia" });
       setFotoLavanderia(data.url);
     } catch {}
     setUploadandoFotoLav(false);
@@ -1420,7 +1356,10 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
           </div>
           <div className="p-4">
             <div className="card text-center py-8">
-              <p className="text-gray-500 mb-4">Nenhuma etapa configurada para este programa.</p>
+              <p className="text-gray-700 font-medium mb-1">Limpeza em andamento</p>
+              <p className="text-sm text-gray-500 mb-4">
+                Este programa não tem passo a passo — quando terminar de arrumar a UH, toque em Continuar.
+              </p>
               <button
                 onClick={iniciarEtapaManutencao}
                 className="btn-success w-full py-4 text-base font-bold"

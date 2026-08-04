@@ -363,62 +363,9 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
   // campo de duração/score baseado em tempo — não há timer pra pausar aqui,
   // só o gate de conteúdo (ver manutencaoConcluidaId acima).
 
-  // Mesma função robusta de CamareiraView.tsx — evita canvas.toBlob travar
-  // pra sempre em fotos grandes (WebKit/Safari mobile).
-  async function comprimirImagem(file: File, maxWidth = 1200, quality = 0.82): Promise<File> {
-    const tentativa = new Promise<File>((resolve) => {
-      try {
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(file);
-        const falhar = () => {
-          URL.revokeObjectURL(objectUrl);
-          resolve(file);
-        };
-        img.onload = () => {
-          try {
-            URL.revokeObjectURL(objectUrl);
-            const canvas = document.createElement("canvas");
-            let { width, height } = img;
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) {
-              resolve(file);
-              return;
-            }
-            ctx.drawImage(img, 0, 0, width, height);
-            canvas.toBlob(
-              (blob) => {
-                if (blob) {
-                  resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
-                } else {
-                  resolve(file);
-                }
-              },
-              "image/jpeg",
-              quality,
-            );
-          } catch {
-            resolve(file);
-          }
-        };
-        img.onerror = falhar;
-        img.src = objectUrl;
-      } catch {
-        resolve(file);
-      }
-    });
-
-    const timeout = new Promise<File>((resolve) => {
-      setTimeout(() => resolve(file), 8000);
-    });
-
-    return Promise.race([tentativa, timeout]);
-  }
+  // A compressão de imagem antes do upload foi centralizada dentro de
+  // uploadFoto (apps/housekeeping/src/lib/uploadFoto.ts) em 04/08/2026 —
+  // antes vivia duplicada aqui e em CamareiraView.tsx.
 
   function toggleCategoriaManutencao(categoria: string) {
     setCategoriasManutencaoAbertas((prev) => {
@@ -457,8 +404,7 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
     if (!file || fotosManutencao.length >= MAX_FOTOS_MANUTENCAO) return;
     setUploadandoFotoManutencao(true);
     try {
-      const fileComprimido = await comprimirImagem(file);
-      const json = await uploadFoto(fileComprimido, { tipo: "manutencao", pasta: "manutencao-governanta" });
+      const json = await uploadFoto(file, { tipo: "manutencao", pasta: "manutencao-governanta" });
       setFotosManutencao((prev) => [...prev, json.url]);
     } catch {
       // Foto é opcional — falha silenciosa não impede o registro.

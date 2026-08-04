@@ -824,7 +824,18 @@ model CleaningProgram {
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   nome  String
-  tipo  String  @default("ARRUMACAO") // ARRUMACAO | LIMPEZA_COMPLETA | SUPER_LIMPEZA
+  // ARRUMACAO ("detalhada" — checklist passo a passo, pra treinar
+  // camareiras iniciantes) | ARRUMACAO_SIMPLES ("simples" — default, sem
+  // passo a passo, só início/fim, pra camareiras experientes; mesma meta de
+  // tempo do tenant que ARRUMACAO, ver targetMinutos em HkConfig) |
+  // LIMPEZA_COMPLETA ("Limpeza Específica" — limpezas atípicas/UHs em
+  // manutenção; pontua só falhas, sem referencial de tempo) | SUPER_LIMPEZA
+  // (120 pts fixos, só falhas). Decisão do Felipe, 04/08/2026. O default a
+  // nível de coluna continua "ARRUMACAO" só por compatibilidade — na
+  // prática nunca é usado, porque toda criação de programa passa `tipo`
+  // explicitamente (ver POST /api/programas, que já default pra
+  // ARRUMACAO_SIMPLES a nível de aplicação).
+  tipo  String  @default("ARRUMACAO")
   ativo Boolean @default(true)
 
   steps       ProgramStep[]
