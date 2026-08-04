@@ -51,10 +51,26 @@ export async function POST(req: NextRequest) {
     });
 
     const linhasAtivas = relData.linhasUH.filter((l) => !l.emManutencao);
-    const concluidas = linhasAtivas.filter((l) => l.fimLimpeza !== null).length;
-    const reprovadas = linhasAtivas.filter((l) => l.falhasCamareira > 0).length;
+    // Agrupa por UH, não por linha de atribuição — numa mutirão (2+
+    // camareiras na mesma UH/dia) `linhasUH` tem uma linha por camareira;
+    // conta como concluída/reprovada assim que UMA das linhas atender o
+    // critério, não exige as duas (pedido explícito do Felipe, 04/08/2026 —
+    // mesmo ajuste de api/burndown e api/finalizacao-dia). Sem isso, o
+    // resumo enviado no Telegram mostrava "X de Y" sem nunca bater 100% em
+    // dias com mutirão informal (só uma camareira usava o app de fato).
+    const porUh = new Map<string, { concluida: boolean; reprovada: boolean }>();
+    for (const l of linhasAtivas) {
+      const atual = porUh.get(l.uhId) ?? { concluida: false, reprovada: false };
+      porUh.set(l.uhId, {
+        concluida: atual.concluida || l.fimLimpeza !== null,
+        reprovada: atual.reprovada || l.falhasCamareira > 0,
+      });
+    }
+    const totalUhsAtivas = porUh.size;
+    const concluidas = Array.from(porUh.values()).filter((v) => v.concluida).length;
+    const reprovadas = Array.from(porUh.values()).filter((v) => v.reprovada).length;
     const conformidade = concluidas > 0 ? ((concluidas - reprovadas) / concluidas) * 100 : 0;
-    const stats = { conformidade, concluidas, total: linhasAtivas.length, reprovadas };
+    const stats = { conformidade, concluidas, total: totalUhsAtivas, reprovadas };
 
     const resultados = await Promise.allSettled(
       destinatarios.map((u) =>

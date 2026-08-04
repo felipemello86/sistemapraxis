@@ -99,7 +99,12 @@ export async function GET(req: NextRequest) {
     select: { uhId: true, liberadaEm: true, liberadoPorNome: true, uh: { select: { numero: true } } },
   });
 
-  const totalUHs = assignments.length;
+  // UHs distintas atribuídas hoje — não linhas de DailyAssignment. Numa
+  // mutirão (2+ camareiras na mesma UH/dia) `assignments.length` conta a
+  // mesma UH duas vezes, inflando o denominador do "Progresso do dia" e
+  // travando o "concluidas" abaixo esperando TODAS as camareiras (pedido
+  // explícito do Felipe, 04/08/2026: deve bastar uma).
+  const totalUHs = new Set(assignments.map((a) => a.uhId)).size;
   if (totalUHs === 0) {
     return NextResponse.json({
       totalUHs: 0, concluidas: 0, eventos: [], deslocamentos: [],
@@ -121,6 +126,9 @@ export async function GET(req: NextRequest) {
     atorFoto: string | null;
     duracaoSegundos?: number | null;
     camareiraId?: string;
+    // Só usado internamente pra dedupe de "concluidas" em UH de mutirão
+    // (ver loop de contagem abaixo) — não vai pro JSON de resposta.
+    uhId?: string;
   };
 
   const raw: RawEvento[] = [];
@@ -179,15 +187,26 @@ export async function GET(req: NextRequest) {
         atorNome: cs.inspection.governanta?.nome ?? "Governanta",
         atorFoto: cs.inspection.governanta?.foto ?? null,
         camareiraId: a.camareiraId,
+        uhId: a.uhId,
       });
     }
   }
 
   raw.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
+  // Numa mutirão, cada camareira gera seu próprio evento "C" (inspeção da
+  // sua própria sessão) — mas fisicamente é a MESMA UH. Só a primeira
+  // inspeção concluída de cada UH deve contar pro "concluidas"/progresso do
+  // dia (pedido explícito do Felipe, 04/08/2026); as demais continuam
+  // aparecendo na timeline de eventos, só não incrementam o contador de
+  // novo.
+  const uhsJaConcluidas = new Set<string>();
   let concluidas = 0;
   const eventos: BurndownEvento[] = raw.map((ev) => {
-    if (ev.tipo === "C") concluidas++;
+    if (ev.tipo === "C" && ev.uhId && !uhsJaConcluidas.has(ev.uhId)) {
+      uhsJaConcluidas.add(ev.uhId);
+      concluidas++;
+    }
     const valor = Math.round(((totalUHs - concluidas) / totalUHs) * 100);
     return {
       tipo: ev.tipo,

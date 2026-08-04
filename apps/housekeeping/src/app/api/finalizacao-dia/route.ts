@@ -149,10 +149,25 @@ export async function GET(req: NextRequest) {
 
   const assignments = await prisma.dailyAssignment.findMany({
     where: { tenantId, data },
-    select: { status: true, uh: { select: { emManutencao: true } } },
+    select: { uhId: true, status: true, uh: { select: { emManutencao: true } } },
   });
   const relevantes = assignments.filter((a) => !a.uh.emManutencao);
-  const pronta = relevantes.length > 0 && relevantes.every((a) => a.status === "INSPECIONADO");
+
+  // Agrupa por UH — numa mutirão (2+ DailyAssignment pra mesma UH/dia, uma
+  // por camareira) a UH conta como inspecionada assim que UMA das
+  // camareiras concluir, não quando TODAS concluírem (pedido explícito do
+  // Felipe, 04/08/2026: "deve dar baixa quando apenas uma das camareiras
+  // conclui-la... o sistema exigiu que todas as camareiras dessem baixa").
+  // Antes disso `relevantes.every(...)` tratava cada linha de atribuição
+  // como uma UH — numa mutirão informal, onde só uma camareira de fato usa
+  // o app, a UH nunca fechava.
+  const inspecionadaPorUh = new Map<string, boolean>();
+  for (const a of relevantes) {
+    inspecionadaPorUh.set(a.uhId, (inspecionadaPorUh.get(a.uhId) ?? false) || a.status === "INSPECIONADO");
+  }
+  const totalUHsAtribuidas = inspecionadaPorUh.size;
+  const totalInspecionadas = Array.from(inspecionadaPorUh.values()).filter(Boolean).length;
+  const pronta = totalUHsAtribuidas > 0 && totalInspecionadas === totalUHsAtribuidas;
 
   const fechamento = await prisma.dailyClosure.findUnique({ where: { tenantId_data: { tenantId, data } } });
 
@@ -161,8 +176,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     data,
     pronta,
-    totalUHsAtribuidas: relevantes.length,
-    totalInspecionadas: relevantes.filter((a) => a.status === "INSPECIONADO").length,
+    totalUHsAtribuidas,
+    totalInspecionadas,
     finalizado: !!fechamento,
     finalizadoEm: fechamento?.finalizadoEm ?? null,
     finalizadoPorNome: fechamento?.finalizadoPorNome ?? null,

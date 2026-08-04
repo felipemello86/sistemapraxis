@@ -35,6 +35,7 @@ export type RelatorioData = {
     uhsManutencao: { numero: string; descricao: string | null }[];
   };
   linhasUH: Array<{
+    uhId: string;
     numero: string;
     emManutencao: boolean;
     camareira: string;
@@ -161,7 +162,12 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
   const libPorUh = new Map(selecoes.map((s) => [s.uhId, s.liberadaEm]));
   assignments.sort((a, b) => a.uh.numero.localeCompare(b.uh.numero, undefined, { numeric: true }));
 
-  const totalUHs = assignments.length;
+  // UHs distintas — não linhas de DailyAssignment. Numa mutirão (2+
+  // camareiras na mesma UH/dia) `assignments.length` conta a mesma UH mais
+  // de uma vez, inflando o total e o burndown do relatório (pedido
+  // explícito do Felipe, 04/08/2026 — mesmo ajuste de api/burndown/route.ts
+  // e api/finalizacao-dia/route.ts).
+  const totalUHs = new Set(assignments.map((a) => a.uhId)).size;
 
   // ── Info geral ────────────────────────────────────────────────────────────────
   const inicios = assignments.map((a) => a.cleaningSession?.iniciadaEm).filter(Boolean) as Date[];
@@ -212,6 +218,7 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
       .filter((i) => i.resultado === "FALHA" && i.tipoFalha !== "GERENCIAL")
       .map((i) => `${i.item}${i.observacao ? ` (${i.observacao})` : ""}`) ?? [];
     return {
+      uhId: a.uhId,
       numero: a.uh.numero,
       emManutencao: a.uh.emManutencao,
       camareira: a.camareira.nome.split(" ")[0],
@@ -339,10 +346,18 @@ export async function getRelatorioData(tenantId: string, data: string): Promise<
   // ── Burndown ──────────────────────────────────────────────────────────────────
   // Referência: 08:00 BRT = 11:00 UTC (Brasil = UTC-3)
   const day8amMs = new Date(`${data}T11:00:00.000Z`).getTime();
-  const cEvents = assignments
-    .filter((a) => a.cleaningSession?.inspection?.finalizadaEm)
-    .map((a) => a.cleaningSession!.inspection!.finalizadaEm!.getTime())
-    .sort((a, b) => a - b);
+  // Um evento "concluído" por UH, não por linha de atribuição — numa
+  // mutirão, usa a inspeção mais cedo entre as camareiras (a UH já estava
+  // pronta desde então), senão o burndown do relatório também exigiria
+  // todas as camareiras pra decrementar "uhsRestantes".
+  const finalizacaoPorUh = new Map<string, number>();
+  for (const a of assignments) {
+    const t = a.cleaningSession?.inspection?.finalizadaEm?.getTime();
+    if (t == null) continue;
+    const atual = finalizacaoPorUh.get(a.uhId);
+    if (atual === undefined || t < atual) finalizacaoPorUh.set(a.uhId, t);
+  }
+  const cEvents = Array.from(finalizacaoPorUh.values()).sort((a, b) => a - b);
 
   const burndownEventos: { minutos: number; uhsRestantes: number }[] = [
     { minutos: 0, uhsRestantes: totalUHs },
