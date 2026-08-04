@@ -225,7 +225,7 @@ export default function CamareiraTimeline({
             ) : (
               <div
                 key={`vao-${i}`}
-                className="absolute top-0 -translate-x-1/2 flex flex-col items-center"
+                className="absolute top-0 h-16 -translate-x-1/2 flex flex-col items-center"
                 style={{ left: `${(pct(s.inicio) + pct(s.fim)) / 2}%` }}
               >
                 <TextoVertical
@@ -234,11 +234,13 @@ export default function CamareiraTimeline({
                 >
                   {formatarDuracaoCurta((s.fim - s.inicio) / 1000)}
                 </TextoVertical>
-                {/* Linha fina curta só pra indicar a ligação com a barra —
-                    não precisa ir até embaixo (pedido do Felipe,
-                    04/08/2026: "basta uma distância pra livrar a
-                    possibilidade de encavalamento com as tags"). */}
-                <div className="w-px h-2 mt-0.5" style={{ backgroundColor: COR_DESLOCAMENTO, opacity: 0.4 }} />
+                {/* Linha fina ligando o rótulo até a barra — precisa ir até
+                    embaixo de vez (pedido do Felipe, 04/08/2026: antes
+                    parava na altura das tags de UH, não descia até a linha
+                    do tempo em si). flex-1 estica o traço até preencher o
+                    resto da altura do container (h-16, igual ao das tags),
+                    que termina exatamente onde a barra começa. */}
+                <div className="w-px flex-1 mt-0.5" style={{ backgroundColor: COR_DESLOCAMENTO, opacity: 0.4 }} />
               </div>
             ),
           )}
