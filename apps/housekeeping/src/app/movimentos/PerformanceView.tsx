@@ -6,6 +6,7 @@ import { scoreLabel, formatarTempo } from "@/lib/scoring";
 import PeriodoPicker, { Periodo, buildQuery } from "./PeriodoPicker";
 import UHDetailModal from "@/components/UHDetailModal";
 import QueixaDetailModal from "@/components/QueixaDetailModal";
+import CamareiraTimeline from "./CamareiraTimeline";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/movimentos/PerformanceView.tsx (v1).
@@ -58,7 +59,14 @@ function AvatarTick({ x, y, payload, chartData, prefix }: any) {
 
 const hoje = () => new Date().toLocaleDateString("en-CA");
 
-type DetalheUH = { sessaoId: string; assignmentId: string; uhNumero: string; data: string; duracaoSegundos: number; falhas: number; score: number; excluidoDoScore: boolean; multiplaCamareira?: boolean };
+type DetalheUH = {
+  sessaoId: string; assignmentId: string; uhNumero: string; data: string;
+  duracaoSegundos: number; falhas: number; score: number;
+  excluidoDoScore: boolean; multiplaCamareira?: boolean;
+  // Horários crus (não a âncora do "relógio de disponibilidade") — usados só
+  // pela Linha do tempo (CamareiraTimeline.tsx), ver comentário lá.
+  liberadaEm: string | null; iniciadaEm: string; finalizadaEm: string;
+};
 type QueixaLimpeza = { id: string; data: string; uhNumero: string; titulo: string; descricao: string; pontosDescontados: number };
 type Score = { id: string; nome: string; foto?: string | null; mediaScore: number | null; totalUHs: number; totalFalhas: number; detalhes?: DetalheUH[]; totalPenalidades?: number; queixasLimpeza?: QueixaLimpeza[] };
 
@@ -268,6 +276,12 @@ export default function PerformanceView({ isMaster, podeOperar }: { isMaster?: b
 
                   {expandido && ((cam.detalhes && cam.detalhes.length > 0) || (cam.queixasLimpeza && cam.queixasLimpeza.length > 0)) && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
+                      {/* Só faz sentido no período "Hoje" — em outros
+                          períodos os horários seriam de dias diferentes no
+                          mesmo eixo (ver comentário em CamareiraTimeline.tsx). */}
+                      {periodo.tipo === "hoje" && !!cam.detalhes?.length && (
+                        <CamareiraTimeline detalhes={cam.detalhes} />
+                      )}
                       {!!cam.queixasLimpeza?.length && (
                         <div className="mb-3">
                           <p className="text-xs font-medium text-red-500 uppercase tracking-wide mb-2">Queixas de hóspede (Limpeza)</p>

@@ -268,6 +268,13 @@ export async function GET(req: NextRequest) {
         score,
         excluidoDoScore: s.excluidoDoScore,
         multiplaCamareira,
+        // Horários crus (não o "relógio de disponibilidade" acima) — usados
+        // só pela "Linha do tempo" da tela Performance (pedido do Felipe,
+        // 04/08/2026), que quer mostrar liberação/início/fim reais, não a
+        // âncora usada pro score.
+        liberadaEm: liberadaEmPorUH.get(`${s.assignment.data}|${s.uhId}`) ?? null,
+        iniciadaEm: s.iniciadaEm,
+        finalizadaEm: s.finalizadaEm,
       };
     });
 
