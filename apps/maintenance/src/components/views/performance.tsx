@@ -82,7 +82,47 @@ const CAPACIDADE_CHART_CONFIG = {
 type PontoCapacidade = {
   dia: string
   diferenca: number
+  ncEliminadas: number
+  ncSurgidas: number
   positivo: boolean
+}
+
+// Tooltip dedicado do gráfico de Capacidade — o ChartTooltipContent genérico
+// (components/ui/chart.tsx) só mostrava "-4,3" pro saldo, e o Felipe leu
+// isso como dois números (-4 e 3) em vez de um decimal só (vírgula é
+// separador decimal em pt-BR). Aqui o tooltip abre a conta: eliminadas,
+// surgidas e o saldo já com sinal explícito — sem ambiguidade nenhuma.
+function TooltipCapacidade({
+  active,
+  payload,
+}: {
+  active?: boolean
+  payload?: { payload: PontoCapacidade }[]
+}) {
+  if (!active || !payload?.length) return null
+  const p = payload[0].payload
+  const sinal = p.diferenca > 0 ? '+' : ''
+  const corSaldo = p.positivo ? VERDE_CAPACIDADE : VERMELHO_CAPACIDADE
+  const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return (
+    <div className="grid min-w-44 gap-1 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+      <div className="font-medium">{p.dia}</div>
+      <div className="flex items-center justify-between gap-4 text-muted-foreground">
+        <span>NC eliminadas/dia</span>
+        <span className="font-mono tabular-nums text-foreground">{fmt(p.ncEliminadas)}</span>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-muted-foreground">
+        <span>NC surgidas/dia</span>
+        <span className="font-mono tabular-nums text-foreground">{fmt(p.ncSurgidas)}</span>
+      </div>
+      <div className="mt-0.5 flex items-center justify-between gap-4 border-t pt-1">
+        <span className="text-muted-foreground">Saldo</span>
+        <span className="font-mono font-semibold tabular-nums" style={{ color: corSaldo }}>
+          {sinal}{fmt(p.diferenca)}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 // Stops do gradiente horizontal da linha — um por ponto da série recebida,
@@ -185,6 +225,8 @@ export function Performance({
       dias.push({
         dia: label,
         diferenca: arredondar1(ncEliminadas - ncSurgidas),
+        ncEliminadas,
+        ncSurgidas,
         positivo: ncEliminadas >= ncSurgidas,
       })
     }
@@ -261,7 +303,7 @@ export function Performance({
         />
         <YAxis tickLine={false} axisLine={false} width={32} allowDecimals={false} />
         <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" />
-        <ChartTooltip content={<ChartTooltipContent />} />
+        <ChartTooltip content={<TooltipCapacidade />} />
         <Area
           dataKey="diferenca"
           type="monotone"
