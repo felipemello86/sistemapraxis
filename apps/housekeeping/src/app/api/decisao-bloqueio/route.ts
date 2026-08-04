@@ -179,6 +179,10 @@ export async function PATCH(req: NextRequest) {
           descricao: pedido.comment,
           solicitanteNome: pedido.solicitanteNome,
           registradoPorId: session.userId,
+          // HkBlockRequest não guarda urgente/prioridade (branch legado, ver
+          // comentário acima — não deve mais receber pedido PENDENTE aqui).
+          urgente: false,
+          prioridade: false,
         });
       }
       return NextResponse.json({ ok: true });
