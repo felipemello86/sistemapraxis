@@ -205,7 +205,7 @@ export default function CamareiraTimeline({
             faixa embaixo e encavalavam quando as UHs ficavam próximas
             (pedido do Felipe, 04/08/2026: "evitar de encavalar o tempo de
             deslocamento com a tag da UH"). */}
-        <div className="relative h-24">
+        <div className="relative h-16">
           {segmentos.map((s, i) =>
             s.tipo === "limpeza" ? (
               <div
@@ -225,7 +225,7 @@ export default function CamareiraTimeline({
             ) : (
               <div
                 key={`vao-${i}`}
-                className="absolute top-0 bottom-0 -translate-x-1/2 flex flex-col items-center"
+                className="absolute top-0 -translate-x-1/2 flex flex-col items-center"
                 style={{ left: `${(pct(s.inicio) + pct(s.fim)) / 2}%` }}
               >
                 <TextoVertical
@@ -234,8 +234,11 @@ export default function CamareiraTimeline({
                 >
                   {formatarDuracaoCurta((s.fim - s.inicio) / 1000)}
                 </TextoVertical>
-                {/* Linha fina conectando o rótulo à barra do tempo. */}
-                <div className="w-px flex-1 mt-0.5" style={{ backgroundColor: COR_DESLOCAMENTO, opacity: 0.4 }} />
+                {/* Linha fina curta só pra indicar a ligação com a barra —
+                    não precisa ir até embaixo (pedido do Felipe,
+                    04/08/2026: "basta uma distância pra livrar a
+                    possibilidade de encavalamento com as tags"). */}
+                <div className="w-px h-2 mt-0.5" style={{ backgroundColor: COR_DESLOCAMENTO, opacity: 0.4 }} />
               </div>
             ),
           )}
