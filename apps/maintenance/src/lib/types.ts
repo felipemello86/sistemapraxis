@@ -258,6 +258,7 @@ export type LogEvento = {
     | "card_urgente_adicionado" // adicionarCardUrgenteImpl — card intempestivo anexado após o fechamento
     | "card_retirado_da_programacao" // retirarCardDaProgramacaoImpl — card individual tirado de "Planejadas", volta pra "A Fazer"
     | "cards_cancelados_por_liberacao" // cancelarCardsPorExclusaoDeUh (packages/core) — UH saiu da lista do dia em Housekeeping
+    | "urgencia_retirada" // retirarUrgenciaImpl — botão "Retirar Urgência" nos kanbans de Correção
     | "material_comprado" // comprarMaterialImpl
     | "cotacao_registrada" // registrarCotacaoImpl
     | "servico_agendado" // agendarServicoImpl — só a 1ª vez (reagendamentos seguintes já viram "reagendamento")

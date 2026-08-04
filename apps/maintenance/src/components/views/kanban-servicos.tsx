@@ -43,14 +43,22 @@ function CardHeader({
   temReserva,
   liberada,
   onVerDetalhe,
+  podeOperar,
 }: {
   card: CorrectionCardView
   temReserva: boolean
   liberada: boolean
   onVerDetalhe: (card: CorrectionCardView) => void
+  podeOperar: boolean
 }) {
   return (
-    <CorrectionCardHeader card={card} temReserva={temReserva} liberada={liberada} onVerDetalhe={onVerDetalhe}>
+    <CorrectionCardHeader
+      card={card}
+      temReserva={temReserva}
+      liberada={liberada}
+      onVerDetalhe={onVerDetalhe}
+      podeOperar={podeOperar}
+    >
       {card.needsMaterial && (
         <p className="text-xs text-muted-foreground">
           Material: {card.materialStatus === 'COMPRADO' ? 'já comprado' : 'ainda não comprado'}
@@ -95,6 +103,7 @@ export function KanbanServicos({
                 temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                 liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                 onVerDetalhe={onVerDetalhe}
+                podeOperar={podeOperar}
               />
               <Button
                 size="sm"
@@ -118,6 +127,7 @@ export function KanbanServicos({
                 temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                 liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                 onVerDetalhe={onVerDetalhe}
+                podeOperar={podeOperar}
               />
               {card.quotes.length > 0 && (
                 <ul className="mt-2 space-y-1">
@@ -168,6 +178,7 @@ export function KanbanServicos({
                 temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                 liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                 onVerDetalhe={onVerDetalhe}
+                podeOperar={podeOperar}
               />
               <div className="mt-2 rounded-lg bg-background/70 p-2 text-xs">
                 <p className="font-medium">{card.hiredSupplierNome}</p>
@@ -212,6 +223,7 @@ export function KanbanServicos({
                 temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                 liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                 onVerDetalhe={onVerDetalhe}
+                podeOperar={podeOperar}
               />
               {card.executedDescription && <p className="mt-2 text-xs">{card.executedDescription}</p>}
             </div>

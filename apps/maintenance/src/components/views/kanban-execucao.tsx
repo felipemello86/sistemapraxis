@@ -224,6 +224,7 @@ export function KanbanExecucao({
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                     liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
+                    podeOperar={podeOperar}
                   />
                   <Button
                     size="sm"
@@ -281,6 +282,7 @@ export function KanbanExecucao({
                         temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                         liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                         onVerDetalhe={onVerDetalhe}
+                        podeOperar={podeOperar}
                       />
                       {card.canceladoPorLiberacao ? null : expandido ? (
                         <div className="mt-2 space-y-2">
@@ -382,6 +384,7 @@ export function KanbanExecucao({
                         temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                         liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                         onVerDetalhe={onVerDetalhe}
+                        podeOperar={podeOperar}
                       />
                     </div>
                   </label>
@@ -449,6 +452,7 @@ export function KanbanExecucao({
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                     liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
+                    podeOperar={podeOperar}
                     extraBadge={
                       // O badge "UH removida do dia" (ver
                       // CorrectionCardHeader) já cobre o caso cancelado —
@@ -516,6 +520,7 @@ export function KanbanExecucao({
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                     liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
+                    podeOperar={podeOperar}
                     extraBadge={
                       !card.previsto && (
                         <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600">

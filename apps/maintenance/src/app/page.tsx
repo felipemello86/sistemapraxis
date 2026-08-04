@@ -629,6 +629,7 @@ export default async function Home() {
     "maintenance.log.card_urgente_adicionado": "card_urgente_adicionado",
     "maintenance.log.card_retirado_da_programacao": "card_retirado_da_programacao",
     "maintenance.log.cards_cancelados_por_liberacao": "cards_cancelados_por_liberacao",
+    "maintenance.log.urgencia_retirada": "urgencia_retirada",
     "maintenance.log.material_comprado": "material_comprado",
     "maintenance.log.cotacao_registrada": "cotacao_registrada",
     "maintenance.log.servico_agendado": "servico_agendado",
@@ -699,6 +700,9 @@ export default async function Home() {
         detalhe = `UH removida da lista do dia em Housekeeping — ${totalCancelados} ${totalCancelados === 1 ? "card cancelado" : "cards cancelados"} no Kanban de Execução.`;
         break;
       }
+      case "urgencia_retirada":
+        detalhe = "Classificação de urgente removida do card — não é mais uma NC impeditiva ao uso.";
+        break;
       case "material_comprado":
         detalhe = "Material marcado como comprado.";
         break;

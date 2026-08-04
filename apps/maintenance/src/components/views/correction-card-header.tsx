@@ -1,8 +1,12 @@
 'use client'
 
-import { BedDouble, Ban, Siren, Unlock } from 'lucide-react'
+import { useState } from 'react'
+import { BedDouble, Ban, Siren, Unlock, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { corCategoria } from '@/lib/domain'
+import { retirarUrgenciaAction } from '@/app/actions/correcao'
+import { unwrapSafeAction } from '@/lib/safeAction'
+import { toast } from 'sonner'
 import type { CorrectionCardView } from '@/lib/types'
 
 // Cabeçalho compartilhado pelos cards dos 3 kanbans de Correção (Aquisição,
@@ -25,6 +29,7 @@ export function CorrectionCardHeader({
   onVerDetalhe,
   extraBadge,
   children,
+  podeOperar,
 }: {
   card: CorrectionCardView
   temReserva?: boolean
@@ -39,7 +44,30 @@ export function CorrectionCardHeader({
   // pra acrescentar um a mais.
   extraBadge?: React.ReactNode
   children?: React.ReactNode
+  // Controla o botão "Retirar Urgência" (pedido do Felipe, 01/08/2026) —
+  // sem essa prop o botão fica escondido por segurança (mesmo padrão de
+  // "esconder em vez de mostrar desabilitado" já usado nos outros botões
+  // de ação desse componente).
+  podeOperar?: boolean
 }) {
+  const [retirandoUrgencia, setRetirandoUrgencia] = useState(false)
+
+  async function retirarUrgencia(e: React.MouseEvent) {
+    // Esse botão fica dentro da área clicável do card (onVerDetalhe) —
+    // sem isso o clique também abriria o popup de detalhe.
+    e.preventDefault()
+    e.stopPropagation()
+    setRetirandoUrgencia(true)
+    try {
+      unwrapSafeAction(await retirarUrgenciaAction({ cardId: card.id }))
+      toast.success('Urgência retirada do card.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao retirar a urgência.')
+    } finally {
+      setRetirandoUrgencia(false)
+    }
+  }
+
   return (
     <div
       className={
@@ -87,6 +115,24 @@ export function CorrectionCardHeader({
               <Siren className="h-2.5 w-2.5" />
               Urgente
             </span>
+          )}
+          {/* Pedido explícito do Felipe (01/08/2026): "para os cards
+              classificados como URGÊNCIA, deve haver um botão de Retirar
+              Urgência, para os casos em que o usuário entenda que não se
+              trata mais de Urgência." Não desbloqueia uma UH já bloqueada
+              por decisão do Atendimento — só cancela pedido pendente (ver
+              retirarUrgenciaImpl). */}
+          {card.urgente && podeOperar && (
+            <button
+              type="button"
+              onClick={retirarUrgencia}
+              disabled={retirandoUrgencia}
+              title="Retirar a classificação de urgente deste card"
+              className="flex items-center gap-0.5 rounded-full border border-destructive/30 px-1.5 py-0.5 text-[10px] font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+            >
+              <X className="h-2.5 w-2.5" />
+              {retirandoUrgencia ? 'Retirando...' : 'Retirar urgência'}
+            </button>
           )}
           {temReserva && (
             <span className="flex items-center gap-0.5 rounded-full bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">

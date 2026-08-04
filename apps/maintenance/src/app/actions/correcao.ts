@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   aplicarBloqueioPorUrgencia,
+  cancelarSolicitacaoBloqueioSeNecessario,
   corrigirItemDireto,
   emitEvent,
   getSession,
@@ -676,6 +677,57 @@ async function retirarCardDaProgramacaoImpl(input: { cardId: string }) {
   revalidatePath("/");
 }
 export const retirarCardDaProgramacaoAction = safeAction(retirarCardDaProgramacaoImpl);
+
+/* ------------------------------ Retirar urgência --------------------------- */
+// Pedido explícito do Felipe (01/08/2026): "para os cards classificados como
+// URGÊNCIA, deve haver um botão de Retirar Urgência, para os casos em que o
+// usuário entenda que não se trata mais de Urgência." Disponível direto nos
+// 3 kanbans de Correção (ver CorrectionCardHeader), sem precisar abrir a
+// tela Inspeções pra editar o item.
+//
+// Mesma semântica que editarSpotInspecaoImpl (apps/maintenance/src/app/
+// actions/data.ts) já aplica ao desmarcar urgente sem resolver a NC: só
+// cancela um pedido de bloqueio ainda PENDENTE (ver
+// cancelarSolicitacaoBloqueioSeNecessario). De propósito NÃO desbloqueia uma
+// UH que já tinha sido bloqueada por decisão do Atendimento — isso continua
+// exigindo ação humana explícita em Seleção e Liberação ("Desbloquear"); só
+// a resolução de fato da NC (resolveCorrectionCard) aciona o desbloqueio
+// automático, ver desbloquearUHSeUltimaNcUrgenteResolvida em
+// packages/core/src/maintenanceUrgente.ts. Mudar de ideia sobre a urgência
+// não deve reverter sozinho uma decisão de bloqueio já tomada por outra
+// pessoa.
+async function retirarUrgenciaImpl(input: { cardId: string }) {
+  const session = await requireModuleSession();
+  const card = await getCardOrThrow(input.cardId, session.tenantId);
+
+  const item = await prisma.maintenanceInspectionItem.findUnique({
+    where: { id: card.inspectionItemId },
+    select: { id: true, urgente: true },
+  });
+  if (!item || !item.urgente) {
+    throw new Error("Este card não está marcado como urgente.");
+  }
+
+  await prisma.maintenanceInspectionItem.update({
+    where: { id: item.id },
+    data: { urgente: false },
+  });
+
+  await cancelarSolicitacaoBloqueioSeNecessario({ tenantId: session.tenantId, uhId: card.uhId });
+
+  const { uhNumero, itemNome } = await nomesDoCard(card);
+  await emitEvent({
+    tenantId: session.tenantId,
+    module: "MAINTENANCE",
+    eventType: "maintenance.log.urgencia_retirada",
+    entityType: "MaintenanceCorrectionCard",
+    entityId: card.id,
+    payload: { uhNumero, itemNome, atorNome: session.nome },
+  });
+
+  revalidatePath("/");
+}
+export const retirarUrgenciaAction = safeAction(retirarUrgenciaImpl);
 
 /* --------------------------- Corrigir (atalho) ----------------------------- */
 // Botão "Corrigir" disponível em Visão Gerencial, Inspeções e UH 3D — resolve

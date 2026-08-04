@@ -95,6 +95,7 @@ export function KanbanAquisicao({
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                     liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
+                    podeOperar={podeOperar}
                   />
                   <Button
                     size="sm"
@@ -132,6 +133,7 @@ export function KanbanAquisicao({
                     temReserva={uhIdsComReservaHoje.includes(card.uhId)}
                     liberada={uhIdsLiberadasHoje.includes(card.uhId)}
                     onVerDetalhe={onVerDetalhe}
+                    podeOperar={podeOperar}
                   />
                   {card.materialCompradoEm && (
                     <p className="mt-2 text-xs text-muted-foreground">
