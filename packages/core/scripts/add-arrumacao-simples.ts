@@ -16,7 +16,11 @@
 // Não mexe em "Limpeza Específica" (LIMPEZA_COMPLETA) nem em "Super Limpeza
 // ⭐️" (SUPER_LIMPEZA) — essas duas continuam existindo como estão hoje.
 //
-// Idempotente: pula tenants que já têm um programa ARRUMACAO_SIMPLES.
+// Idempotente: pula tenants que já têm um programa ARRUMACAO_SIMPLES. Nome
+// segue a mesma convenção de "Arrumação Padrão (25 min)" — leva a meta de
+// tempo configurada do tenant (HkConfig.targetMinutes) entre parênteses,
+// pedido do Felipe (04/08/2026): "mude o texto 'Arrumação Simples' para
+// 'Arrumação Simples (meta de tempo)'".
 //
 // Rodar (uma vez, em produção):
 //   pnpm --filter @praxis/core exec tsx scripts/add-arrumacao-simples.ts
@@ -43,15 +47,17 @@ async function main() {
       console.log(`[skip] ${t.tenant.name} já tem Arrumação Simples (${jaExiste.id})`);
       continue;
     }
+    const config = await prisma.hkConfig.findUnique({ where: { tenantId: t.tenantId } });
+    const targetMinutos = config?.targetMinutes ?? 25;
     const criado = await prisma.cleaningProgram.create({
       data: {
         tenantId: t.tenantId,
-        nome: "Arrumação Simples",
+        nome: `Arrumação Simples (${targetMinutos} min)`,
         tipo: "ARRUMACAO_SIMPLES",
         ativo: true,
       },
     });
-    console.log(`[ok] ${t.tenant.name}: criado programa "Arrumação Simples" (${criado.id})`);
+    console.log(`[ok] ${t.tenant.name}: criado programa "${criado.nome}" (${criado.id})`);
   }
 }
 
