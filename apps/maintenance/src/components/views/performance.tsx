@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useRef, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { AreaChart, Area, CartesianGrid, ReferenceLine, XAxis, YAxis } from 'recharts'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import { ChartContainer, ChartTooltip } from '@/components/ui/chart'
 import { Panel, StatCard } from '@/components/ui-kit'
 import {
   AlertTriangle,
@@ -161,20 +161,10 @@ export function Performance({
   ncSurgidasEm: string[]
   ncEliminadasEm: string[]
 }) {
-  // commitments chega ordenado do mais recente pro mais antigo (page.tsx) —
-  // aqui inverte só pro gráfico, que precisa do mais antigo à esquerda.
-  const serieDiaria = useMemo(
-    () =>
-      [...commitments]
-        .sort((a, b) => a.data.localeCompare(b.data))
-        .map((c) => ({ dia: formatarDiaMes(c.data), realizacao: pctRealizacao(c) })),
-    [commitments],
-  )
-
   // "Capacidade Produtiva" — NC surgidas vs eliminadas por dia, últimos
   // DIAS_JANELA_CAPACIDADE dias corridos (não amarrado a dia com
-  // MaintenanceDailyCommitment fechado, diferente de serieDiaria acima).
-  // Cada dia exibido é a SOMA de JANELA_MEDIA_MOVEL_CAPACIDADE dias (o
+  // MaintenanceDailyCommitment fechado). Cada dia exibido é a SOMA de
+  // JANELA_MEDIA_MOVEL_CAPACIDADE dias (o
   // próprio dia + os 6 anteriores) — pedido explícito do Felipe, pra
   // suavizar picos de um único dia ruidoso sem cair em valor fracionário.
   // `diferenca` é o saldo do período (eliminadas − surgidas, já sobre as
@@ -336,13 +326,6 @@ export function Performance({
     [commitments],
   )
 
-  const larguraGrafico = Math.max(serieDiaria.length * 44, 600)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = scrollRef.current
-    if (el) el.scrollLeft = el.scrollWidth
-  }, [serieDiaria])
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -421,62 +404,6 @@ export function Performance({
           </Panel>
         </div>
       )}
-
-      <Panel
-        title="Performance ao longo do tempo"
-        description="Percentual de realização do Kanban de Execução por dia. Arraste pros lados pra ver os outros dias."
-      >
-        {serieDiaria.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Nenhuma programação diária fechada ainda.
-          </p>
-        ) : (
-          <div className="overflow-x-auto" ref={scrollRef}>
-            <div style={{ minWidth: larguraGrafico }}>
-              <ChartContainer
-                config={{ realizacao: { label: 'Realização', color: 'var(--chart-2)' } }}
-                className="h-72 w-full"
-              >
-                <AreaChart data={serieDiaria} margin={{ top: 8, right: 8, left: 4, bottom: 8 }}>
-                  <defs>
-                    <linearGradient id="fillRealizacao" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-realizacao)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="var(--color-realizacao)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="dia"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    interval={0}
-                    angle={-45}
-                    textAnchor="end"
-                    height={50}
-                    tick={{ fontSize: 11 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    width={40}
-                    domain={[0, 100]}
-                    tickFormatter={(v) => `${v}%`}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area
-                    dataKey="realizacao"
-                    type="monotone"
-                    stroke="var(--color-realizacao)"
-                    fill="url(#fillRealizacao)"
-                    strokeWidth={2.5}
-                  />
-                </AreaChart>
-              </ChartContainer>
-            </div>
-          </div>
-        )}
-      </Panel>
 
       <div className="space-y-4">
         <p className="text-sm font-medium text-muted-foreground">Relatórios diários</p>
