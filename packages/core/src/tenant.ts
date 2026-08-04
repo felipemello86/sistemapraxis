@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import type { SuiteModule } from "../generated";
 import { DEFAULT_MAINTENANCE_ITEMS } from "./maintenance-defaults";
+import { DEFAULT_CLEANING_PROGRAMS } from "./housekeeping-defaults";
 
 // Ponto único de criação de cliente (tenant) + usuário MASTER inicial.
 //
@@ -62,6 +63,30 @@ export async function createTenant(input: CreateTenantInput): Promise<CreateTena
           subDescription: it.subDescription,
         })),
       });
+    }
+  }
+
+  // Programas de limpeza padrão (Arrumação Iniciante, Arrumação Simples,
+  // Limpeza Específica, Super Limpeza ⭐️) — pedido do Felipe, 04/08/2026:
+  // até aqui, nenhum tenant novo nascia com programa nenhum, exigindo
+  // criação manual/script. Ver housekeeping-defaults.ts pro catálogo
+  // completo (com as etapas da Arrumação Iniciante). Mesmo guard de "só
+  // roda se ainda não tem nada" do bloco de Manutenção acima.
+  if (modules.includes("HOUSEKEEPING")) {
+    const jaTemProgramas = await prisma.cleaningProgram.count({
+      where: { tenantId: tenant.id },
+    });
+    if (jaTemProgramas === 0) {
+      for (const programa of DEFAULT_CLEANING_PROGRAMS) {
+        await prisma.cleaningProgram.create({
+          data: {
+            tenantId: tenant.id,
+            nome: programa.nome,
+            tipo: programa.tipo,
+            steps: { create: programa.steps },
+          },
+        });
+      }
     }
   }
 
