@@ -19,6 +19,22 @@
 // score. As duas coisas podem divergir de propósito (é exatamente esse
 // "tempo de espera antes de apertar iniciar" que a linha do tempo também
 // deixa visível, através do vão laranja antes da 1ª UH ou entre UHs).
+//
+// v1 desenhava tudo com texto horizontal e um `minWidth` proporcional ao
+// número de segmentos dentro de um `overflow-x-auto` — a ideia era rolar
+// horizontalmente em vez de espremer. Na prática isso estourou o card: como
+// nem `.card` nem a coluna do grid tinham `min-width: 0`, o item de
+// grid/flex cresceu pra caber o conteúdo em vez de conter o scroll (mesma
+// pegadinha clássica de flex/grid). Pedido do Felipe (04/08/2026): o card
+// tem que voltar ao tamanho antigo e a linha do tempo tem que caber dentro
+// dele — sem rolagem, 100% de largura fixa. Corrigido usando posicionamento
+// só em %, sem minWidth nenhum, e textos verticais (writing-mode) pros
+// rótulos de vão/hora — isso reduz a largura que cada rótulo ocupa (uma
+// letra de largura em vez de uma palavra inteira), diminuindo bastante a
+// chance de colisão mesmo com muitas UHs no mesmo dia. A tag da UH continua
+// horizontal, mas em 2 linhas empilhadas (número embaixo do score) em vez
+// de uma linha só — mesma ideia de "arrumar na vertical", só que sem girar
+// o texto letra a letra (ficaria alto demais pro card).
 const COR_TAG = "#3b82f6";
 const COR_LIMPEZA = "#8b5cf6";
 const COR_DESLOCAMENTO = "#f59e0b";
@@ -45,6 +61,20 @@ type SegmentoLimpeza = {
 };
 type SegmentoVao = { tipo: "vao"; inicio: number; fim: number };
 type Segmento = SegmentoLimpeza | SegmentoVao;
+
+// Texto rotacionado 90° (letras de cima pra baixo) — usado pros rótulos de
+// vão e de hora, que precisam ocupar pouquíssima largura horizontal pra não
+// colidir quando as UHs estão espremidas num intervalo curto.
+function TextoVertical({ children, className, style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+  return (
+    <span
+      className={className}
+      style={{ writingMode: "vertical-rl", textOrientation: "mixed", ...style }}
+    >
+      {children}
+    </span>
+  );
+}
 
 function formatarHora(ms: number) {
   const d = new Date(ms);
@@ -117,74 +147,71 @@ export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTim
     marcas.push(t);
   }
 
-  // Largura mínima proporcional ao número de segmentos — evita tags/rótulos
-  // colados quando a camareira processou muitas UHs no dia. Rola
-  // horizontalmente em telas estreitas (mesmo padrão dos gráficos de
-  // Capacidade Produtiva em apps/maintenance).
-  const largura = Math.max(560, segmentos.length * 130);
-
   return (
-    <div className="mb-4">
+    <div className="mb-4 min-w-0">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Linha do tempo</p>
-      <div className="overflow-x-auto">
-        <div style={{ minWidth: largura }} className="relative pt-7 pb-1">
-          {/* Tags de UH (azul) e tempo entre elas (laranja) — tudo "acima da linha". */}
-          <div className="relative h-6 mb-1">
-            {segmentos.map((s, i) =>
-              s.tipo === "limpeza" ? (
-                <div
-                  key={s.sessaoId}
-                  className="absolute -translate-x-1/2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white whitespace-nowrap shadow-sm"
-                  style={{
-                    left: `${(pct(s.inicio) + pct(s.fim)) / 2}%`,
-                    backgroundColor: COR_TAG,
-                    opacity: s.excluido ? 0.45 : 1,
-                  }}
-                  title={`UH ${s.uhNumero} · ${formatarHora(s.inicio)}–${formatarHora(s.fim)}${s.excluido ? " · excluído do score" : ""}`}
-                >
-                  {s.uhNumero} · {s.score}pts
-                </div>
-              ) : (
-                <div
-                  key={`vao-${i}`}
-                  className="absolute -translate-x-1/2 text-[10px] font-medium whitespace-nowrap"
-                  style={{ left: `${(pct(s.inicio) + pct(s.fim)) / 2}%`, color: COR_DESLOCAMENTO }}
-                >
-                  {formatarDuracaoCurta((s.fim - s.inicio) / 1000)}
-                </div>
-              ),
-            )}
-          </div>
-
-          {/* A linha em si — trechos roxos (limpando) e laranja (deslocamento/espera). */}
-          <div className="relative h-2 rounded-full bg-gray-100 overflow-hidden">
-            {segmentos.map((s, i) => (
+      <div className="relative w-full min-w-0">
+        {/* Tags de UH (azul, 2 linhas empilhadas) e vãos (laranja, texto
+            vertical) — tudo "acima da linha", alinhado pela base. */}
+        <div className="relative h-14 flex items-end">
+          {segmentos.map((s, i) =>
+            s.tipo === "limpeza" ? (
               <div
-                key={i}
-                className="absolute top-0 h-full"
+                key={s.sessaoId}
+                className="absolute bottom-0 -translate-x-1/2 flex flex-col items-center justify-center rounded-md px-1 py-0.5 text-white leading-none shadow-sm"
                 style={{
-                  left: `${pct(s.inicio)}%`,
-                  width: `${Math.max(pct(s.fim) - pct(s.inicio), 0.5)}%`,
-                  backgroundColor: s.tipo === "limpeza" ? COR_LIMPEZA : COR_DESLOCAMENTO,
-                  opacity: s.tipo === "limpeza" && s.excluido ? 0.45 : 1,
+                  left: `${(pct(s.inicio) + pct(s.fim)) / 2}%`,
+                  backgroundColor: COR_TAG,
+                  opacity: s.excluido ? 0.45 : 1,
                 }}
-              />
-            ))}
-          </div>
-
-          {/* Régua de horas — "abaixo da linha". */}
-          <div className="relative h-4 mt-1">
-            {marcas.map((t) => (
-              <div
-                key={t}
-                className="absolute -translate-x-1/2 flex flex-col items-center"
-                style={{ left: `${pct(t)}%` }}
+                title={`UH ${s.uhNumero} · ${formatarHora(s.inicio)}–${formatarHora(s.fim)}${s.excluido ? " · excluído do score" : ""}`}
               >
-                <div className="w-px h-1.5 bg-gray-300" />
-                <span className="text-[9px] text-gray-400 mt-0.5">{formatarHora(t)}</span>
+                <span className="text-[9px] font-bold whitespace-nowrap">{s.uhNumero}</span>
+                <span className="text-[8px] whitespace-nowrap">{s.score}pts</span>
               </div>
-            ))}
-          </div>
+            ) : (
+              <TextoVertical
+                key={`vao-${i}`}
+                className="absolute bottom-0 -translate-x-1/2 text-[9px] font-medium whitespace-nowrap"
+                style={{ left: `${(pct(s.inicio) + pct(s.fim)) / 2}%`, color: COR_DESLOCAMENTO }}
+              >
+                {formatarDuracaoCurta((s.fim - s.inicio) / 1000)}
+              </TextoVertical>
+            ),
+          )}
+        </div>
+
+        {/* A linha em si — trechos roxos (limpando) e laranja
+            (deslocamento/espera). Largura sempre 100% do card, nunca mais. */}
+        <div className="relative h-2 rounded-full bg-gray-100 overflow-hidden w-full">
+          {segmentos.map((s, i) => (
+            <div
+              key={i}
+              className="absolute top-0 h-full"
+              style={{
+                left: `${pct(s.inicio)}%`,
+                width: `${Math.max(pct(s.fim) - pct(s.inicio), 0.5)}%`,
+                backgroundColor: s.tipo === "limpeza" ? COR_LIMPEZA : COR_DESLOCAMENTO,
+                opacity: s.tipo === "limpeza" && s.excluido ? 0.45 : 1,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Régua de horas — "abaixo da linha", texto vertical também. */}
+        <div className="relative h-9 mt-1">
+          {marcas.map((t) => (
+            <div
+              key={t}
+              className="absolute top-0 -translate-x-1/2 flex flex-col items-center"
+              style={{ left: `${pct(t)}%` }}
+            >
+              <div className="w-px h-1.5 bg-gray-300" />
+              <TextoVertical className="text-[9px] text-gray-400 mt-0.5 leading-none">
+                {formatarHora(t)}
+              </TextoVertical>
+            </div>
+          ))}
         </div>
       </div>
     </div>
