@@ -33,11 +33,13 @@ const DIAS_JANELA_CAPACIDADE = 30
 const DIAS_COMPACTO_CAPACIDADE = 7
 
 // Pedido explícito do Felipe: cada dia do gráfico de Capacidade Produtiva
-// passou a ser a MÉDIA MÓVEL do próprio dia + os 6 anteriores (janela de 7),
-// não mais a contagem bruta daquele dia isolado — suaviza picos de um único
-// dia ruidoso. Coincide numericamente com DIAS_COMPACTO_CAPACIDADE (7), mas
-// são conceitos independentes: um é o tamanho da janela de suavização, o
-// outro é quantos pontos já suavizados aparecem no card compacto.
+// mostra a SOMA (valor absoluto) do próprio dia + os 6 anteriores (janela de
+// 7) — não mais a contagem bruta daquele dia isolado, nem uma média (era
+// média até 04/08/2026, mas o valor fracionário resultante confundia o
+// tooltip). Ainda suaviza picos de um único dia ruidoso, só que sem dividir.
+// Coincide numericamente com DIAS_COMPACTO_CAPACIDADE (7), mas são conceitos
+// independentes: um é o tamanho da janela de soma, o outro é quantos pontos
+// já somados aparecem no card compacto.
 const JANELA_MEDIA_MOVEL_CAPACIDADE = 7
 
 function formatarDiaMes(data: string) {
@@ -55,12 +57,6 @@ function formatarHora(iso: string) {
 // bucketizar aqui dentro; não precisa bater com nenhum formato salvo no banco.
 function chaveDiaLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-// Arredonda pra 1 casa decimal — a média móvel deixa de ser um número
-// inteiro (ex.: 2.3 NC/dia), diferente da contagem bruta de antes.
-function arredondar1(n: number) {
-  return Math.round(n * 10) / 10
 }
 
 // Verde (positivo: mais NC eliminadas que surgidas no dia) / vermelho
@@ -103,16 +99,18 @@ function TooltipCapacidade({
   const p = payload[0].payload
   const sinal = p.diferenca > 0 ? '+' : ''
   const corSaldo = p.positivo ? VERDE_CAPACIDADE : VERMELHO_CAPACIDADE
-  const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  // Valores agora são somas inteiras (não médias) — sem casas decimais,
+  // só o separador de milhar do pt-BR se algum dia passar de 999.
+  const fmt = (n: number) => n.toLocaleString('pt-BR')
   return (
     <div className="grid min-w-44 gap-1 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
       <div className="font-medium">{p.dia}</div>
       <div className="flex items-center justify-between gap-4 text-muted-foreground">
-        <span>NC eliminadas/dia</span>
+        <span>NC eliminadas (7 dias)</span>
         <span className="font-mono tabular-nums text-foreground">{fmt(p.ncEliminadas)}</span>
       </div>
       <div className="flex items-center justify-between gap-4 text-muted-foreground">
-        <span>NC surgidas/dia</span>
+        <span>NC surgidas (7 dias)</span>
         <span className="font-mono tabular-nums text-foreground">{fmt(p.ncSurgidas)}</span>
       </div>
       <div className="mt-0.5 flex items-center justify-between gap-4 border-t pt-1">
@@ -176,12 +174,13 @@ export function Performance({
   // "Capacidade Produtiva" — NC surgidas vs eliminadas por dia, últimos
   // DIAS_JANELA_CAPACIDADE dias corridos (não amarrado a dia com
   // MaintenanceDailyCommitment fechado, diferente de serieDiaria acima).
-  // Cada dia exibido é a MÉDIA MÓVEL de JANELA_MEDIA_MOVEL_CAPACIDADE dias
-  // (o próprio dia + os 6 anteriores) — pedido explícito do Felipe, pra
-  // suavizar picos de um único dia ruidoso. `diferenca` é o saldo do dia
-  // (eliminadas − surgidas, já sobre as médias móveis, podendo ser negativo)
-  // — pedido explícito: "o gráfico deve ser apenas uma linha, q deve ser a
-  // subtração entre as NCs eliminadas e as surgidas".
+  // Cada dia exibido é a SOMA de JANELA_MEDIA_MOVEL_CAPACIDADE dias (o
+  // próprio dia + os 6 anteriores) — pedido explícito do Felipe, pra
+  // suavizar picos de um único dia ruidoso sem cair em valor fracionário.
+  // `diferenca` é o saldo do período (eliminadas − surgidas, já sobre as
+  // somas de 7 dias, podendo ser negativo) — pedido explícito: "o gráfico
+  // deve ser apenas uma linha, q deve ser a subtração entre as NCs
+  // eliminadas e as surgidas".
   const serieCapacidade = useMemo(() => {
     const surgidasPorDia = new Map<string, number>()
     for (const iso of ncSurgidasEm) {
@@ -220,11 +219,18 @@ export function Performance({
       const janela = bruto.slice(p, p + JANELA_MEDIA_MOVEL_CAPACIDADE)
       const diaAtual = janela[janela.length - 1].data
       const label = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(diaAtual)
-      const ncSurgidas = arredondar1(janela.reduce((s, v) => s + v.ncSurgidas, 0) / janela.length)
-      const ncEliminadas = arredondar1(janela.reduce((s, v) => s + v.ncEliminadas, 0) / janela.length)
+      // Soma (não mais média) dos ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias da
+      // janela — pedido explícito do Felipe: "em vez de uma média de NCs por
+      // dia, melhor colocar o valor absoluto (soma dos últimos 7 dias)".
+      // Continua suavizando picos de um dia isolado (é uma soma corrida, não
+      // o valor bruto do dia), só que agora em unidade de "NCs", não
+      // "NCs/dia" — evita o valor fracionário que gerava a confusão do
+      // tooltip anterior.
+      const ncSurgidas = janela.reduce((s, v) => s + v.ncSurgidas, 0)
+      const ncEliminadas = janela.reduce((s, v) => s + v.ncEliminadas, 0)
       dias.push({
         dia: label,
-        diferenca: arredondar1(ncEliminadas - ncSurgidas),
+        diferenca: ncEliminadas - ncSurgidas,
         ncEliminadas,
         ncSurgidas,
         positivo: ncEliminadas >= ncSurgidas,
@@ -363,7 +369,7 @@ export function Performance({
       {!expandidoCapacidade ? (
         <Panel
           title="Capacidade Produtiva"
-          description={`Saldo diário (NC eliminadas − surgidas), média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_COMPACTO_CAPACIDADE} dias. Verde = saldo positivo; vermelha = negativo.`}
+          description={`Saldo (NC eliminadas − surgidas), soma dos últimos ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_COMPACTO_CAPACIDADE} dias. Verde = saldo positivo; vermelha = negativo.`}
           action={
             !temDadosCapacidade ? undefined : (
               <button
@@ -394,7 +400,7 @@ export function Performance({
         <div className="fixed inset-0 z-50 flex flex-col bg-background p-4 md:p-6">
           <Panel
             title="Capacidade Produtiva"
-            description={`Saldo diário (NC eliminadas − surgidas), média móvel de ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_JANELA_CAPACIDADE} dias (1 mês), janela inteira visível abaixo.`}
+            description={`Saldo (NC eliminadas − surgidas), soma dos últimos ${JANELA_MEDIA_MOVEL_CAPACIDADE} dias, últimos ${DIAS_JANELA_CAPACIDADE} dias (1 mês), janela inteira visível abaixo.`}
             action={
               <button
                 type="button"
