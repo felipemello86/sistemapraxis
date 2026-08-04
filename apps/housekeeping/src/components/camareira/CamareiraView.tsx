@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, MessageSquarePlus, BedDouble, MessageSquare, MessageCircle, Flag, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
+import { CheckCircle2, Clock, Camera, ChevronRight, ChevronLeft, ChevronDown, Lock, Play, AlertCircle, X, BedDouble, MessageSquare, MessageCircle, Flag, Wrench, ShieldAlert, WashingMachine, Star, HelpCircle, Info, Undo2 } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import { uploadFoto } from "@/lib/uploadFoto";
@@ -85,9 +85,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [concluindo, setConcluindo] = useState(false);
   const [comentarioCamareira, setComentarioCamareira] = useState("");
-  const [solicitandoId, setSolicitandoId] = useState<string | null>(null);
-  const [solicitacaoMsg, setSolicitacaoMsg] = useState("");
-  const [enviandoSolicitacao, setEnviandoSolicitacao] = useState(false);
   const [superLimpezaId, setSuperLimpezaId] = useState<string | null>(null);
   const [superLimpezaMsg, setSuperLimpezaMsg] = useState("");
   const [superLimpezaFotos, setSuperLimpezaFotos] = useState<string[]>([]);
@@ -151,23 +148,12 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   const [salvandoFotosEdicao, setSalvandoFotosEdicao] = useState(false);
   const [erroEdicaoFotos, setErroEdicaoFotos] = useState<string | null>(null);
 
-  async function solicitarAlteracao(assignmentId: string) {
-    if (!solicitacaoMsg.trim() || !podeOperar) return;
-    setEnviandoSolicitacao(true);
-    await apiFetch("/api/atribuicoes", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "solicitar_alteracao", assignmentId, mensagem: solicitacaoMsg.trim() }),
-    });
-    setSolicitandoId(null);
-    setSolicitacaoMsg("");
-    setEnviandoSolicitacao(false);
-    carregar();
-  }
-
-  // Pedido de Super Limpeza ⭐️ — mesma mecânica de solicitar_alteracao, só
-  // que com tipo="SUPER_LIMPEZA" e fotos anexadas (compressão de imagem
-  // acontece dentro de uploadFoto, ver lib/uploadFoto.ts).
+  // Pedido de Super Limpeza ⭐️ — mesma mecânica da ação genérica
+  // "solicitar_alteracao" (que continua existindo na API, só não tem mais
+  // botão pra camareira disparar — o "Solicitar alteração" foi removido em
+  // 04/08/2026, ver comentários mais abaixo), só que com
+  // tipo="SUPER_LIMPEZA" e fotos anexadas (compressão de imagem acontece
+  // dentro de uploadFoto, ver lib/uploadFoto.ts).
   async function handleFotoSuperLimpeza(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -1284,9 +1270,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
   if (fase === "limpeza" && assignmentAtivo) {
     // Dados mais frescos do assignment (após carregar())
     const assignmentFresco = data?.assignments.find((a) => a.id === assignmentAtivo.id) ?? assignmentAtivo;
-    const podeSolicitar =
-      (!assignmentFresco.solicitacaoStatus || assignmentFresco.solicitacaoStatus === "REJEITADO") &&
-      assignmentFresco.program?.tipo !== "LIMPEZA_COMPLETA";
     // Super Limpeza ⭐️ pode ser pedida em qualquer fase da limpeza — só não
     // se já tem uma solicitação em aberto (de qualquer tipo) ou se a UH já
     // está em Super Limpeza.
@@ -1422,20 +1405,12 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
           <div className="flex items-center justify-between mt-1">
             <p className="text-xs opacity-70">Etapa {safeStepIdx + 1} de {totalSteps}</p>
             <div className="flex items-center gap-1.5">
-              {podeSolicitar && (
-                <button
-                  onClick={() => { setSolicitandoId(assignmentAtivo.id); setSolicitacaoMsg(""); }}
-                  className="flex items-center gap-1 text-xs bg-white/20 hover:bg-white/30 text-white px-2 py-1 rounded-lg transition-colors"
-                >
-                  <MessageSquarePlus className="w-3 h-3" /> Solicitar alteração
-                </button>
-              )}
               {podeSuperLimpeza && (
                 <button
                   onClick={() => { setSuperLimpezaId(assignmentAtivo.id); setSuperLimpezaMsg(""); setSuperLimpezaFotos([]); }}
                   className="flex items-center gap-1 text-xs bg-amber-400/90 hover:bg-amber-400 text-amber-950 font-semibold px-2 py-1 rounded-lg transition-colors"
                 >
-                  <Star className="w-3 h-3 fill-current" /> Super Limpeza
+                  <Star className="w-3 h-3 fill-current" /> Solicitar Super Limpeza
                 </button>
               )}
               {trocaPendente && (
@@ -1546,36 +1521,9 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
         )}
       </div>
 
-      {/* Modal de solicitação */}
-      {solicitandoId && (
-        <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => setSolicitandoId(null)}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="relative bg-white w-full rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-gray-800">Solicitar alteração</h3>
-                <button onClick={() => setSolicitandoId(null)}><X className="w-5 h-5 text-gray-400" /></button>
-              </div>
-              <p className="text-sm text-gray-500 mb-3">Explique para a governanta o motivo da solicitação:</p>
-              <textarea
-                rows={4}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 resize-none"
-                style={{ fontSize: "16px" }}
-                placeholder="Ex.: O quarto está muito sujo, precisa de limpeza completa..."
-                value={solicitacaoMsg}
-                onChange={(e) => setSolicitacaoMsg(e.target.value)}
-              />
-              <button
-                onClick={() => solicitarAlteracao(solicitandoId)}
-                disabled={!solicitacaoMsg.trim() || enviandoSolicitacao}
-                className="mt-3 w-full btn-primary"
-              >
-                {enviandoSolicitacao ? "Enviando..." : "Enviar solicitação"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal de "Solicitar alteração" removido daqui também (pedido do
+          Felipe, 04/08/2026 — mesma limpeza já feita em Minhas UHs): as duas
+          opções confundiam a camareira. Fica só Super Limpeza. */}
 
       {/* Modal de Super Limpeza ⭐️ */}
       {superLimpezaId && (
@@ -1906,12 +1854,13 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
 
     </div>
 
-      {/* "Solicitar alteração" removido desta tela (Minhas UHs) — pedido do
-          Felipe (04/08/2026): as duas opções (alteração de programa e Super
-          Limpeza) confundiam a camareira por serem ambíguas. Fica só Super
-          Limpeza, com texto explícito ("Solicitar Super Limpeza"). O botão
-          e modal de "Solicitar alteração" continuam existindo na tela ativa
-          de limpeza (fase "limpeza"), que não foi mexida aqui. */}
+      {/* "Solicitar alteração" removido (Minhas UHs e tela ativa de limpeza)
+          — pedido do Felipe (04/08/2026): as duas opções (alteração de
+          programa e Super Limpeza) confundiam a camareira por serem
+          ambíguas. Fica só Super Limpeza, com texto explícito ("Solicitar
+          Super Limpeza") nas duas telas. A ação "solicitar_alteracao"
+          continua existindo na API (histórico + fluxo de aprovação da
+          governanta), só não tem mais botão pra camareira criar uma nova. */}
 
       {/* Modal fora do container max-w-lg para não sofrer restrição de largura */}
       {/* Modal de Super Limpeza ⭐️ */}
