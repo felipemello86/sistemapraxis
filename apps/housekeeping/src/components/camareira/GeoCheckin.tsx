@@ -20,22 +20,18 @@ import { apiFetch } from "@/lib/apiFetch";
 // sobrescrevem o horário (ver upsert com update:{} no endpoint).
 const INTERVALO_MS = 60_000;
 
-// DESATIVADO TEMPORARIAMENTE (28/07/2026) — suspeito principal de um crash
-// nativo real reportado por uma camareira em produção ("Praxis Hotels
-// Falhou", tela de compartilhar diagnóstico com o desenvolvedor) no app
-// iOS, na mesma tela ("Minhas UHs") onde este componente roda. Hipótese:
-// o projeto Xcode nativo pode não ter sido atualizado com a permissão
-// NSLocationWhenInUseUsageDescription no Info.plist desde que essa feature
-// foi adicionada (ver tarefa pendente "Sincronizar mudanças nativas iOS com
-// o app local") — chamar a API de localização nesse cenário causa
-// SIGABRT no iOS, não capturável por try/catch em JS. Não foi possível
-// confirmar com um crash log de verdade (sem acesso físico ao aparelho da
-// camareira nem ao projeto Xcode). Como essa feature já era 100%
-// best-effort/degradação graciosa (ver comentário acima), desativar aqui
-// não tira nenhuma funcionalidade que a camareira usa diretamente — só
-// pausa o georreferenciamento automático até o Info.plist ser conferido/
-// corrigido e o app nativo rebuildado. Reativar: mudar pra `false` abaixo.
-const DESATIVADO = true;
+// Esteve DESATIVADO de 28/07/2026 a 04/08/2026 — suspeita inicial era de
+// crash nativo (SIGABRT) por falta de NSLocationWhenInUseUsageDescription
+// no Info.plist do projeto iOS. Investigação no Xcode + App Store Connect
+// (04/08) descartou essa hipótese: o Info.plist já tinha essa chave desde
+// 22/07 (antes até do único build já testado, 1.0(2), gerado no mesmo dia),
+// e os 2 crashes reais registrados no TestFlight nesse build são ambos no
+// fluxo de anexar/enviar foto em Inspeção ("Quando tento mandar fotos ele
+// automaticamente ele fecha o aplicativo" / "Adicionar foto na inspeção
+// quebrou") — nada relacionado a localização. Reativado com base nisso.
+// Segue best-effort/degradação graciosa (ver comentário acima): sem GPS
+// disponível, simplesmente não cria GeoArrival nenhum.
+const DESATIVADO = false;
 
 export default function GeoCheckin() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
