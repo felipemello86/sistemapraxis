@@ -37,13 +37,6 @@ type UH = {
 };
 type User = { id: string; nome: string; role: string; foto?: string | null };
 type Program = { id: string; nome: string; tipo: string };
-
-// Os dois tipos "normais" de arrumação (com referencial de tempo) — detalhada
-// (ARRUMACAO, com checklist) e simples (ARRUMACAO_SIMPLES, só início/fim).
-// Nenhum dos dois pode ser usado em UH em manutenção: só Limpeza Específica
-// (LIMPEZA_COMPLETA) tem o campo de observações livre pra descrever o que
-// precisa ser feito nesses casos atípicos. Pedido do Felipe, 04/08/2026.
-const ARRUMACAO_NORMAL = ["ARRUMACAO", "ARRUMACAO_SIMPLES"];
 type Assignment = {
   id: string;
   status: string;
@@ -510,38 +503,26 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
                   </button>
                 </div>
               </div>
-              {(() => {
-                const programaSelecionado = programs.find((p) => p.id === novoPrograma);
-                const temManutencaoBloqueada = uhsDisponiveis.some(
-                  (u) => u.emManutencao && ARRUMACAO_NORMAL.includes(programaSelecionado?.tipo ?? "")
-                );
-                return temManutencaoBloqueada ? (
-                  <div className="mb-2 flex items-center gap-2 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                    <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
-                    UH(s) em manutenção não podem usar <strong>Arrumação</strong> (detalhada ou simples) — selecione <strong>Limpeza Específica</strong> para atribuí-las.
-                  </div>
-                ) : null;
-              })()}
+              {/* Bloqueio de Arrumação (detalhada/simples) em UH em manutenção
+                  removido a pedido do Felipe (04/08/2026) — o ícone de chave
+                  de fenda abaixo continua avisando visualmente quais UHs
+                  estão em manutenção, mas não impede mais a seleção nem
+                  exige trocar pra Limpeza Específica. */}
               <div className="flex flex-wrap gap-2">
                 {uhsDisponiveis.map((u) => {
                   const sel = novasUHs.includes(u.id);
-                  const programaSelecionado = programs.find((p) => p.id === novoPrograma);
-                  const bloqueadaManutencao = u.emManutencao && ARRUMACAO_NORMAL.includes(programaSelecionado?.tipo ?? "");
                   const temReserva = reservaMap[u.id] ?? false;
                   const jaAtribuida = contagemPorUH[u.id] ?? 0;
                   return (
                     <button
                       key={u.id}
                       type="button"
-                      onClick={() => !bloqueadaManutencao && toggleUH(u.id)}
-                      disabled={bloqueadaManutencao}
+                      onClick={() => toggleUH(u.id)}
                       title={jaAtribuida > 0 ? `Já atribuída a ${jaAtribuida} camareira${jaAtribuida > 1 ? "s" : ""} hoje` : undefined}
                       className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition-all flex items-center gap-1.5 ${
-                        bloqueadaManutencao
-                          ? "bg-orange-50 border-orange-200 text-orange-400 cursor-not-allowed opacity-75"
-                          : sel
-                            ? "bg-blue-600 border-blue-600 text-white shadow-sm"
-                            : "bg-white border-gray-200 text-gray-700 hover:border-blue-400 hover:text-blue-600"
+                        sel
+                          ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                          : "bg-white border-gray-200 text-gray-700 hover:border-blue-400 hover:text-blue-600"
                       }`}
                     >
                       {u.emManutencao && <Wrench className="w-3 h-3 flex-shrink-0" />}
