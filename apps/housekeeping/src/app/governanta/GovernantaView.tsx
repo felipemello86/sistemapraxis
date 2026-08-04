@@ -49,6 +49,12 @@ type Sessao = {
     totalFalhas: number;
     totalFalhasGerenciais?: number;
     comentarioGovernanta?: string | null;
+    // "Liberar sem inspeção" (pedido do Felipe, 04/08/2026) — quando true,
+    // esta InspectionSession foi criada/finalizada sem nenhum item avaliado,
+    // só pra tirar a UH de "Aguardando inspeção". Vai pra seção própria
+    // "Liberadas sem inspeção" em vez de "Inspecionadas hoje".
+    liberadaSemInspecao?: boolean;
+    justificativaLiberacao?: string | null;
     itens: {
       id: string;
       categoria: string;
@@ -721,6 +727,15 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
               </span>
             </div>
           )}
+          {sessaoAtiva.inspection?.liberadaSemInspecao && (
+            <div className="mt-2 bg-orange-400/25 rounded-lg px-3 py-2 text-sm flex items-start gap-1.5">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>
+                <span className="font-semibold">Liberada sem inspeção. </span>
+                {sessaoAtiva.inspection.justificativaLiberacao}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="p-4">
@@ -1241,7 +1256,11 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
 
   // ─── LISTA ────────────────────────────────────────────────────────────────
   const pendentes = sessoes.filter((s) => !s.inspection?.finalizadaEm);
-  const concluidas = sessoes.filter((s) => s.inspection?.finalizadaEm);
+  // "Liberadas sem inspeção" tem finalizadaEm preenchido (pra sair de
+  // "Aguardando inspeção") mas não é uma inspeção de verdade — separada de
+  // "Inspecionadas hoje" pela flag liberadaSemInspecao.
+  const liberadasSemInspecao = sessoes.filter((s) => s.inspection?.finalizadaEm && s.inspection?.liberadaSemInspecao);
+  const concluidas = sessoes.filter((s) => s.inspection?.finalizadaEm && !s.inspection?.liberadaSemInspecao);
 
   return (
     <div className="p-4 md:p-6 max-w-2xl">
@@ -1343,7 +1362,7 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
         <div className="card text-center">
           <p className="text-3xl font-bold text-indigo-600">{pendentes.length}</p>
           <p className="text-sm text-gray-500">Aguardando inspeção</p>
@@ -1351,6 +1370,10 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
         <div className="card text-center">
           <p className="text-3xl font-bold text-green-600">{concluidas.length}</p>
           <p className="text-sm text-gray-500">Inspecionadas</p>
+        </div>
+        <div className="card text-center">
+          <p className="text-3xl font-bold text-orange-600">{liberadasSemInspecao.length}</p>
+          <p className="text-sm text-gray-500">Liberadas sem inspeção</p>
         </div>
       </div>
 
@@ -1387,6 +1410,29 @@ export default function GovernantaView({ role, podeOperar }: { role: string; pod
                 )}
               </div>
               <ChevronRight className="w-5 h-5 text-indigo-400" />
+            </div>
+          </div>
+        ))}
+
+        {liberadasSemInspecao.length > 0 && <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mt-4">Liberadas sem inspeção</p>}
+        {liberadasSemInspecao.map((s) => (
+          <div
+            key={s.id}
+            className="card border-l-4 border-l-orange-400 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => iniciarInspecao(s)}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold">{s.uh.numero}</h3>
+                <p className="text-sm text-gray-500">por {s.camareira.nome}</p>
+                {s.inspection?.justificativaLiberacao && (
+                  <p className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 mt-1 flex items-start gap-1">
+                    <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0 text-orange-500" />
+                    <span>{s.inspection.justificativaLiberacao}</span>
+                  </p>
+                )}
+              </div>
+              <ChevronRight className="w-5 h-5 text-orange-400" />
             </div>
           </div>
         ))}

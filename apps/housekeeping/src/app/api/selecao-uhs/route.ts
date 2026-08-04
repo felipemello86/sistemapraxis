@@ -614,6 +614,43 @@ export async function PATCH(req: NextRequest) {
         where: { id: assignmentId },
         data: { status: "INSPECIONADO" },
       });
+
+      // Se já existe uma CleaningSession pra essa atribuição (a camareira já
+      // limpou e a UH apareceu em "Aguardando inspeção" na tela Inspeções),
+      // precisa criar/finalizar a InspectionSession também — senão a UH
+      // continua presa em "Aguardando inspeção" lá, já que aquela tela decide
+      // pendente vs. concluída pelo campo inspection.finalizadaEm, não pelo
+      // status da DailyAssignment. Marca liberadaSemInspecao=true pra
+      // aparecer numa seção própria em vez de junto das inspeções de verdade
+      // (nenhum InspectionItem é avaliado aqui).
+      const cleaningSession = await prisma.cleaningSession.findUnique({
+        where: { assignmentId },
+        select: { id: true, inspection: { select: { id: true, finalizadaEm: true } } },
+      });
+      if (cleaningSession) {
+        if (cleaningSession.inspection) {
+          await prisma.inspectionSession.update({
+            where: { id: cleaningSession.inspection.id },
+            data: {
+              finalizadaEm: cleaningSession.inspection.finalizadaEm ?? new Date(),
+              liberadaSemInspecao: true,
+              justificativaLiberacao: justificativa.trim(),
+            },
+          });
+        } else {
+          await prisma.inspectionSession.create({
+            data: {
+              sessionId: cleaningSession.id,
+              uhId,
+              governantaId: session.userId,
+              iniciadaEm: new Date(),
+              finalizadaEm: new Date(),
+              liberadaSemInspecao: true,
+              justificativaLiberacao: justificativa.trim(),
+            },
+          });
+        }
+      }
     }
 
     await emitEvent({

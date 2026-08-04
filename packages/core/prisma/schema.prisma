@@ -965,6 +965,16 @@ model InspectionSession {
   comentarioGovernanta  String?
   observacoes           String?
 
+  // "Liberar sem inspeção" — pedido do Felipe (04/08/2026): Governanta/
+  // Gerente/Atendimento/Master podem liberar a UH pro check-in pulando a
+  // inspeção de verdade (ver PATCH /api/selecao-uhs, ação
+  // liberar_sem_inspecao). Quando true, esta InspectionSession foi criada
+  // (ou finalizada) sem nenhum InspectionItem avaliado — só existe pra essa
+  // UH sair da lista "Aguardando inspeção" da tela Inspeções e aparecer
+  // numa seção própria "Liberadas sem inspeção", com a justificativa obrigatória.
+  liberadaSemInspecao    Boolean @default(false)
+  justificativaLiberacao String?
+
   createdAt DateTime @default(now())
 
   itens InspectionItem[]
