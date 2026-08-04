@@ -199,9 +199,13 @@ export default function CamareiraTimeline({
       <div className="relative w-full min-w-0">
         {/* Tags de UH (azul, 3 linhas empilhadas: número / tempo na UH /
             pontuação — o tempo na UH ficou de fora da 1ª versão, pedido do
-            Felipe pra incluir) e vãos (laranja, texto vertical) — tudo
-            "acima da linha", alinhado pela base. */}
-        <div className="relative h-14 flex items-end">
+            Felipe pra incluir), alinhadas pela base. Vãos (laranja, texto
+            vertical) ficam num nível ACIMA das tags, com uma linha fina
+            ligando o rótulo até a barra — antes os dois disputavam a mesma
+            faixa embaixo e encavalavam quando as UHs ficavam próximas
+            (pedido do Felipe, 04/08/2026: "evitar de encavalar o tempo de
+            deslocamento com a tag da UH"). */}
+        <div className="relative h-24">
           {segmentos.map((s, i) =>
             s.tipo === "limpeza" ? (
               <div
@@ -219,13 +223,20 @@ export default function CamareiraTimeline({
                 <span className="text-[8px] whitespace-nowrap">{s.score}pts</span>
               </div>
             ) : (
-              <TextoVertical
+              <div
                 key={`vao-${i}`}
-                className="absolute bottom-0 -translate-x-1/2 text-[9px] font-medium whitespace-nowrap"
-                style={{ left: `${(pct(s.inicio) + pct(s.fim)) / 2}%`, color: COR_DESLOCAMENTO }}
+                className="absolute top-0 bottom-0 -translate-x-1/2 flex flex-col items-center"
+                style={{ left: `${(pct(s.inicio) + pct(s.fim)) / 2}%` }}
               >
-                {formatarDuracaoCurta((s.fim - s.inicio) / 1000)}
-              </TextoVertical>
+                <TextoVertical
+                  className="text-[9px] font-medium whitespace-nowrap flex-shrink-0"
+                  style={{ color: COR_DESLOCAMENTO }}
+                >
+                  {formatarDuracaoCurta((s.fim - s.inicio) / 1000)}
+                </TextoVertical>
+                {/* Linha fina conectando o rótulo à barra do tempo. */}
+                <div className="w-px flex-1 mt-0.5" style={{ backgroundColor: COR_DESLOCAMENTO, opacity: 0.4 }} />
+              </div>
             ),
           )}
         </div>
