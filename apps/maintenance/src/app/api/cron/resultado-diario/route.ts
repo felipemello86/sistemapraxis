@@ -21,8 +21,16 @@ export async function GET(req: NextRequest) {
 
   const hoje = dataAtualSP();
 
+  // `data: { lte: hoje }` (não `data: hoje`) de propósito: se o cron falhar
+  // num dia (ex.: CRON_SECRET não configurado, erro transitório), a
+  // condição `data: hoje` faria aquele dia ficar órfão pra sempre — nenhuma
+  // execução futura bateria mais `data === hoje` pra ele, e
+  // "Conformidade depois" ficaria "—" permanentemente na tela Performance
+  // (bug real reportado pelo Felipe: 31/07, 01/08 e 03/08 todos vazios).
+  // Com `lte`, a primeira execução que voltar a funcionar recupera todo o
+  // atraso acumulado de uma vez.
   const commitments = await prisma.maintenanceDailyCommitment.findMany({
-    where: { data: hoje, reportSentAt: null },
+    where: { data: { lte: hoje }, reportSentAt: null },
     select: { id: true },
   });
 
