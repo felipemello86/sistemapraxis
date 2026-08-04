@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { Plus, Trash2, Send, CheckCircle2, Clock, CalendarOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Wrench, BedDouble, MessageCircle, Flag } from "lucide-react";
 import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
+import ManutencaoHojeModal from "@/components/ManutencaoHojeModal";
 
 // Portado de apps/housekeeping/src/app/atribuicao/AtribuicaoView.tsx (v1).
 // Diferenças desta fatia:
@@ -76,7 +77,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 function AssignmentCard({
-  a, onRemover, programs, onChangeProgram, onChangeObservacoes, temReserva, outrasCamareiras,
+  a, onRemover, programs, onChangeProgram, onChangeObservacoes, temReserva, outrasCamareiras, data,
 }: {
   a: Assignment;
   onRemover?: (id: string) => void;
@@ -85,6 +86,11 @@ function AssignmentCard({
   onChangeObservacoes?: (id: string, obs: string) => void;
   temReserva?: boolean;
   outrasCamareiras?: string[];
+  // Data do dia sendo visualizado nesta tela (ver useState em
+  // AtribuicaoView) — alimenta o popup "Manutenção de hoje" abaixo, pra
+  // mostrar os cards do dia certo mesmo quando o usuário navega pra outra
+  // data (pedido explícito do Felipe, 04/08/2026).
+  data: string;
 }) {
   const st = STATUS_LABELS[a.status] ?? { label: a.status, color: "bg-gray-100 text-gray-600" };
   const estaAtivo = a.status === "EM_ANDAMENTO";
@@ -94,13 +100,28 @@ function AssignmentCard({
   const isEspecifica = a.program?.tipo === "LIMPEZA_COMPLETA";
   const podeEditarObs = !!onChangeObservacoes && isEspecifica && !concluido;
   const temMultiplasCamareiras = !!outrasCamareiras && outrasCamareiras.length > 0;
+  // Popup "Manutenção de hoje" — só leitura aqui (sem onEncerrar), a
+  // Atribuição Diária nunca teve o fluxo de ligar/desligar a flag, só
+  // mostra o badge. Estado local (não no pai) porque cada card cuida do seu
+  // próprio popup.
+  const [showManutencaoHoje, setShowManutencaoHoje] = useState(false);
 
   return (
+    <>
     <div className="card flex items-center gap-4">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-gray-900">{a.uh.numero}</span>
-          {a.uh.emManutencao && <span title="Em manutenção" className="flex items-center gap-0.5 text-xs text-orange-500 font-medium"><Wrench className="w-3 h-3" /> Manutenção</span>}
+          {a.uh.emManutencao && (
+            <button
+              type="button"
+              onClick={() => setShowManutencaoHoje(true)}
+              title="Ver manutenção de hoje"
+              className="flex items-center gap-0.5 text-xs text-orange-500 font-medium hover:text-orange-600 hover:underline"
+            >
+              <Wrench className="w-3 h-3" /> Manutenção
+            </button>
+          )}
           {temReserva && !a.uh.emManutencao && <span title="Com reserva" className="flex items-center gap-0.5 text-xs text-blue-500 font-medium"><BedDouble className="w-3 h-3" /> Reserva</span>}
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.color}`}>{st.label}</span>
         </div>
@@ -203,6 +224,14 @@ function AssignmentCard({
         {concluido && <CheckCircle2 className="w-5 h-5 text-green-500" />}
       </div>
     </div>
+    {showManutencaoHoje && (
+      <ManutencaoHojeModal
+        uh={{ uhId: a.uh.id, numero: a.uh.numero, manutencaoDescricao: a.uh.manutencaoDescricao }}
+        data={data}
+        onClose={() => setShowManutencaoHoje(false)}
+      />
+    )}
+    </>
   );
 }
 
@@ -653,6 +682,7 @@ export default function AtribuicaoView({ role, userId, podeOperar }: { role: str
                         outrasCamareiras={assignments
                           .filter((o) => o.uh.id === a.uh.id && o.camareira.id !== a.camareira.id)
                           .map((o) => o.camareira.nome)}
+                        data={data}
                       />
                     ))}
                   </div>

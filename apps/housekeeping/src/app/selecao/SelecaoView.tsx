@@ -6,6 +6,7 @@ import { formatarTempo } from "@/lib/scoring";
 import { apiFetch } from "@/lib/apiFetch";
 import { uploadFoto } from "@/lib/uploadFoto";
 import QueixaDetailModal from "@/components/QueixaDetailModal";
+import ManutencaoHojeModal from "@/components/ManutencaoHojeModal";
 
 // Portado de apps/housekeeping/src/app/selecao/SelecaoView.tsx (v1). Mesma UI
 // e comportamento. Diferenças desta fatia:
@@ -360,6 +361,14 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   const [manutencaoModal, setManutencaoModal] = useState<UHSel | null>(null);
   const [manutencaoDescricaoInput, setManutencaoDescricaoInput] = useState("");
   const [manutencaoItemIdInput, setManutencaoItemIdInput] = useState("");
+  // Popup "Manutenção de hoje" (pedido explícito do Felipe, 04/08/2026) —
+  // diferente de manutencaoModal (formulário pra ABRIR uma nova
+  // manutenção): este é só leitura dos cards já programados pra essa UH
+  // hoje, aberto ao clicar na flag quando ela já está ligada. Substituiu o
+  // comportamento anterior de desligar a manutenção na hora do clique, sem
+  // nenhuma confirmação.
+  const [manutencaoHojeModal, setManutencaoHojeModal] = useState<UHSel | null>(null);
+  const [encerrandoManutencao, setEncerrandoManutencao] = useState(false);
   const [queixaModal, setQueixaModal] = useState<UHSel | null>(null);
   const [queixaTituloInput, setQueixaTituloInput] = useState("");
   const [queixaTipoInput, setQueixaTipoInput] = useState<"LIMPEZA" | "MANUTENCAO" | "LAVANDERIA" | "OUTRA">("LIMPEZA");
@@ -557,14 +566,20 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
   }
 
   function toggleManutencao(uh: UHSel) {
-    if (!podeOperar) return;
-    if (!uh.emManutencao) {
-      setManutencaoDescricaoInput("");
-      setManutencaoItemIdInput("");
-      setManutencaoModal(uh);
-    } else {
-      confirmarManutencao(uh, null, null);
+    // UH já em manutenção → abre o popup "Manutenção de hoje" (leitura dos
+    // cards programados + botão opcional de encerrar), em vez de desligar
+    // na hora do clique (pedido explícito do Felipe, 04/08/2026 — também
+    // acaba adicionando uma confirmação que não existia antes). Quem não
+    // pode operar ainda assim consegue ver o popup, só sem o botão de
+    // encerrar (checado dentro do próprio popup/handler).
+    if (uh.emManutencao) {
+      setManutencaoHojeModal(uh);
+      return;
     }
+    if (!podeOperar) return;
+    setManutencaoDescricaoInput("");
+    setManutencaoItemIdInput("");
+    setManutencaoModal(uh);
   }
 
   async function confirmarManutencao(uh: UHSel, descricao: string | null, checklistItemId: string | null) {
@@ -579,6 +594,21 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
     // explícito do Felipe) e já cria a NC no item real escolhido. carregar()
     // já traz emManutencao=true refletido no badge, sem precisar de aviso.
     carregar();
+  }
+
+  // Encerrar a partir do popup "Manutenção de hoje" — reaproveita o mesmo
+  // PATCH toggle_manutencao que já desligava a flag (confirmarManutencao),
+  // só que agora atrás de um clique explícito de confirmação dentro do
+  // popup, em vez do clique direto na flag.
+  async function encerrarManutencaoHoje(uh: UHSel) {
+    if (!podeOperar) return;
+    setEncerrandoManutencao(true);
+    try {
+      await confirmarManutencao(uh, null, null);
+    } finally {
+      setEncerrandoManutencao(false);
+      setManutencaoHojeModal(null);
+    }
   }
 
   function abrirQueixa(uh: UHSel) {
@@ -1478,8 +1508,18 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
                           <>
                             <button
                               onClick={() => toggleManutencao(uh)}
-                              disabled={!podeOperar}
-                              title={!podeOperar ? tituloSemAcesso : uh.emManutencao ? "Remover manutenção" : "Solicitar manutenção"}
+                              // Ver o popup "Manutenção de hoje" (UH já em
+                              // manutenção) é sempre permitido — só abrir o
+                              // formulário de NOVA manutenção exige
+                              // podeOperar (pedido do Felipe, 04/08/2026).
+                              disabled={!uh.emManutencao && !podeOperar}
+                              title={
+                                uh.emManutencao
+                                  ? "Ver manutenção de hoje"
+                                  : !podeOperar
+                                    ? tituloSemAcesso
+                                    : "Solicitar manutenção"
+                              }
                               className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
                                 uh.emManutencao
                                   ? "bg-orange-100 text-orange-600 hover:bg-orange-200"
@@ -1612,6 +1652,16 @@ export default function SelecaoView({ role, podeOperar }: { role: string; podeOp
         <QueixaDetailModal
           queixaId={queixaDetalheId}
           onClose={() => setQueixaDetalheId(null)}
+        />
+      )}
+
+      {manutencaoHojeModal && (
+        <ManutencaoHojeModal
+          uh={manutencaoHojeModal}
+          data={data}
+          onClose={() => setManutencaoHojeModal(null)}
+          onEncerrar={podeOperar ? () => encerrarManutencaoHoje(manutencaoHojeModal) : undefined}
+          encerrando={encerrandoManutencao}
         />
       )}
     </div>
