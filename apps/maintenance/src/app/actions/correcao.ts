@@ -276,6 +276,10 @@ export const executarServicoAction = safeAction(executarServicoImpl);
 
 async function fecharProgramacaoDiaImpl(input: {
   cardIds: string[];
+  // Chaveado por UH (não mais por card, pedido explícito do Felipe,
+  // 01/08/2026: "se o usuário selecionar cards de várias UHs para o dia, o
+  // sistema pergunta em lista qual UH deve ser bloqueada") — evita perguntar
+  // a mesma coisa duas vezes quando duas NCs da mesma UH são fechadas juntas.
   blockMap?: Record<string, boolean>;
 }) {
   const session = await requireModuleSession();
@@ -314,6 +318,29 @@ async function fecharProgramacaoDiaImpl(input: {
     }
   }
 
+  // Pedido explícito do Felipe (01/08/2026): "caso já haja Reserva para o
+  // dia, não deve ser possível o bloqueio" — a UI já esconde a opção pra UH
+  // com reserva hoje (ver kanban-execucao.tsx), isso aqui é a validação real
+  // (a UI pode estar desatualizada se uma reserva entrou depois que a tela
+  // carregou).
+  const uhIdsDoFechamento = new Set(cards.map((c) => c.uhId));
+  const uhIdsParaBloquear = Object.entries(input.blockMap ?? {})
+    .filter(([uhId, marcado]) => marcado && uhIdsDoFechamento.has(uhId))
+    .map(([uhId]) => uhId);
+
+  if (uhIdsParaBloquear.length > 0) {
+    const comReserva = await prisma.dailyUHSelection.findMany({
+      where: { tenantId: session.tenantId, data, uhId: { in: uhIdsParaBloquear }, temReserva: true },
+      select: { uh: { select: { numero: true } } },
+    });
+    if (comReserva.length > 0) {
+      const numeros = comReserva.map((s) => s.uh.numero).join(", ");
+      throw new Error(
+        `Não é possível bloquear pra reserva: ${numeros} já ${comReserva.length === 1 ? "tem reserva" : "têm reserva"} hoje.`,
+      );
+    }
+  }
+
   const conformidadeAntes = await calcularConformidadeAtual(session.tenantId);
 
   // Cards cancelados por exclusão de UH (ver cancelarCardsPorExclusaoDeUh em
@@ -340,7 +367,7 @@ async function fecharProgramacaoDiaImpl(input: {
         data: {
           dailyCommitmentId: commitment.id,
           executionStatus: "PLANEJADA",
-          blockForReservation: input.blockMap?.[card.id] ?? false,
+          blockForReservation: uhIdsParaBloquear.includes(card.uhId),
         },
       }),
     ),
@@ -369,17 +396,16 @@ async function fecharProgramacaoDiaImpl(input: {
   // aprovação da NC urgente (aplicarBloqueioPorUrgencia): cria o pedido
   // PENDENTE e notifica Atendimento/Gerente/Governanta/Master — o bloqueio
   // continua sendo decisão humana do Atendimento, nunca automático.
-  const uhsParaBloquear = cards.filter((c) => input.blockMap?.[c.id]);
-  const uhIdsJaPedidos = new Set<string>();
-  for (const card of uhsParaBloquear) {
-    if (uhIdsJaPedidos.has(card.uhId)) continue;
-    uhIdsJaPedidos.add(card.uhId);
+  for (const uhId of uhIdsParaBloquear) {
+    // Representante da UH pra preencher checklistItemId/comment do pedido —
+    // qualquer um dos cards dela serve, todos compartilham a mesma UH.
+    const cardRepresentante = cards.find((c) => c.uhId === uhId)!;
     await aplicarBloqueioPorUrgencia({
       tenantId: session.tenantId,
-      uhId: card.uhId,
-      checklistItemId: card.checklistItemId,
+      uhId,
+      checklistItemId: cardRepresentante.checklistItemId,
       comment:
-        card.inspectionItem?.comment?.trim() ||
+        cardRepresentante.inspectionItem?.comment?.trim() ||
         "UH marcada para bloqueio no fechamento da programação do dia.",
       solicitanteNome: session.nome,
     });
@@ -584,6 +610,18 @@ async function adicionarCardUrgenteImpl(input: { cardId: string; block?: boolean
   }
   if (card.executionStatus !== "A_FAZER") {
     throw new Error("Este card já está numa programação.");
+  }
+
+  // Mesma regra de fecharProgramacaoDiaImpl (pedido do Felipe, 01/08/2026):
+  // não dá pra bloquear pra reserva uma UH que já tem reserva hoje.
+  if (input.block) {
+    const selecaoHoje = await prisma.dailyUHSelection.findUnique({
+      where: { data_uhId: { data, uhId: card.uhId } },
+      select: { temReserva: true },
+    });
+    if (selecaoHoje?.temReserva) {
+      throw new Error("Não é possível bloquear: essa UH já tem reserva hoje.");
+    }
   }
 
   await prisma.maintenanceCorrectionCard.update({

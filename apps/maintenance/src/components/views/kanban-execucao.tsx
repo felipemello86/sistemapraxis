@@ -204,6 +204,22 @@ export function KanbanExecucao({
 
   const selecionadosArr = aFazer.filter((c) => selecionados.has(c.id))
 
+  // Pedido explícito do Felipe (01/08/2026): "se o usuário selecionar cards
+  // de várias UHs para o dia, o sistema pergunta em lista qual UH deve ser
+  // bloqueada" — lista de UHs ÚNICAS entre os cards selecionados (uma UH
+  // pode ter mais de um card/NC fechando junto), perguntada uma vez só no
+  // dialog de confirmação (ver blockMap, agora chaveado por uhId).
+  const uhsParaBloqueio = useMemo(() => {
+    const vistos = new Set<string>()
+    const lista: { uhId: string; uhName: string; temReserva: boolean }[] = []
+    for (const card of selecionadosArr) {
+      if (vistos.has(card.uhId)) continue
+      vistos.add(card.uhId)
+      lista.push({ uhId: card.uhId, uhName: card.uhName, temReserva: uhIdsComReservaHoje.includes(card.uhId) })
+    }
+    return lista
+  }, [selecionadosArr, uhIdsComReservaHoje])
+
   return (
     <>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
@@ -291,26 +307,30 @@ export function KanbanExecucao({
                               <Lock className="h-3 w-3" />
                               Bloquear UH pra reservas?
                             </span>
-                            <div className="flex gap-1">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant={blockUrgente[card.id] ? 'default' : 'outline'}
-                                className="h-6 rounded-lg px-2 text-xs"
-                                onClick={() => setBlockUrgente((m) => ({ ...m, [card.id]: true }))}
-                              >
-                                Sim
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant={!blockUrgente[card.id] ? 'default' : 'outline'}
-                                className="h-6 rounded-lg px-2 text-xs"
-                                onClick={() => setBlockUrgente((m) => ({ ...m, [card.id]: false }))}
-                              >
-                                Não
-                              </Button>
-                            </div>
+                            {uhIdsComReservaHoje.includes(card.uhId) ? (
+                              <span className="text-[11px] text-muted-foreground">Já tem reserva hoje</span>
+                            ) : (
+                              <div className="flex gap-1">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={blockUrgente[card.id] ? 'default' : 'outline'}
+                                  className="h-6 rounded-lg px-2 text-xs"
+                                  onClick={() => setBlockUrgente((m) => ({ ...m, [card.id]: true }))}
+                                >
+                                  Sim
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={!blockUrgente[card.id] ? 'default' : 'outline'}
+                                  className="h-6 rounded-lg px-2 text-xs"
+                                  onClick={() => setBlockUrgente((m) => ({ ...m, [card.id]: false }))}
+                                >
+                                  Não
+                                </Button>
+                              </div>
+                            )}
                           </div>
                           <div className="flex gap-2">
                             <Button
@@ -388,34 +408,6 @@ export function KanbanExecucao({
                       />
                     </div>
                   </label>
-                  {selecionados.has(card.id) && (
-                    <div className="mt-2 flex items-center justify-between rounded-lg bg-muted/60 px-2.5 py-1.5">
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Lock className="h-3 w-3" />
-                        Bloquear UH pra reservas?
-                      </span>
-                      <div className="flex gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={blockMap[card.id] ? 'default' : 'outline'}
-                          className="h-6 rounded-lg px-2 text-xs"
-                          onClick={() => setBlockMap((m) => ({ ...m, [card.id]: true }))}
-                        >
-                          Sim
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={!blockMap[card.id] ? 'default' : 'outline'}
-                          className="h-6 rounded-lg px-2 text-xs"
-                          onClick={() => setBlockMap((m) => ({ ...m, [card.id]: false }))}
-                        >
-                          Não
-                        </Button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
               </div>
@@ -556,7 +548,7 @@ export function KanbanExecucao({
                 <span>
                   Unidade {card.uhName} — {card.checklistItemName ?? 'item'}
                 </span>
-                {blockMap[card.id] && (
+                {blockMap[card.uhId] && (
                   <Badge variant="outline" className="text-[10px]">
                     Bloqueia UH
                   </Badge>
@@ -564,6 +556,49 @@ export function KanbanExecucao({
               </div>
             ))}
           </div>
+
+          {/* Pedido explícito do Felipe (01/08/2026): a pergunta de bloqueio
+              agora é feita aqui, uma vez por UH (não mais por card, ver
+              uhsParaBloqueio) — UH que já tem reserva hoje não pode ser
+              bloqueada (a opção some, validado também no servidor). */}
+          <div className="space-y-1.5">
+            <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <Lock className="h-3 w-3" />
+              Bloquear alguma UH pra reservas? (opcional)
+            </p>
+            <div className="max-h-40 space-y-1.5 overflow-y-auto">
+              {uhsParaBloqueio.map((u) => (
+                <div key={u.uhId} className="flex items-center justify-between rounded-lg bg-muted/60 px-2.5 py-1.5 text-sm">
+                  <span>Unidade {u.uhName}</span>
+                  {u.temReserva ? (
+                    <span className="text-[11px] text-muted-foreground">Já tem reserva hoje</span>
+                  ) : (
+                    <div className="flex gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={blockMap[u.uhId] ? 'default' : 'outline'}
+                        className="h-6 rounded-lg px-2 text-xs"
+                        onClick={() => setBlockMap((m) => ({ ...m, [u.uhId]: true }))}
+                      >
+                        Sim
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={!blockMap[u.uhId] ? 'default' : 'outline'}
+                        className="h-6 rounded-lg px-2 text-xs"
+                        onClick={() => setBlockMap((m) => ({ ...m, [u.uhId]: false }))}
+                      >
+                        Não
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
           <DialogFooter className="gap-2 sm:gap-2">
             <Button variant="outline" onClick={() => setConfirmando(false)} disabled={fechando} className="rounded-xl">
               Cancelar
