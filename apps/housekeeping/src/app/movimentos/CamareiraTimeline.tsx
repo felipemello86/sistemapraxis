@@ -1,11 +1,16 @@
 "use client";
 
 // "Linha do tempo" da camareira — pedido explícito do Felipe (04/08/2026) na
-// tela Performance: mostrar, num eixo do horário do dia, a liberação da
-// primeira UH até a finalização da última, com uma tag por UH (número +
+// tela Performance: mostrar, num eixo do horário do dia, do início do
+// expediente até a finalização da última UH, com uma tag por UH (número +
 // pontuação) e o tempo entre uma UH e outra (deslocamento OU tempo de
 // limpeza). Só faz sentido no período "Hoje" — em "Este mês"/"All
 // time"/"Período" os horários misturariam dias diferentes no mesmo eixo.
+//
+// O eixo sempre começa no início do turno configurado (ex.: 10:30), não na
+// liberação da 1ª UH — pedido explícito do Felipe (04/08/2026): mesmo que a
+// 1ª UH seja liberada antes desse horário, a linha deve exibir a partir do
+// início do expediente.
 //
 // Cores reaproveitadas do gráfico "Tempo Real" (BurndownChart.tsx,
 // TIPO_COR): azul (#3b82f6) é a cor de "Liberação" lá, usada aqui pra
@@ -45,6 +50,7 @@ type DetalheUHTimeline = {
   score: number;
   excluidoDoScore: boolean;
   multiplaCamareira?: boolean;
+  data: string;
   liberadaEm: string | null;
   iniciadaEm: string;
   finalizadaEm: string;
@@ -92,7 +98,19 @@ function formatarDuracaoCurta(segundosTotais: number) {
   return `${m}min`;
 }
 
-export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTimeline[] }) {
+export default function CamareiraTimeline({
+  detalhes,
+  turnoInicioHora,
+}: {
+  detalhes: DetalheUHTimeline[];
+  // Início do turno configurado (tela de Configurações, ex.: "10:30").
+  // Pedido do Felipe (04/08/2026): o eixo sempre começa no início do
+  // expediente, mesmo que a 1ª UH tenha sido liberada antes disso — nesse
+  // caso a liberação antecipada simplesmente fica fora do eixo, igual ao
+  // "piso do dia" já usado no cálculo do score (ver turnoInicioHora em
+  // api/scores/route.ts).
+  turnoInicioHora: string;
+}) {
   const validos = detalhes
     .filter((d) => d.iniciadaEm && d.finalizadaEm)
     .map((d) => ({
@@ -105,10 +123,14 @@ export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTim
 
   if (validos.length === 0) return null;
 
-  // Início do eixo = liberação da 1ª UH do dia (pedido explícito). Sem
-  // liberadaEm registrada (não deveria acontecer, mas o campo é opcional),
-  // cai pro início da própria limpeza — melhor que quebrar a tela.
-  const inicioEixo = validos[0].liberadaMs ?? validos[0].iniciadaMs;
+  // Início do eixo = início do turno (config), no dia da 1ª UH — não mais a
+  // liberação em si. Se por algum motivo a limpeza começou antes do início
+  // do turno (não deveria acontecer), usa esse horário mais cedo como piso
+  // pra não gerar posições negativas no eixo.
+  // Brasil não observa mais horário de verão desde 2019 — offset fixo -03:00
+  // (mesma convenção de api/scores/route.ts e lib/late-checkout.ts).
+  const turnoInicioMs = new Date(`${validos[0].data}T${turnoInicioHora}:00-03:00`).getTime();
+  const inicioEixo = Math.min(turnoInicioMs, validos[0].iniciadaMs);
   const fimEixo = validos[validos.length - 1].finalizadaMs;
   if (fimEixo <= inicioEixo) return null;
   const span = fimEixo - inicioEixo;

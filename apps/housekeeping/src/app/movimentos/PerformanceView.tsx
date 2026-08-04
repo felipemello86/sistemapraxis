@@ -68,7 +68,7 @@ type DetalheUH = {
   liberadaEm: string | null; iniciadaEm: string; finalizadaEm: string;
 };
 type QueixaLimpeza = { id: string; data: string; uhNumero: string; titulo: string; descricao: string; pontosDescontados: number };
-type Score = { id: string; nome: string; foto?: string | null; mediaScore: number | null; totalUHs: number; totalFalhas: number; detalhes?: DetalheUH[]; totalPenalidades?: number; queixasLimpeza?: QueixaLimpeza[] };
+type Score = { id: string; nome: string; foto?: string | null; mediaScore: number | null; totalUHs: number; totalFalhas: number; detalhes?: DetalheUH[]; totalPenalidades?: number; queixasLimpeza?: QueixaLimpeza[]; turnoInicioHora?: string };
 
 function Avatar({ foto, nome }: { foto?: string | null; nome: string }) {
   if (foto) return <img src={foto} alt={nome} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />;
@@ -280,7 +280,7 @@ export default function PerformanceView({ isMaster, podeOperar }: { isMaster?: b
                           períodos os horários seriam de dias diferentes no
                           mesmo eixo (ver comentário em CamareiraTimeline.tsx). */}
                       {periodo.tipo === "hoje" && !!cam.detalhes?.length && (
-                        <CamareiraTimeline detalhes={cam.detalhes} />
+                        <CamareiraTimeline detalhes={cam.detalhes} turnoInicioHora={cam.turnoInicioHora ?? "08:00"} />
                       )}
                       {!!cam.queixasLimpeza?.length && (
                         <div className="mb-3">

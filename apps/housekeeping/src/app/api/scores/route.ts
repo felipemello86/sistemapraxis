@@ -232,7 +232,7 @@ export async function GET(req: NextRequest) {
     }));
 
     if (minhasSessoes.length === 0) {
-      return { ...cam, mediaScore: null, totalUHs: 0, totalFalhas: 0, detalhes: [], totalPenalidades, queixasLimpeza };
+      return { ...cam, mediaScore: null, totalUHs: 0, totalFalhas: 0, detalhes: [], totalPenalidades, queixasLimpeza, turnoInicioHora };
     }
 
     let totalScore = 0;
@@ -293,6 +293,10 @@ export async function GET(req: NextRequest) {
       detalhes,
       totalPenalidades,
       queixasLimpeza,
+      // Início do turno configurado (tela de Configurações) — usado pela
+      // Linha do tempo (CamareiraTimeline.tsx) pra ancorar o eixo sempre no
+      // início do expediente, nunca antes (pedido do Felipe, 04/08/2026).
+      turnoInicioHora,
     };
   });
 
