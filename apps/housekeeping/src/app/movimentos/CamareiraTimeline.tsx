@@ -138,18 +138,42 @@ export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTim
     fimAnterior = v.finalizadaMs;
   }
 
-  // Marcações de hora cheia dentro do intervalo — eixo "abaixo da linha".
-  const marcas: number[] = [];
-  const primeiraHoraCheia = new Date(inicioEixo);
-  primeiraHoraCheia.setMinutes(0, 0, 0);
-  if (primeiraHoraCheia.getTime() < inicioEixo) primeiraHoraCheia.setHours(primeiraHoraCheia.getHours() + 1);
-  for (let t = primeiraHoraCheia.getTime(); t < fimEixo; t += 60 * 60 * 1000) {
-    marcas.push(t);
+  // Marcações abaixo da linha — pedido do Felipe (04/08/2026): "mais
+  // detalhe abaixo da linha (legendas de horários)". Passo adaptativo (15,
+  // 30 ou 60 min conforme o tamanho do intervalo) em vez de sempre hora
+  // cheia, pra não ficar só com 1-2 marcações num dia curto. Início e fim
+  // exatos do eixo (liberação da 1ª UH / finalização da última) sempre
+  // aparecem nas pontas, mesmo fora de um múltiplo redondo — são marcados
+  // à parte (cor mais escura) pra se distinguir das marcações regulares, e
+  // qualquer marcação regular a menos de 5 min de uma ponta é descartada
+  // pra não sobrepor texto.
+  const spanMin = span / 60000;
+  const passoMin = spanMin > 360 ? 60 : spanMin > 120 ? 30 : 15;
+  const marcasRegulares: number[] = [];
+  const primeiraMarca = new Date(inicioEixo);
+  const minutosArred = Math.ceil(primeiraMarca.getMinutes() / passoMin) * passoMin;
+  primeiraMarca.setMinutes(minutosArred, 0, 0);
+  for (let t = primeiraMarca.getTime(); t < fimEixo; t += passoMin * 60 * 1000) {
+    if (Math.abs(t - inicioEixo) > 5 * 60 * 1000 && Math.abs(t - fimEixo) > 5 * 60 * 1000) {
+      marcasRegulares.push(t);
+    }
   }
 
   return (
     <div className="mb-4 min-w-0">
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Linha do tempo</p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Linha do tempo</p>
+        <div className="flex items-center gap-3 text-[11px] text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: COR_LIMPEZA }} />
+            Tempo na UH
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: COR_DESLOCAMENTO }} />
+            Deslocamento
+          </span>
+        </div>
+      </div>
       <div className="relative w-full min-w-0">
         {/* Tags de UH (azul, 2 linhas empilhadas) e vãos (laranja, texto
             vertical) — tudo "acima da linha", alinhado pela base. */}
@@ -198,9 +222,13 @@ export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTim
           ))}
         </div>
 
-        {/* Régua de horas — "abaixo da linha", texto vertical também. */}
+        {/* Régua de horas — "abaixo da linha", texto vertical também.
+            Marcações regulares (passo adaptativo) em cinza claro; início e
+            fim exatos do eixo em cinza escuro/negrito, sempre presentes,
+            alinhados pra dentro do card nas pontas (senão o texto ficaria
+            meio cortado fora da borda). */}
         <div className="relative h-9 mt-1">
-          {marcas.map((t) => (
+          {marcasRegulares.map((t) => (
             <div
               key={t}
               className="absolute top-0 -translate-x-1/2 flex flex-col items-center"
@@ -212,6 +240,18 @@ export default function CamareiraTimeline({ detalhes }: { detalhes: DetalheUHTim
               </TextoVertical>
             </div>
           ))}
+          <div className="absolute top-0 left-0 flex flex-col items-start">
+            <div className="w-px h-1.5 bg-gray-400" />
+            <TextoVertical className="text-[9px] text-gray-600 font-semibold mt-0.5 leading-none">
+              {formatarHora(inicioEixo)}
+            </TextoVertical>
+          </div>
+          <div className="absolute top-0 right-0 flex flex-col items-end">
+            <div className="w-px h-1.5 bg-gray-400 ml-auto" />
+            <TextoVertical className="text-[9px] text-gray-600 font-semibold mt-0.5 leading-none">
+              {formatarHora(fimEixo)}
+            </TextoVertical>
+          </div>
         </div>
       </div>
     </div>
