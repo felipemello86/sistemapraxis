@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
     prisma.maintenanceChecklistItem.findMany({
       where: { tenantId },
       select: { id: true, name: true, category: true },
-      orderBy: { name: "asc" },
+      orderBy: [{ category: "asc" }, { name: "asc" }],
     }),
     prisma.maintenanceUnitChecklistItem.findMany({
       where: { tenantId },
