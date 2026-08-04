@@ -1877,16 +1877,6 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   )}
-                  {liberado && (!a.solicitacaoStatus || a.solicitacaoStatus === "REJEITADO") && a.program?.tipo !== "LIMPEZA_COMPLETA" && (
-                    <button
-                      onClick={() => { setSolicitandoId(a.id); setSolicitacaoMsg(""); }}
-                      disabled={!podeOperar}
-                      title={!podeOperar ? tituloSemAcesso : undefined}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-500 border border-gray-200 hover:border-blue-300 hover:text-blue-600 disabled:opacity-40"
-                    >
-                      <MessageSquarePlus className="w-3 h-3" /> Solicitar alteração
-                    </button>
-                  )}
                   {liberado && (!a.solicitacaoStatus || a.solicitacaoStatus === "REJEITADO") && a.program?.tipo !== "SUPER_LIMPEZA" && (
                     <button
                       onClick={() => { setSuperLimpezaId(a.id); setSuperLimpezaMsg(""); setSuperLimpezaFotos([]); }}
@@ -1894,7 +1884,7 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
                       title={!podeOperar ? tituloSemAcesso : undefined}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 font-medium disabled:opacity-40"
                     >
-                      <Star className="w-3 h-3 fill-current" /> Super Limpeza
+                      <Star className="w-3 h-3 fill-current" /> Solicitar Super Limpeza
                     </button>
                   )}
                   {concluido && a.cleaningSession && (
@@ -1916,37 +1906,14 @@ export default function CamareiraView({ podeOperar }: { podeOperar: boolean }) {
 
     </div>
 
-      {/* Modal fora do container max-w-lg para não sofrer restrição de largura */}
-      {solicitandoId && (
-        <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => setSolicitandoId(null)}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="relative bg-white w-full rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-gray-800">Solicitar alteração</h3>
-                <button onClick={() => setSolicitandoId(null)}><X className="w-5 h-5 text-gray-400" /></button>
-              </div>
-              <p className="text-sm text-gray-500 mb-3">Explique para a governanta o motivo da solicitação:</p>
-              <textarea
-                rows={4}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 resize-none"
-                style={{ fontSize: "16px" }}
-                placeholder="Ex.: O quarto está muito sujo, precisa de limpeza completa..."
-                value={solicitacaoMsg}
-                onChange={(e) => setSolicitacaoMsg(e.target.value)}
-              />
-              <button
-                onClick={() => solicitarAlteracao(solicitandoId)}
-                disabled={!solicitacaoMsg.trim() || enviandoSolicitacao}
-                className="mt-3 w-full btn-primary"
-              >
-                {enviandoSolicitacao ? "Enviando..." : "Enviar solicitação"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* "Solicitar alteração" removido desta tela (Minhas UHs) — pedido do
+          Felipe (04/08/2026): as duas opções (alteração de programa e Super
+          Limpeza) confundiam a camareira por serem ambíguas. Fica só Super
+          Limpeza, com texto explícito ("Solicitar Super Limpeza"). O botão
+          e modal de "Solicitar alteração" continuam existindo na tela ativa
+          de limpeza (fase "limpeza"), que não foi mexida aqui. */}
 
+      {/* Modal fora do container max-w-lg para não sofrer restrição de largura */}
       {/* Modal de Super Limpeza ⭐️ */}
       {superLimpezaId && (
         <div className="fixed inset-x-0 bottom-0 top-0 z-50 flex items-end" onClick={() => setSuperLimpezaId(null)}>
