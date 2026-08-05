@@ -1,10 +1,22 @@
 "use client";
 import { useState, useEffect } from "react";
 import { FileText, Download, Calendar, BedDouble, Loader2 } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiUrl } from "@/lib/apiFetch";
 
 // Portado de apps/housekeeping/src/app/relatorios/RelatoriosView.tsx (v1)
-// 1:1 — única diferença é fetch → apiFetch (basePath /governance).
+// — única diferença original era fetch → apiFetch (basePath /governance).
+//
+// "Baixar PDF" trocado de fetch→blob→<a download>.click() pra uma <a href>
+// de verdade com target="_blank" (pedido do Felipe, 05/08/2026: não
+// funcionava no app iOS). O truque de blob + `a.download` + click()
+// simulado nunca funcionou de forma confiável no WKWebView do iOS (Safari
+// historicamente ignora o atributo `download` em blobs, e dentro do
+// Capacitor não existe "pasta de downloads" pra salvar). Uma navegação de
+// verdade com target="_blank" é tratada pelo Capacitor (a partir da v3,
+// comportamento padrão do WKUIDelegate) como abrir no Safari do sistema,
+// que já sabe lidar com `Content-Disposition: attachment` (baixa e mostra
+// no app Arquivos/oferece compartilhar) — funciona em iOS e Android sem
+// precisar de nenhum plugin nativo novo.
 
 type DiaRelatorio = { data: string; totalUHs: number };
 
@@ -22,32 +34,12 @@ function formatarData(data: string): string {
 export default function RelatoriosView() {
   const [dias, setDias] = useState<DiaRelatorio[]>([]);
   const [loading, setLoading] = useState(true);
-  const [baixando, setBaixando] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch("/api/relatorios")
       .then((r) => r.json())
       .then((d) => { setDias(d); setLoading(false); });
   }, []);
-
-  async function abrirPDF(data: string) {
-    setBaixando(data);
-    try {
-      const res = await apiFetch(`/api/relatorio-diario?data=${data}`);
-      if (!res.ok) throw new Error("Erro ao gerar PDF");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Relatorio_Gerencial_${data}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      alert("Não foi possível gerar o relatório.");
-    } finally {
-      setBaixando(null);
-    }
-  }
 
   // Agrupa por mês/ano
   const porMes = dias.reduce<Record<string, DiaRelatorio[]>>((acc, d) => {
@@ -115,18 +107,15 @@ export default function RelatoriosView() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => abrirPDF(dia.data)}
-                    disabled={baixando === dia.data}
-                    className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-blue-50"
+                  <a
+                    href={apiUrl(`/api/relatorio-diario?data=${dia.data}`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors px-3 py-1.5 rounded-lg hover:bg-blue-50"
                   >
-                    {baixando === dia.data ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
+                    <Download className="w-4 h-4" />
                     Baixar PDF
-                  </button>
+                  </a>
                 </div>
               ))}
             </div>

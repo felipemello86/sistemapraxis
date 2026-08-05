@@ -16,3 +16,11 @@ export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const url = path.startsWith("/") ? `${BASE_PATH}${path}` : path;
   return fetch(url, init);
 }
+
+// Mesmo prefixo do basePath, mas pra montar uma URL "crua" em vez de fazer
+// o fetch — usado quando o destino é um <a href> de verdade (ex.: baixar
+// PDF), não uma chamada programática. Ver comentário em RelatoriosView.tsx
+// sobre por que isso importa no app iOS.
+export function apiUrl(path: string): string {
+  return path.startsWith("/") ? `${BASE_PATH}${path}` : path;
+}
