@@ -95,7 +95,14 @@ export function ContasView() {
           });
           carregar();
         },
-        onError: (err) => setErro(String(err)),
+        // A Pluggy manda objetos de erro em formatos variados (Error, string,
+        // ou objeto { message, code, data } — ver docs.pluggy.ai) — String()
+        // sozinho vira "[object Object]" pra qualquer um que não seja Error
+        // ou string. Tenta achar uma mensagem legível antes de desistir.
+        onError: (err: any) => {
+          const mensagem = typeof err === "string" ? err : err?.message || err?.data?.message || JSON.stringify(err);
+          setErro(mensagem || "Erro desconhecido ao conectar.");
+        },
       });
       widget.init();
     } catch (e: any) {
