@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, AlertCircle, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -291,7 +292,7 @@ export function DreView() {
         <div className="overflow-x-auto">
           <div className="min-w-fit space-y-2">
             {primario.pendentesCategorizacao.length > 0 && (
-              <a
+              <Link
                 href="/lancamentos?pendentes=1"
                 className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 hover:bg-amber-100 transition-colors"
               >
@@ -299,7 +300,7 @@ export function DreView() {
                 <p className="text-xs font-medium">
                   {primario.pendentesCategorizacao.length} lançamento{primario.pendentesCategorizacao.length > 1 ? "s" : ""} sem categoria em {labelMes(periodos[0])} — toque pra categorizar
                 </p>
-              </a>
+              </Link>
             )}
 
             {/* Cabeçalho das colunas de período */}
