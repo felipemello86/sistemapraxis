@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, verifyDownloadToken } from "@praxis/core";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { getRelatorioData } from "@/lib/relatorio-dados";
@@ -88,12 +88,23 @@ export async function POST(req: NextRequest) {
 
 // GET — baixa o PDF direto
 export async function GET(req: NextRequest) {
+  // Autentica via cookie de sessão normalmente — mas essa rota também é
+  // aberta no Safari do sistema (fora do WebView do app, ver "Baixar PDF"
+  // em RelatoriosView.tsx), onde o cookie httpOnly não chega. Nesse caso
+  // aceita um token de vida curta (?token=) minerado por
+  // /api/relatorio-diario/token enquanto a pessoa ainda estava autenticada
+  // no app. Pedido do Felipe (05/08/2026) — sem isso o link abria "Unauthorized".
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  // Leitura sempre liberada, mesmo sem acesso ao módulo (ver comentário em
-  // apps/maintenance/src/app/page.tsx) — POST acima continua gateado.
+  let tenantId: string;
+  if (session) {
+    tenantId = session.tenantId;
+  } else {
+    const token = req.nextUrl.searchParams.get("token");
+    const verificado = token ? await verifyDownloadToken(token) : null;
+    if (!verificado) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    tenantId = verificado.tenantId;
+  }
 
-  const tenantId = session.tenantId;
   const data = req.nextUrl.searchParams.get("data") || dataAtualSP();
 
   try {

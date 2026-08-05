@@ -6,17 +6,22 @@ import { apiFetch, apiUrl } from "@/lib/apiFetch";
 // Portado de apps/housekeeping/src/app/relatorios/RelatoriosView.tsx (v1)
 // — única diferença original era fetch → apiFetch (basePath /governance).
 //
-// "Baixar PDF" trocado de fetch→blob→<a download>.click() pra uma <a href>
-// de verdade com target="_blank" (pedido do Felipe, 05/08/2026: não
-// funcionava no app iOS). O truque de blob + `a.download` + click()
-// simulado nunca funcionou de forma confiável no WKWebView do iOS (Safari
-// historicamente ignora o atributo `download` em blobs, e dentro do
-// Capacitor não existe "pasta de downloads" pra salvar). Uma navegação de
-// verdade com target="_blank" é tratada pelo Capacitor (a partir da v3,
-// comportamento padrão do WKUIDelegate) como abrir no Safari do sistema,
-// que já sabe lidar com `Content-Disposition: attachment` (baixa e mostra
-// no app Arquivos/oferece compartilhar) — funciona em iOS e Android sem
-// precisar de nenhum plugin nativo novo.
+// "Baixar PDF" — 2 rodadas de conserto no mesmo dia (05/08/2026, pedido do
+// Felipe):
+//   1ª: trocamos fetch→blob→<a download>.click() por <a href target=_blank>
+//       de verdade, porque o truque de blob nunca funcionou de forma
+//       confiável no WKWebView do iOS. O Capacitor abre target=_blank no
+//       Safari do sistema — mas aí a rota voltava "Unauthorized", porque o
+//       cookie de sessão é httpOnly e escopado ao WebView do app, não
+//       acompanha a navegação pro Safari.
+//   2ª (esta): busca um token de vida curta (5min, /api/relatorio-diario/
+//       token) ainda dentro do WebView autenticado, embute na URL, e SÓ
+//       DEPOIS abre no Safari — a rota aceita esse token como alternativa
+//       ao cookie (ver verifyDownloadToken em packages/core/src/session.ts).
+//       A janela é aberta de forma SÍNCRONA no clique (window.open("",
+//       "_blank") antes do await) e só recebe a URL final depois — abrir
+//       depois de um await é tratado como pop-up não solicitado por várias
+//       WebViews/navegadores e fica bloqueado.
 
 type DiaRelatorio = { data: string; totalUHs: number };
 
@@ -34,12 +39,38 @@ function formatarData(data: string): string {
 export default function RelatoriosView() {
   const [dias, setDias] = useState<DiaRelatorio[]>([]);
   const [loading, setLoading] = useState(true);
+  const [baixando, setBaixando] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch("/api/relatorios")
       .then((r) => r.json())
       .then((d) => { setDias(d); setLoading(false); });
   }, []);
+
+  async function baixarPDF(data: string) {
+    // Abre a aba/janela JÁ no clique (síncrono), antes de qualquer await —
+    // senão o Safari/Capacitor trata como pop-up não solicitado e bloqueia.
+    const win = window.open("", "_blank");
+    setBaixando(data);
+    try {
+      const res = await apiFetch("/api/relatorio-diario/token");
+      const json = await res.json();
+      if (!res.ok || !json.token) throw new Error(json.error || "Erro ao gerar link de download");
+      const url = apiUrl(`/api/relatorio-diario?data=${data}&token=${encodeURIComponent(json.token)}`);
+      if (win) {
+        win.location.href = url;
+      } else {
+        // Pop-up inicial bloqueado mesmo assim — tenta de novo diretamente
+        // (ainda dentro do mesmo gesto de clique do usuário, na prática).
+        window.open(url, "_blank");
+      }
+    } catch {
+      win?.close();
+      alert("Não foi possível gerar o relatório.");
+    } finally {
+      setBaixando(null);
+    }
+  }
 
   // Agrupa por mês/ano
   const porMes = dias.reduce<Record<string, DiaRelatorio[]>>((acc, d) => {
@@ -107,15 +138,18 @@ export default function RelatoriosView() {
                     </div>
                   </div>
 
-                  <a
-                    href={apiUrl(`/api/relatorio-diario?data=${dia.data}`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors px-3 py-1.5 rounded-lg hover:bg-blue-50"
+                  <button
+                    onClick={() => baixarPDF(dia.data)}
+                    disabled={baixando === dia.data}
+                    className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded-lg hover:bg-blue-50"
                   >
-                    <Download className="w-4 h-4" />
+                    {baixando === dia.data ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
                     Baixar PDF
-                  </a>
+                  </button>
                 </div>
               ))}
             </div>

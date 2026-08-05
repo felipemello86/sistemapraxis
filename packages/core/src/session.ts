@@ -94,3 +94,35 @@ export async function setSessionCookie(payload: SessionPayload) {
 export async function clearSessionCookie() {
   (await cookies()).delete({ path: "/", name: SESSION_COOKIE });
 }
+
+/**
+ * Token de vida curta pra links que precisam sair do WebView do app pro
+ * navegador do sistema (ex.: "Baixar PDF" abrindo no Safari — pedido do
+ * Felipe, 05/08/2026, depois de descobrir que o cookie de sessão, sendo
+ * httpOnly e escopado ao WKWebView do Capacitor, não acompanha a navegação
+ * pro Safari, quebrando qualquer rota autenticada aberta dessa forma).
+ *
+ * Diferente de signSession/verifySession de propósito: vida curta (5min
+ * default, não 30 dias) e payload mínimo (só tenantId, não a sessão
+ * inteira) — é um substituto pontual pra UMA requisição de leitura, nunca
+ * deveria ser tratado como equivalente a estar logado. O claim `typ`
+ * impede que um token de download seja aceito por engano em algum lugar
+ * que espera um token de sessão de verdade (ou vice-versa).
+ */
+export async function signDownloadToken(tenantId: string, ttlSeconds = 300): Promise<string> {
+  return new SignJWT({ tenantId, typ: "download" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${ttlSeconds}s`)
+    .sign(getSecret());
+}
+
+export async function verifyDownloadToken(token: string): Promise<{ tenantId: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    if (payload.typ !== "download" || typeof payload.tenantId !== "string") return null;
+    return { tenantId: payload.tenantId };
+  } catch {
+    return null;
+  }
+}
