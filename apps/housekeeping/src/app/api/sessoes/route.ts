@@ -146,6 +146,24 @@ export async function POST(req: NextRequest) {
   if (assignment.tenantId !== session.tenantId) return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
   if (assignment.camareiraId !== session.userId) return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
 
+  // Mutirão: outras DailyAssignment pra mesma UH/dia (ver comentário no
+  // schema, DailyAssignment.@@unique) — pedido do Felipe (05/08/2026): a UH
+  // só pode ser iniciada por UMA camareira; se outra já iniciou (ou já
+  // concluiu), bloqueia um segundo "iniciar" independente. Bug relatado que
+  // motivou isso: numa UH com 3 camareiras, uma iniciou/concluiu de manhã e,
+  // sem nenhum bloqueio, outra conseguiu iniciar a MESMA UH de novo horas
+  // depois — histórico e pontuação ficaram incoerentes entre as três.
+  const siblings = await prisma.dailyAssignment.findMany({
+    where: { tenantId: assignment.tenantId, data: assignment.data, uhId: assignment.uhId, id: { not: assignmentId } },
+    include: { cleaningSession: true },
+  });
+  if (siblings.some((s) => s.cleaningSession?.iniciadaEm)) {
+    return NextResponse.json(
+      { error: "Esta UH já foi iniciada por outra camareira do mutirão." },
+      { status: 409 }
+    );
+  }
+
   const agora = new Date();
 
   const sessao = await prisma.cleaningSession.create({
@@ -174,6 +192,19 @@ export async function POST(req: NextRequest) {
     where: { id: assignment.uhId },
     data: { status: "EM_LIMPEZA" },
   });
+
+  // Propaga o início pras demais camareiras do mutirão — pedido do Felipe
+  // (05/08/2026): quando uma inicia, as outras já devem ter esse início no
+  // histórico delas também (mesmo timestamp), e ficam bloqueadas de iniciar
+  // de novo pelo guard acima (cleaningSession.iniciadaEm já preenchida).
+  for (const sib of siblings) {
+    await prisma.cleaningSession.upsert({
+      where: { assignmentId: sib.id },
+      create: { assignmentId: sib.id, uhId: sib.uhId, camareiraId: sib.camareiraId, iniciadaEm: agora },
+      update: { iniciadaEm: agora },
+    });
+    await prisma.dailyAssignment.update({ where: { id: sib.id }, data: { status: "EM_ANDAMENTO" } });
+  }
 
   return NextResponse.json(sessao, { status: 201 });
 }
@@ -241,7 +272,11 @@ export async function PATCH(req: NextRequest) {
   if (action === "cancelar") {
     const sessao = await prisma.cleaningSession.findUnique({
       where: { id: sessaoId },
-      include: { uh: { select: { numero: true } }, camareira: { select: { nome: true } } },
+      include: {
+        uh: { select: { numero: true } },
+        camareira: { select: { nome: true } },
+        assignment: { select: { id: true, tenantId: true, data: true, uhId: true } },
+      },
     });
     if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
     if (sessao.camareiraId !== session.userId) {
@@ -271,6 +306,27 @@ export async function PATCH(req: NextRequest) {
       where: { id: sessao.uhId },
       data: { status: "DISPONIVEL" },
     });
+
+    // Mutirão: desfaz a propagação de início nas demais camareiras também
+    // (ver POST /iniciar) — senão elas ficam marcadas "em andamento" sem
+    // ninguém de fato limpando. Só mexe em quem ainda não finalizou por
+    // conta própria (pedido do Felipe, 05/08/2026, mesmo espírito do
+    // início/conclusão sincronizados).
+    const siblings = await prisma.dailyAssignment.findMany({
+      where: {
+        tenantId: sessao.assignment.tenantId,
+        data: sessao.assignment.data,
+        uhId: sessao.assignment.uhId,
+        id: { not: sessao.assignment.id },
+      },
+      include: { cleaningSession: true },
+    });
+    for (const sib of siblings) {
+      if (sib.cleaningSession && !sib.cleaningSession.finalizadaEm) {
+        await prisma.cleaningSession.delete({ where: { id: sib.cleaningSession.id } });
+        await prisma.dailyAssignment.update({ where: { id: sib.id }, data: { status: "LIBERADO" } });
+      }
+    }
 
     return NextResponse.json({ ok: true });
   }
@@ -335,8 +391,20 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (action === "finalizar") {
-    const sessao = await prisma.cleaningSession.findUnique({ where: { id: sessaoId } });
+    const sessao = await prisma.cleaningSession.findUnique({
+      where: { id: sessaoId },
+      include: { assignment: { select: { id: true, tenantId: true, data: true, uhId: true } } },
+    });
     if (!sessao) return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
+
+    // Idempotente: numa UH de mutirão, a propagação de conclusão (ver
+    // abaixo) pode finalizar a sessão desta camareira antes de ela mesma
+    // chegar até aqui (ex.: estava no meio do fluxo local no celular quando
+    // a outra camareira concluiu a UH primeiro). Não sobrescreve o registro
+    // já sincronizado — pedido do Felipe (05/08/2026).
+    if (sessao.finalizadaEm) {
+      return NextResponse.json({ ok: true, jaFinalizadaPeloMutirao: true });
+    }
 
     const duracaoBruta = Math.round((agora.getTime() - sessao.iniciadaEm.getTime()) / 1000);
     // Desconta o tempo gasto na etapa "Necessidade de Manutenção?" — ver
@@ -371,6 +439,42 @@ export async function PATCH(req: NextRequest) {
       where: { id: sessaoAtualizada.uhId },
       data: { status: "AGUARDANDO_INSPECAO" },
     });
+
+    // Mutirão: propaga a conclusão pras demais camareiras (ver mesmo
+    // mecanismo em POST /iniciar) — pedido do Felipe (05/08/2026). Usa o
+    // mesmo horário de início/fim/duração da sessão que finalizou de
+    // verdade, em vez de recalcular por camareira, garantindo que o
+    // histórico de todo o grupo fica idêntico. Cobre também o caso de uma
+    // camareira ter sido atribuída à UH DEPOIS do início (sem sessão
+    // própria ainda) via upsert. Bug relatado que motivou isso: UH com 3
+    // camareiras "contava" de forma diferente pra cada uma — uma delas
+    // conseguiu iniciar de novo horas depois de a UH já ter sido concluída
+    // por outra, porque nada sincronizava as sessões entre si.
+    const siblings = await prisma.dailyAssignment.findMany({
+      where: {
+        tenantId: sessao.assignment.tenantId,
+        data: sessao.assignment.data,
+        uhId: sessao.assignment.uhId,
+        id: { not: sessao.assignment.id },
+      },
+      include: { cleaningSession: true },
+    });
+    for (const sib of siblings) {
+      if (sib.cleaningSession?.finalizadaEm) continue; // já concluída por conta própria
+      await prisma.cleaningSession.upsert({
+        where: { assignmentId: sib.id },
+        create: {
+          assignmentId: sib.id,
+          uhId: sib.uhId,
+          camareiraId: sib.camareiraId,
+          iniciadaEm: sessao.iniciadaEm,
+          finalizadaEm: agora,
+          duracaoSegundos: duracao,
+        },
+        update: { finalizadaEm: agora, duracaoSegundos: duracao },
+      });
+      await prisma.dailyAssignment.update({ where: { id: sib.id }, data: { status: "CONCLUIDO" } });
+    }
 
     const governantas = await prisma.user.findMany({
       where: { tenantId: session.tenantId, ativo: true, role: "GOVERNANTA" },
