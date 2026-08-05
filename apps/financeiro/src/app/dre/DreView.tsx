@@ -136,21 +136,25 @@ function LinhaTotal({ rotulo, valoresPorPeriodo, percentPorPeriodo }: { rotulo: 
 }
 
 function LinhaBloco({
-  bloco, valoresPorPeriodo, categoriasCanonicas, valoresCategoriaPorPeriodo,
+  bloco, valoresPorPeriodo, categoriasCanonicas, valoresCategoriaPorPeriodo, destaque,
 }: {
   bloco: { nome: string };
   valoresPorPeriodo: (string | null)[];
   categoriasCanonicas: { categoriaId: string; nome: string }[];
   valoresCategoriaPorPeriodo: (categoriaId: string) => (string | null)[];
+  destaque?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   return (
     <div>
-      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 text-left">
+      <button
+        onClick={() => setAberto((v) => !v)}
+        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left ${destaque ? "bg-gray-100 hover:bg-gray-200" : "hover:bg-gray-50"}`}
+      >
         {aberto ? <ChevronUp className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
-        <p className="flex-1 min-w-0 truncate text-xs font-medium text-gray-800">{bloco.nome}</p>
+        <p className={`flex-1 min-w-0 truncate text-xs text-gray-800 ${destaque ? "font-bold" : "font-medium"}`}>{bloco.nome}</p>
         {valoresPorPeriodo.map((v, i) => (
-          <Celula key={i} valor={v} />
+          <Celula key={i} valor={v} destaque={destaque} />
         ))}
       </button>
 
@@ -178,6 +182,27 @@ export function DreView() {
   const [periodos, setPeriodos] = useState<string[]>([mesAtualSP()]);
   const [dados, setDados] = useState<Record<string, DreResponse | null>>({});
   const [loading, setLoading] = useState(true);
+  // blocoId -> true quando TODAS as categorias ativas daquele bloco são
+  // tipo=RECEITA — usado só pra dar destaque visual (mesmo "patamar" dos 4
+  // totais) a blocos de receita, pedido do Felipe 05/08/2026. Vem de
+  // /api/categorias (não do /api/dre) de propósito: essa info não pode
+  // depender de quais categorias tiveram lançamento NO MÊS aberto — em
+  // meses sem nada categorizado ainda (como Agosto/26 na hora do pedido),
+  // bloco.categorias do /api/dre vem vazio e a detecção falharia.
+  const [blocosReceita, setBlocosReceita] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    apiFetch("/api/categorias")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((categorias: { blocoId: string; tipo: string }[]) => {
+        const porBloco = new Map<string, string[]>();
+        for (const c of categorias) porBloco.set(c.blocoId, [...(porBloco.get(c.blocoId) ?? []), c.tipo]);
+        const receita = new Set<string>();
+        for (const [blocoId, tipos] of porBloco) if (tipos.length > 0 && tipos.every((t) => t === "RECEITA")) receita.add(blocoId);
+        setBlocosReceita(receita);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -295,6 +320,7 @@ export function DreView() {
                   valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
                   categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
                   valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
+                  destaque={blocosReceita.has(b.blocoId)}
                 />
               ))}
               <LinhaTotal
@@ -311,6 +337,7 @@ export function DreView() {
                   valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
                   categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
                   valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
+                  destaque={blocosReceita.has(b.blocoId)}
                 />
               ))}
 
@@ -322,6 +349,7 @@ export function DreView() {
                   valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
                   categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
                   valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
+                  destaque={blocosReceita.has(b.blocoId)}
                 />
               ))}
 
