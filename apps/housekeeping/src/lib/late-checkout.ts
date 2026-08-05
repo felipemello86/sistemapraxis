@@ -30,6 +30,11 @@ export async function liberarLateCheckoutsVencidos(tenantId: string): Promise<vo
       lateCheckout: true,
       liberada: false,
       lateCheckoutHora: { lte: horaAtual },
+      // UH bloqueada (manutenção) não é liberada pelo relógio — mesma regra
+      // de liberarSelecionadasAoMeioDia (ver comentário lá): a liberação
+      // dela vem da execução do card de manutenção, não de um horário
+      // combinado com o hóspede. Pedido do Felipe, 05/08/2026.
+      uh: { bloqueada: false },
     },
     select: { uhId: true, uh: { select: { numero: true } } },
   });

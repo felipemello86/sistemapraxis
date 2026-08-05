@@ -12,6 +12,14 @@ import { dataAtualSP, horaAtualSP } from "./timezone";
 // lateCheckoutHora (ver late-checkout.ts); forçar meio-dia nelas
 // atropelaria esse horário combinado com o hóspede.
 //
+// Também exclui UHs bloqueadas (UH.bloqueada) — pedido explícito do Felipe
+// (05/08/2026): uma UH bloqueada por manutenção não deve ser liberada pra
+// limpeza pelo relógio; a liberação dela tem que vir da própria execução do
+// card de manutenção (ver desbloquearUHSeUltimaNcUrgenteResolvida em
+// packages/core/src/maintenanceUrgente.ts, chamada quando a NC urgente que
+// motivou o bloqueio é resolvida). Sem esse filtro, uma UH ainda quebrada
+// seria empurrada pra fila de limpeza da camareira ao meio-dia mesmo assim.
+//
 // Mesmo padrão de liberarLateCheckoutsVencidos: cron dedicado
 // (api/cron/liberacao-automatica, uma vez ao meio-dia) + melhor esforço no
 // GET de /api/selecao-uhs (roda sempre que a tela é aberta depois do
@@ -33,7 +41,7 @@ export async function liberarSelecionadasAoMeioDia(tenantId: string): Promise<vo
   const data = dataAtualSP();
 
   const pendentes = await prisma.dailyUHSelection.findMany({
-    where: { tenantId, data, liberada: false, lateCheckout: false },
+    where: { tenantId, data, liberada: false, lateCheckout: false, uh: { bloqueada: false } },
     select: { uhId: true, uh: { select: { numero: true } } },
   });
   if (pendentes.length === 0) return;
