@@ -1,18 +1,30 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertCircle, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Tela principal do módulo (requisito 1 do Felipe: "DRE viva") — mostra o
 // mês atual por padrão, com navegação livre pra qualquer mês passado ou
 // futuro (requisito 2). O cálculo em si (fórmula fixa, projeção de
 // recorrência) vive inteiramente em @praxis/core (lib/finance/dre.ts);
-// esta tela só chama /api/dre?mes=YYYY-MM e desenha o resultado.
+// esta tela só chama /api/dre?mes=YYYY-MM (uma vez por período aberto) e
+// desenha o resultado.
+//
+// Redesenho 05/08/2026 (pedido do Felipe, depois de ver a tela "ilegível"
+// comparado à planilha dele): layout denso tipo tabela — sem cards com
+// padding grande, container só com a largura da metade da tela, tudo
+// cabendo sem rolagem vertical — mais colunas de comparação de período
+// (adiciona quantas quiser, mês passado ou futuro, cada linha vira uma
+// tabela com um valor por período). Rolagem HORIZONTAL é o único
+// compromisso possível se a pessoa empilhar muitas colunas de comparação
+// numa tela estreita — não dá pra garantir "sem rolagem nenhuma" com
+// colunas ilimitadas.
 
 const MESES_PT = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
+const MESES_PT_CURTO = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 type DreLinha = {
   id: string;
@@ -61,7 +73,26 @@ function mesAtualSP(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
 }
 
-function formatBRL(v: string | number): string {
+// Aritmética de mês pura, sem depender de @praxis/core (esta é uma
+// pontinha client — mesmo motivo dos outros arquivos client deste app que
+// não importam o pacote inteiro: ele carrega `prisma` no módulo).
+function mesAdjacenteLocal(mes: string, delta: number): string {
+  const [anoStr, mesStr] = mes.split("-");
+  let ano = Number(anoStr);
+  let mesNum = Number(mesStr) + delta;
+  while (mesNum > 12) {
+    mesNum -= 12;
+    ano += 1;
+  }
+  while (mesNum < 1) {
+    mesNum += 12;
+    ano -= 1;
+  }
+  return `${ano}-${String(mesNum).padStart(2, "0")}`;
+}
+
+function formatBRL(v: string | number | null | undefined): string {
+  if (v == null) return "—";
   const n = typeof v === "string" ? Number(v) : v;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -71,77 +102,71 @@ function labelMes(mes: string): string {
   return `${MESES_PT[mesNum - 1]} de ${ano}`;
 }
 
-// Linha de totalizador (Margem Bruta, Despesas, Geração de Caixa,
-// Lucro/Prejuízo) — não é colapsável, fica destacada e entra INLINE no
-// fluxo, na mesma posição em que aparece na planilha do Felipe (ex.:
-// "Despesas" some ANTES dos 3 blocos que a compõem, já "Margem Bruta" some
-// DEPOIS dos blocos dela — mesma ordem de sempre, replicada aqui em vez de
-// juntar os 4 totais soltos no topo, que era o que deixava a tela
-// ilegível).
-function TotalizadorRow({ titulo, valor, percent }: { titulo: string; valor: string; percent?: string | null }) {
-  const n = Number(valor);
-  const positivo = n >= 0;
+function labelMesCurto(mes: string): string {
+  const [ano, mesNum] = mes.split("-").map(Number);
+  return `${MESES_PT_CURTO[mesNum - 1]}/${String(ano).slice(2)}`;
+}
+
+// Largura fixa de cada coluna de valor — mesma pras linhas e pro cabeçalho,
+// pra tudo alinhar como tabela de verdade.
+const COL_VALOR = "w-24 flex-shrink-0 text-right";
+
+function Celula({ valor, destaque }: { valor: string | null; destaque?: boolean }) {
+  const n = valor == null ? null : Number(valor);
+  const positivo = n == null || n >= 0;
   return (
-    <div className="rounded-xl bg-gray-100 px-4 py-3 flex items-center justify-between">
-      <p className="font-bold text-sm text-gray-900">{titulo}</p>
-      <div className="text-right flex-shrink-0">
-        <p className={`font-bold ${positivo ? "text-green-700" : "text-red-600"}`}>{formatBRL(valor)}</p>
-        {percent != null && <p className="text-xs text-gray-500 mt-0.5">{Number(percent).toFixed(1)}%</p>}
-      </div>
+    <div className={`${COL_VALOR} ${destaque ? "font-bold" : "font-medium"} text-xs ${n == null ? "text-gray-300" : positivo ? "text-green-700" : "text-red-600"}`}>
+      {n == null ? "—" : formatBRL(valor)}
     </div>
   );
 }
 
-function BlocoCard({ bloco }: { bloco: DreBlocoResumo }) {
-  const [aberto, setAberto] = useState(false);
-  const total = Number(bloco.total);
-  const orcado = bloco.orcado != null ? Number(bloco.orcado) : null;
-  // Orçamento é sempre positivo (ver schema); comparamos contra o valor
-  // absoluto do realizado pra dar "% do orçamento consumido" mesmo em
-  // blocos de despesa (valor negativo).
-  const pctOrcamento = orcado && orcado > 0 ? (Math.abs(total) / orcado) * 100 : null;
-  const estourou = pctOrcamento != null && pctOrcamento > 100;
-
+function LinhaTotal({ rotulo, valoresPorPeriodo, percentPorPeriodo }: { rotulo: string; valoresPorPeriodo: (string | null)[]; percentPorPeriodo?: (string | null)[] }) {
   return (
-    <div className="card">
-      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between text-left">
-        <div className="min-w-0">
-          <p className="font-semibold text-sm text-gray-900">{bloco.nome}</p>
-          {pctOrcamento != null && (
-            <p className={`text-xs mt-0.5 ${estourou ? "text-red-600" : "text-gray-400"}`}>
-              {pctOrcamento.toFixed(0)}% do orçamento ({formatBRL(bloco.orcado!)}){estourou ? " — estourou" : ""}
-            </p>
-          )}
+    <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-2.5 py-1.5">
+      <p className="flex-1 min-w-0 truncate font-bold text-xs text-gray-900">{rotulo}</p>
+      {valoresPorPeriodo.map((v, i) => (
+        <div key={i} className={COL_VALOR}>
+          <Celula valor={v} destaque />
+          {percentPorPeriodo?.[i] != null && <p className="text-[10px] text-gray-500">{Number(percentPorPeriodo[i]).toFixed(1)}%</p>}
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <span className={`font-bold ${total >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(bloco.total)}</span>
-          {aberto ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-        </div>
+      ))}
+    </div>
+  );
+}
+
+function LinhaBloco({
+  bloco, valoresPorPeriodo, categoriasCanonicas, valoresCategoriaPorPeriodo,
+}: {
+  bloco: { nome: string };
+  valoresPorPeriodo: (string | null)[];
+  categoriasCanonicas: { categoriaId: string; nome: string }[];
+  valoresCategoriaPorPeriodo: (categoriaId: string) => (string | null)[];
+}) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <div>
+      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 text-left">
+        {aberto ? <ChevronUp className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />}
+        <p className="flex-1 min-w-0 truncate text-xs font-medium text-gray-800">{bloco.nome}</p>
+        {valoresPorPeriodo.map((v, i) => (
+          <Celula key={i} valor={v} />
+        ))}
       </button>
 
       {aberto && (
-        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-          {bloco.categorias.length === 0 ? (
-            <p className="text-sm text-gray-400">Nenhum lançamento categorizado neste bloco.</p>
+        <div className="ml-5 border-l border-gray-100 pl-2">
+          {categoriasCanonicas.length === 0 ? (
+            <p className="text-xs text-gray-400 py-1">Nenhum lançamento categorizado.</p>
           ) : (
-            bloco.categorias.map((c) => {
-              const cTotal = Number(c.total);
-              const cOrcado = c.orcado != null ? Number(c.orcado) : null;
-              const cPct = cOrcado && cOrcado > 0 ? (Math.abs(cTotal) / cOrcado) * 100 : null;
-              return (
-                <div key={c.categoriaId} className="flex items-center justify-between text-sm">
-                  <div className="min-w-0">
-                    <p className="text-gray-700 truncate">{c.nome}</p>
-                    {cPct != null && (
-                      <p className={`text-xs ${cPct > 100 ? "text-red-600" : "text-gray-400"}`}>
-                        {cPct.toFixed(0)}% de {formatBRL(c.orcado!)}
-                      </p>
-                    )}
-                  </div>
-                  <span className={`flex-shrink-0 ${cTotal >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(c.total)}</span>
-                </div>
-              );
-            })
+            categoriasCanonicas.map((c) => (
+              <div key={c.categoriaId} className="flex items-center gap-2 px-1.5 py-1">
+                <p className="flex-1 min-w-0 truncate text-xs text-gray-500">{c.nome}</p>
+                {valoresCategoriaPorPeriodo(c.categoriaId).map((v, i) => (
+                  <Celula key={i} valor={v} />
+                ))}
+              </div>
+            ))
           )}
         </div>
       )}
@@ -150,81 +175,160 @@ function BlocoCard({ bloco }: { bloco: DreBlocoResumo }) {
 }
 
 export function DreView() {
-  const [mes, setMes] = useState<string>(mesAtualSP());
-  const [dre, setDre] = useState<DreResponse | null>(null);
+  const [periodos, setPeriodos] = useState<string[]>([mesAtualSP()]);
+  const [dados, setDados] = useState<Record<string, DreResponse | null>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiFetch(`/api/dre?mes=${mes}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setDre(data))
+    Promise.all(
+      periodos.map((mes) =>
+        apiFetch(`/api/dre?mes=${mes}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => [mes, data] as const)
+      )
+    )
+      .then((entradas) => setDados(Object.fromEntries(entradas)))
       .finally(() => setLoading(false));
-  }, [mes]);
+  }, [periodos]);
+
+  function mudarPeriodo(idx: number, novoMes: string) {
+    setPeriodos((prev) => prev.map((m, i) => (i === idx ? novoMes : m)));
+  }
+
+  function adicionarPeriodo() {
+    setPeriodos((prev) => [...prev, mesAdjacenteLocal(prev[prev.length - 1], -1)]);
+  }
+
+  function removerPeriodo(idx: number) {
+    setPeriodos((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  const primario = dados[periodos[0]] ?? null;
+  // Estrutura de blocos é do tenant, não do mês — todo período tem os
+  // mesmos blocos; pega do primeiro que já carregou.
+  const blocosCanonicos = Object.values(dados).find((d) => d)?.blocos ?? [];
+
+  function valorBloco(blocoId: string, mes: string): string | null {
+    return dados[mes]?.blocos.find((b) => b.blocoId === blocoId)?.total ?? null;
+  }
+
+  function categoriasCanonicasDoBloco(blocoId: string): { categoriaId: string; nome: string }[] {
+    const vistos = new Map<string, string>();
+    for (const mes of periodos) {
+      const bloco = dados[mes]?.blocos.find((b) => b.blocoId === blocoId);
+      bloco?.categorias.forEach((c) => vistos.set(c.categoriaId, c.nome));
+    }
+    return Array.from(vistos, ([categoriaId, nome]) => ({ categoriaId, nome }));
+  }
+
+  function valoresCategoria(blocoId: string, categoriaId: string): (string | null)[] {
+    return periodos.map((mes) => dados[mes]?.blocos.find((b) => b.blocoId === blocoId)?.categorias.find((c) => c.categoriaId === categoriaId)?.total ?? null);
+  }
+
+  const blocosDe = (t: Totalizador) => blocosCanonicos.filter((b) => b.totalizador === t);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button onClick={() => dre && setMes(dre.mesAnterior)} className="btn-secondary px-2 py-2" aria-label="Mês anterior">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <h1 className="text-lg font-bold text-gray-900 min-w-[180px] text-center">{labelMes(mes)}</h1>
-          <button onClick={() => dre && setMes(dre.mesSeguinte)} className="btn-secondary px-2 py-2" aria-label="Mês seguinte">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        {mes !== mesAtualSP() && (
-          <button onClick={() => setMes(mesAtualSP())} className="text-sm text-blue-700 font-medium hover:underline">
-            Voltar pro mês atual
+    <div className="max-w-2xl mx-auto space-y-3">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button onClick={() => mudarPeriodo(0, mesAdjacenteLocal(periodos[0], -1))} className="btn-secondary px-1.5 py-1.5 flex-shrink-0" aria-label="Mês anterior">
+          <ChevronLeft className="w-3.5 h-3.5" />
+        </button>
+        <h1 className="text-sm font-bold text-gray-900 px-1 flex-shrink-0">{labelMes(periodos[0])}</h1>
+        <button onClick={() => mudarPeriodo(0, mesAdjacenteLocal(periodos[0], 1))} className="btn-secondary px-1.5 py-1.5 flex-shrink-0" aria-label="Próximo mês">
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+        {periodos[0] !== mesAtualSP() && (
+          <button onClick={() => mudarPeriodo(0, mesAtualSP())} className="text-xs text-blue-700 font-medium hover:underline flex-shrink-0">
+            hoje
           </button>
         )}
+
+        {periodos.slice(1).map((mes, i) => (
+          <div key={i} className="flex items-center gap-1 bg-gray-100 rounded-lg pl-2 pr-1 py-1 flex-shrink-0">
+            <input type="month" value={mes} onChange={(e) => e.target.value && mudarPeriodo(i + 1, e.target.value)} className="text-xs bg-transparent border-0 focus:outline-none w-[5.5rem]" />
+            <button onClick={() => removerPeriodo(i + 1)} className="text-gray-400 hover:text-red-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+
+        <button onClick={adicionarPeriodo} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 border border-dashed border-gray-300 rounded-lg px-2 py-1.5 flex-shrink-0">
+          <Plus className="w-3.5 h-3.5" /> Comparar
+        </button>
       </div>
 
-      {loading || !dre ? (
+      {loading ? (
         <p className="text-gray-400 text-sm">Carregando...</p>
+      ) : !primario ? (
+        <p className="text-red-600 text-sm">Erro ao carregar a DRE.</p>
       ) : (
-        <>
-          {dre.pendentesCategorizacao.length > 0 && (
-            <a
-              href="/lancamentos?pendentes=1"
-              className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-amber-800 hover:bg-amber-100 transition-colors"
-            >
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium text-sm">
-                  {dre.pendentesCategorizacao.length} lançamento{dre.pendentesCategorizacao.length > 1 ? "s" : ""} sem categoria
+        <div className="overflow-x-auto">
+          <div className="min-w-fit space-y-2">
+            {primario.pendentesCategorizacao.length > 0 && (
+              <a
+                href="/lancamentos?pendentes=1"
+                className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 hover:bg-amber-100 transition-colors"
+              >
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <p className="text-xs font-medium">
+                  {primario.pendentesCategorizacao.length} lançamento{primario.pendentesCategorizacao.length > 1 ? "s" : ""} sem categoria em {labelMes(periodos[0])} — toque pra categorizar
                 </p>
-                <p className="text-xs mt-0.5">Toque pra categorizar — eles não entram na DRE até isso ser resolvido.</p>
-              </div>
-            </a>
-          )}
+              </a>
+            )}
 
-          <div className="space-y-1.5">
-            {dre.blocos
-              .filter((b) => b.totalizador === "MARGEM_BRUTA")
-              .map((b) => (
-                <BlocoCard key={b.blocoId} bloco={b} />
+            {/* Cabeçalho das colunas de período */}
+            <div className="flex items-center gap-2 px-2.5">
+              <div className="flex-1 min-w-0" />
+              {periodos.map((mes, i) => (
+                <p key={i} className={`${COL_VALOR} text-[10px] font-semibold text-gray-400 uppercase`}>
+                  {labelMesCurto(mes)}
+                </p>
               ))}
-            <TotalizadorRow titulo="Margem Bruta" valor={dre.margemBrutaRS} percent={dre.margemBrutaPercent} />
+            </div>
 
-            <TotalizadorRow titulo="Despesas" valor={dre.despesasRS} />
-            {dre.blocos
-              .filter((b) => b.totalizador === "DESPESAS")
-              .map((b) => (
-                <BlocoCard key={b.blocoId} bloco={b} />
+            <div className="space-y-0.5">
+              {blocosDe("MARGEM_BRUTA").map((b) => (
+                <LinhaBloco
+                  key={b.blocoId}
+                  bloco={b}
+                  valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
+                  categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
+                  valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
+                />
+              ))}
+              <LinhaTotal
+                rotulo="Margem Bruta"
+                valoresPorPeriodo={periodos.map((mes) => dados[mes]?.margemBrutaRS ?? null)}
+                percentPorPeriodo={periodos.map((mes) => dados[mes]?.margemBrutaPercent ?? null)}
+              />
+
+              <LinhaTotal rotulo="Despesas" valoresPorPeriodo={periodos.map((mes) => dados[mes]?.despesasRS ?? null)} />
+              {blocosDe("DESPESAS").map((b) => (
+                <LinhaBloco
+                  key={b.blocoId}
+                  bloco={b}
+                  valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
+                  categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
+                  valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
+                />
               ))}
 
-            <TotalizadorRow titulo="Geração de Caixa (Lucro Operacional)" valor={dre.geracaoDeCaixaRS} />
-            {dre.blocos
-              .filter((b) => b.totalizador === "LUCRO_PREJUIZO_EXTRA")
-              .map((b) => (
-                <BlocoCard key={b.blocoId} bloco={b} />
+              <LinhaTotal rotulo="Geração de Caixa (Lucro Operacional)" valoresPorPeriodo={periodos.map((mes) => dados[mes]?.geracaoDeCaixaRS ?? null)} />
+              {blocosDe("LUCRO_PREJUIZO_EXTRA").map((b) => (
+                <LinhaBloco
+                  key={b.blocoId}
+                  bloco={b}
+                  valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
+                  categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
+                  valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
+                />
               ))}
 
-            <TotalizadorRow titulo="Lucro / Prejuízo" valor={dre.lucroPrejuizoRS} />
+              <LinhaTotal rotulo="Lucro / Prejuízo" valoresPorPeriodo={periodos.map((mes) => dados[mes]?.lucroPrejuizoRS ?? null)} />
+            </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
