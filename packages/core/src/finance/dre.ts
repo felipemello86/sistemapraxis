@@ -40,6 +40,20 @@ import type { DreTotalizador } from "./categoria-defaults";
 
 const ZERO = new Prisma.Decimal(0);
 
+// Ordem de exibição dos totalizadores no fluxo da DRE (não é alfabética —
+// segue a mesma sequência da planilha do Felipe: Margem Bruta primeiro,
+// Despesas depois, Lucro/Prejuízo por último). Bug real encontrado em
+// produção (05/08/2026): ordenar só por `ordem` intercala blocos de
+// totalizadores diferentes porque cada grupo reinicia a numeração em 1 —
+// "Despesas com Funcionários" (DESPESAS, ordem 1) e "Despesas com
+// Diretoria" (LUCRO_PREJUIZO_EXTRA, ordem 1) empatavam e a ordem final
+// ficava arbitrária. Corrigido ordenando por totalizador (nesta sequência
+// fixa) e só depois por `ordem` dentro do grupo.
+const RANK_TOTALIZADOR: Record<string, number> = { MARGEM_BRUTA: 0, DESPESAS: 1, LUCRO_PREJUIZO_EXTRA: 2 };
+function ordenarBlocos<T extends { totalizador: string; ordem: number }>(blocos: T[]): T[] {
+  return [...blocos].sort((a, b) => (RANK_TOTALIZADOR[a.totalizador] ?? 99) - (RANK_TOTALIZADOR[b.totalizador] ?? 99) || a.ordem - b.ordem);
+}
+
 export interface DreLinhaLancamento {
   id: string;
   categoriaId: string | null;
@@ -168,7 +182,7 @@ export async function calcularDre(tenantId: string, mes: string): Promise<DreMen
   const { inicio, fim } = limitesDoMes(mes);
 
   const [blocosDoTenant, categorias, lancamentosDoMes, candidatosRecorrentes, orcamentosDoMes] = await Promise.all([
-    prisma.financeBloco.findMany({ where: { tenantId }, orderBy: { ordem: "asc" } }),
+    prisma.financeBloco.findMany({ where: { tenantId } }),
     prisma.financeCategoria.findMany({ where: { tenantId } }),
     prisma.financeLancamento.findMany({
       where: { tenantId, recorrente: false, dataVencimento: { gte: inicio, lte: fim } },
@@ -259,7 +273,7 @@ export async function calcularDre(tenantId: string, mes: string): Promise<DreMen
     arr.sort((a, b) => (categoriaPorId.get(a.categoriaId)?.ordem ?? 0) - (categoriaPorId.get(b.categoriaId)?.ordem ?? 0));
   }
 
-  const blocos: DreBlocoResumo[] = blocosDoTenant.map((bloco) => {
+  const blocos: DreBlocoResumo[] = ordenarBlocos(blocosDoTenant).map((bloco) => {
     const categoriasDoBloco = categoriasPorBloco.get(bloco.id) ?? [];
     const totalBruto = categoriasDoBloco.reduce((acc, c) => acc.add(c.total), ZERO);
     return {

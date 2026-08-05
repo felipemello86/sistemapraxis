@@ -32,9 +32,13 @@ type DreCategoria = {
   lancamentos: DreLinha[];
 };
 
+type Totalizador = "MARGEM_BRUTA" | "DESPESAS" | "LUCRO_PREJUIZO_EXTRA";
+
 type DreBlocoResumo = {
   blocoId: string;
   nome: string;
+  ordem: number;
+  totalizador: Totalizador;
   total: string;
   orcado: string | null;
   categorias: DreCategoria[];
@@ -67,14 +71,23 @@ function labelMes(mes: string): string {
   return `${MESES_PT[mesNum - 1]} de ${ano}`;
 }
 
-function RollupCard({ titulo, valor, percent }: { titulo: string; valor: string; percent?: string | null }) {
+// Linha de totalizador (Margem Bruta, Despesas, Geração de Caixa,
+// Lucro/Prejuízo) — não é colapsável, fica destacada e entra INLINE no
+// fluxo, na mesma posição em que aparece na planilha do Felipe (ex.:
+// "Despesas" some ANTES dos 3 blocos que a compõem, já "Margem Bruta" some
+// DEPOIS dos blocos dela — mesma ordem de sempre, replicada aqui em vez de
+// juntar os 4 totais soltos no topo, que era o que deixava a tela
+// ilegível).
+function TotalizadorRow({ titulo, valor, percent }: { titulo: string; valor: string; percent?: string | null }) {
   const n = Number(valor);
   const positivo = n >= 0;
   return (
-    <div className="card">
-      <p className="text-xs font-medium text-gray-500 mb-1">{titulo}</p>
-      <p className={`text-xl font-bold ${positivo ? "text-green-700" : "text-red-600"}`}>{formatBRL(valor)}</p>
-      {percent != null && <p className="text-xs text-gray-400 mt-0.5">{Number(percent).toFixed(1)}% da receita bruta</p>}
+    <div className="rounded-xl bg-gray-100 px-4 py-3 flex items-center justify-between">
+      <p className="font-bold text-sm text-gray-900">{titulo}</p>
+      <div className="text-right flex-shrink-0">
+        <p className={`font-bold ${positivo ? "text-green-700" : "text-red-600"}`}>{formatBRL(valor)}</p>
+        {percent != null && <p className="text-xs text-gray-500 mt-0.5">{Number(percent).toFixed(1)}%</p>}
+      </div>
     </div>
   );
 }
@@ -187,17 +200,29 @@ export function DreView() {
             </a>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <RollupCard titulo="Margem Bruta" valor={dre.margemBrutaRS} percent={dre.margemBrutaPercent} />
-            <RollupCard titulo="Despesas" valor={dre.despesasRS} />
-            <RollupCard titulo="Geração de Caixa (Lucro Operacional)" valor={dre.geracaoDeCaixaRS} />
-            <RollupCard titulo="Lucro / Prejuízo" valor={dre.lucroPrejuizoRS} />
-          </div>
+          <div className="space-y-1.5">
+            {dre.blocos
+              .filter((b) => b.totalizador === "MARGEM_BRUTA")
+              .map((b) => (
+                <BlocoCard key={b.blocoId} bloco={b} />
+              ))}
+            <TotalizadorRow titulo="Margem Bruta" valor={dre.margemBrutaRS} percent={dre.margemBrutaPercent} />
 
-          <div className="space-y-2">
-            {dre.blocos.map((b) => (
-              <BlocoCard key={b.blocoId} bloco={b} />
-            ))}
+            <TotalizadorRow titulo="Despesas" valor={dre.despesasRS} />
+            {dre.blocos
+              .filter((b) => b.totalizador === "DESPESAS")
+              .map((b) => (
+                <BlocoCard key={b.blocoId} bloco={b} />
+              ))}
+
+            <TotalizadorRow titulo="Geração de Caixa (Lucro Operacional)" valor={dre.geracaoDeCaixaRS} />
+            {dre.blocos
+              .filter((b) => b.totalizador === "LUCRO_PREJUIZO_EXTRA")
+              .map((b) => (
+                <BlocoCard key={b.blocoId} bloco={b} />
+              ))}
+
+            <TotalizadorRow titulo="Lucro / Prejuízo" valor={dre.lucroPrejuizoRS} />
           </div>
         </>
       )}

@@ -12,6 +12,13 @@ import { getSession, hasModuleAccess, prisma } from "@praxis/core";
 
 const TOTALIZADORES = ["MARGEM_BRUTA", "DESPESAS", "LUCRO_PREJUIZO_EXTRA"] as const;
 
+// Ordem de exibição fixa (não alfabética!) — mesma correção aplicada em
+// lib/finance/dre.ts, 05/08/2026: "DESPESAS" < "LUCRO_PREJUIZO_EXTRA" <
+// "MARGEM_BRUTA" em ordem alfabética, mas o fluxo real da DRE é Margem
+// Bruta primeiro. `orderBy: [{totalizador:"asc"}]` do Prisma ordena
+// alfabeticamente — por isso o sort é feito aqui em JS, não no banco.
+const RANK_TOTALIZADOR: Record<string, number> = { MARGEM_BRUTA: 0, DESPESAS: 1, LUCRO_PREJUIZO_EXTRA: 2 };
+
 // GET /api/blocos
 export async function GET() {
   const session = await getSession();
@@ -22,9 +29,9 @@ export async function GET() {
 
   const blocos = await prisma.financeBloco.findMany({
     where: { tenantId: session.tenantId },
-    orderBy: [{ totalizador: "asc" }, { ordem: "asc" }],
     include: { _count: { select: { categorias: true } } },
   });
+  blocos.sort((a, b) => (RANK_TOTALIZADOR[a.totalizador] ?? 99) - (RANK_TOTALIZADOR[b.totalizador] ?? 99) || a.ordem - b.ordem);
 
   return NextResponse.json(
     blocos.map((b) => ({
