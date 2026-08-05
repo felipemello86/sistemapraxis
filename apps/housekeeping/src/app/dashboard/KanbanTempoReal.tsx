@@ -30,12 +30,15 @@ type Assignment = {
   } | null;
 };
 
+type EventoEtapa = { tipo: "L" | "I" | "T" | "C"; timestamp: string };
+
 type UhCard = {
   uhId: string;
   uhNumero: string;
   emManutencao: boolean;
   status: string;
   enteredAt: string | null;
+  eventos: EventoEtapa[];
   camareiras: CamareiraInfo[];
   representativeAssignmentId: string;
 };
@@ -56,6 +59,12 @@ const COLUNAS: { status: string; label: string; dot: string; header: string }[] 
 const STATUS_RANK: Record<string, number> = { PENDENTE: 0, LIBERADO: 1, EM_ANDAMENTO: 2, CONCLUIDO: 3, INSPECIONADO: 4 };
 const GLOBAL_COR = "#6366f1";
 const CAM_PALETTE = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#ec4899", "#a855f7"];
+// Mesma paleta por tipo de evento já usada na legenda do Burndown
+// (TIPO_COR em BurndownChart.tsx) — reaproveitada aqui pra quem já conhece
+// aquela tela reconhecer L/I/T/C de cara.
+const TIPO_COR: Record<EventoEtapa["tipo"], string> = {
+  L: "#3b82f6", I: "#f59e0b", T: "#8b5cf6", C: "#10b981",
+};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function getEnteredAt(a: Assignment): string | null {
@@ -66,6 +75,20 @@ function getEnteredAt(a: Assignment): string | null {
     case "INSPECIONADO": return a.cleaningSession?.inspection?.finalizadaEm ?? null;
     default: return null;
   }
+}
+
+// Horários de TODAS as etapas já percorridas (não só a atual) — pedido do
+// Felipe (05/08/2026). L vem de DailyAssignment.liberadaEm direto (mesmo
+// campo usado no card em mutirão, sincronizado pra todas as atribuições da
+// UH — ver liberacao-automatica.ts), os demais da CleaningSession/
+// InspectionSession da atribuição representante do card.
+function buildEventos(a: Assignment): EventoEtapa[] {
+  const evs: EventoEtapa[] = [];
+  if (a.liberadaEm) evs.push({ tipo: "L", timestamp: a.liberadaEm });
+  if (a.cleaningSession?.iniciadaEm) evs.push({ tipo: "I", timestamp: a.cleaningSession.iniciadaEm });
+  if (a.cleaningSession?.finalizadaEm) evs.push({ tipo: "T", timestamp: a.cleaningSession.finalizadaEm });
+  if (a.cleaningSession?.inspection?.finalizadaEm) evs.push({ tipo: "C", timestamp: a.cleaningSession.inspection.finalizadaEm });
+  return evs;
 }
 
 // Agrupa DailyAssignment por UH — numa "Super Limpeza a duas"/mutirão pode
@@ -92,6 +115,7 @@ function buildUhCards(assignments: Assignment[]): UhCard[] {
       emManutencao: rep.uh.emManutencao,
       status: rep.status,
       enteredAt: getEnteredAt(rep),
+      eventos: buildEventos(rep),
       camareiras: group.map((a) => a.camareira),
       representativeAssignmentId: rep.id,
     });
@@ -110,18 +134,27 @@ function Avatar({ nome, foto, className }: { nome: string; foto?: string | null;
 }
 
 // ── Balloon de progresso (Global ou por camareira) ────────────────────────────
+// Clicável — filtra o quadro pra só as UHs da camareira clicada (pedido do
+// Felipe, 05/08/2026). "Global" sempre limpa o filtro (é o único jeito de
+// voltar a ver todo mundo, já que clicar de novo na camareira selecionada
+// também limpa — mesmo padrão de toggle do BurndownChart).
 function ProgressoBalloon({
-  label, foto, cor, concluidas, total, horarioFim,
+  label, foto, cor, concluidas, total, horarioFim, selected, onClick,
 }: {
   label: string; foto?: string | null; cor: string; concluidas: number; total: number; horarioFim: string | null;
+  selected: boolean; onClick: () => void;
 }) {
   const pct = total > 0 ? Math.round((concluidas / total) * 100) : 0;
   const concluido = total > 0 && concluidas === total;
   const iniciais = label.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   return (
-    <div
-      className={`flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1.5 shadow-sm border-2 ${concluido ? "bg-green-600 border-green-600" : "bg-white"}`}
-      style={{ borderColor: concluido ? undefined : cor }}
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1.5 shadow-sm border-2 transition-shadow ${concluido ? "bg-green-600 border-green-600" : "bg-white"}`}
+      style={{
+        borderColor: concluido ? undefined : cor,
+        boxShadow: selected ? `0 0 0 3px ${cor}55` : undefined,
+      }}
     >
       <div
         className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center"
@@ -141,7 +174,7 @@ function ProgressoBalloon({
             : `${concluidas}/${total} · ${pct}%`}
         </span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -167,8 +200,17 @@ function UhCardView({ card, onClick }: { card: UhCard; onClick: () => void }) {
       <p className="text-xs text-gray-500 mt-1 truncate">
         {card.camareiras.map((c) => c.nome.split(" ")[0]).join(mutirao ? " + " : "")}
       </p>
-      {card.enteredAt && (
-        <p className="text-[10px] text-gray-400 mt-1">{format(new Date(card.enteredAt), "HH:mm")}</p>
+      {/* Horário de todas as etapas já percorridas, não só a atual — pedido
+          do Felipe (05/08/2026). Mesmas letras/cores da legenda do Burndown
+          (L/I/T/C). */}
+      {card.eventos.length > 0 && (
+        <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 mt-1.5">
+          {card.eventos.map((e) => (
+            <span key={e.tipo} className="text-[10px] font-semibold" style={{ color: TIPO_COR[e.tipo] }}>
+              {e.tipo} {format(new Date(e.timestamp), "HH:mm")}
+            </span>
+          ))}
+        </div>
       )}
     </button>
   );
@@ -180,6 +222,9 @@ export default function KanbanTempoReal({ role, podeOperar }: { role: string; po
   const [loading, setLoading] = useState(true);
   const [dataSel, setDataSel] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [detalheAssignmentId, setDetalheAssignmentId] = useState<string | null>(null);
+  // Filtro por camareira — clicar num balloon mostra só as UHs dela (pedido
+  // do Felipe, 05/08/2026). Clicar de novo na mesma, ou em "Global", limpa.
+  const [filtroCamareiraId, setFiltroCamareiraId] = useState<string | null>(null);
 
   const hojeStr = new Date().toLocaleDateString("en-CA");
   const isHoje = dataSel === hojeStr;
@@ -235,6 +280,13 @@ export default function KanbanTempoReal({ role, podeOperar }: { role: string; po
   }
   const camareirasBalloons = Array.from(porCamareira.values()).sort((a, b) => a.info.nome.localeCompare(b.info.nome));
 
+  // Balloons refletem sempre o dia inteiro (não filtram a si mesmos) — só o
+  // quadro abaixo é filtrado, pra continuar dando visão geral de todo mundo
+  // mesmo com uma camareira selecionada.
+  const cardsFiltrados = filtroCamareiraId
+    ? cards.filter((c) => c.camareiras.some((cam) => cam.id === filtroCamareiraId))
+    : cards;
+
   if (loading) {
     return <div className="flex items-center justify-center h-full text-gray-400 text-sm">Carregando...</div>;
   }
@@ -269,6 +321,8 @@ export default function KanbanTempoReal({ role, podeOperar }: { role: string; po
             <ProgressoBalloon
               label="Global" cor={GLOBAL_COR}
               concluidas={concluidasGlobal} total={totalGlobal} horarioFim={horarioFimGlobal ? format(new Date(horarioFimGlobal), "HH:mm") : null}
+              selected={filtroCamareiraId === null}
+              onClick={() => setFiltroCamareiraId(null)}
             />
             {camareirasBalloons.map((c, i) => (
               <ProgressoBalloon
@@ -279,6 +333,8 @@ export default function KanbanTempoReal({ role, podeOperar }: { role: string; po
                 concluidas={c.concluidas}
                 total={c.total}
                 horarioFim={c.ultimoFim ? format(new Date(c.ultimoFim), "HH:mm") : null}
+                selected={filtroCamareiraId === c.info.id}
+                onClick={() => setFiltroCamareiraId((prev) => (prev === c.info.id ? null : c.info.id))}
               />
             ))}
           </div>
@@ -286,7 +342,7 @@ export default function KanbanTempoReal({ role, podeOperar }: { role: string; po
           {/* Quadro — 5 colunas */}
           <div className="flex-1 min-h-0 flex gap-3 overflow-x-auto pb-1">
             {COLUNAS.map((col) => {
-              const colCards = cards.filter((c) => c.status === col.status);
+              const colCards = cardsFiltrados.filter((c) => c.status === col.status);
               return (
                 <div key={col.status} className="flex flex-col min-w-[220px] w-[220px] shrink-0 bg-gray-50 rounded-lg border border-gray-200 min-h-0">
                   <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg shrink-0 ${col.header}`}>
