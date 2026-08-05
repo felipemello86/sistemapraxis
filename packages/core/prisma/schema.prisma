@@ -2979,6 +2979,14 @@ model FinanceContaBancaria {
   saldoAtual      Decimal? @db.Decimal(12, 2)
   limiteCredito   Decimal? @db.Decimal(12, 2) // só preenchido pra tipo=CREDIT
 
+  // Dia do mês em que a fatura vence (1-31) — só relevante pra tipo=CREDIT,
+  // configurado manualmente pelo Felipe em Configurações > Cartões de
+  // Crédito (a Pluggy não devolve esse dado). Usado por
+  // lib/finance/pluggy.ts pra calcular a Data de Vencimento de cada compra
+  // do cartão como "a fatura em que ela cai", não a data da compra em si
+  // (pedido do Felipe, 05/08/2026).
+  diaVencimentoFatura Int?
+
   lancamentos FinanceLancamento[]
 
   createdAt DateTime @default(now())
@@ -3008,8 +3016,17 @@ model FinanceLancamento {
   valor Decimal @db.Decimal(12, 2)
 
   // Data de Vencimento — referência OFICIAL pra decidir em qual DRE mensal
-  // este lançamento aparece (regra explícita do Felipe, 05/08/2026).
+  // este lançamento aparece (regra explícita do Felipe, 05/08/2026). Pra
+  // lançamentos de cartão de crédito, isto é sempre a data de vencimento da
+  // FATURA (ver FinanceContaBancaria.diaVencimentoFatura), não a data da
+  // compra.
   dataVencimento String // YYYY-MM-DD
+
+  // Data de Competência — separada da Data de Vencimento por pedido do
+  // Felipe (05/08/2026), editável livre na tela de Lançamentos. Não entra
+  // no cálculo da DRE hoje (que continua 100% por Data de Vencimento); é só
+  // um campo informativo/de referência por enquanto.
+  dataCompetencia String? // YYYY-MM-DD
 
   // Parcelamento: cada parcela é uma linha própria e materializada (regra
   // do Felipe: R$1000 em 10x = 10 FinanceLancamento, um por mês, cada um na
@@ -3033,6 +3050,20 @@ model FinanceLancamento {
   contaBancariaId    String?
   contaBancaria      FinanceContaBancaria? @relation(fields: [contaBancariaId], references: [id])
   pluggyTransactionId String? @unique // idempotência: reprocessar a mesma sincronização não duplica o lançamento
+
+  // Status "Quitado" (requisito do Felipe, 05/08/2026) — regra de derivação
+  // vive em lib/finance/status.ts, não só neste campo:
+  //   - lançamento de conta corrente (contaBancaria.tipo=BANK) = SEMPRE
+  //     quitado (o dinheiro já saiu de fato) — `pago` é ignorado nesse caso.
+  //   - lançamento de cartão de crédito (tipo=CREDIT) = quitado só quando
+  //     `pago=true`, setado automaticamente quando o sistema detecta o
+  //     pagamento da fatura na conta corrente (ver
+  //     detectarPagamentosDeFatura em pluggy.ts), ou manualmente pelo
+  //     Felipe se a detecção errar.
+  //   - sem conta vinculada (lançamento manual "solto") = mesma regra do
+  //     cartão: depende de `pago`.
+  pago                        Boolean @default(false)
+  pagoReferenciaLancamentoId  String? // id do lançamento da conta corrente que disparou a detecção (rastreabilidade/undo) — sem FK de propósito, é só uma referência informativa
 
   // Referência livre por unidade/flat ou sócio (ex.: "203 VI", "1406 DO") —
   // dimensão que o Felipe já usa hoje via "Centro de Custo" no Conta Azul,

@@ -1,11 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, X, Trash2, Repeat, Layers, ListChecks } from "lucide-react";
+import { Plus, X, Trash2, Repeat, Layers, ListChecks, Wallet } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { CategorizacaoEmLoteView } from "./CategorizacaoEmLoteView";
 
+// Extrato bancário (pedido do Felipe, 05/08/2026): a tela de Lançamentos
+// deve se parecer com o extrato de um banco de verdade — cronológico,
+// filtrado por conta, com saldo corrente. Sem conta selecionada, cai de
+// volta pro modo "lista geral" (mais recentes primeiro, sem saldo — não dá
+// pra somar saldo de contas diferentes).
+
 type Categoria = { id: string; nome: string; tipo: string; bloco: string };
+type ContaBancaria = { id: string; nome: string; tipo: "BANK" | "CREDIT"; saldoAtual: string | null };
+type ContaConectada = { id: string; instituicao: string; contas: ContaBancaria[] };
+
+type StatusLancamento = "VENCIDO" | "A_VENCER" | "QUITADO";
 
 type Lancamento = {
   id: string;
@@ -15,6 +25,12 @@ type Lancamento = {
   fornecedor: string | null;
   valor: string;
   dataVencimento: string;
+  dataCompetencia: string | null;
+  contaBancariaId: string | null;
+  contaBancaria: { id: string; nome: string; tipo: "BANK" | "CREDIT" } | null;
+  pago: boolean;
+  status: StatusLancamento;
+  saldo: number | null;
   parcelaGrupoId: string | null;
   parcelaNumero: number | null;
   parcelaTotal: number | null;
@@ -25,15 +41,24 @@ type Lancamento = {
   observacoes: string | null;
 };
 
+const STATUS_INFO: Record<StatusLancamento, { rotulo: string; cls: string }> = {
+  QUITADO: { rotulo: "Quitado", cls: "bg-green-50 text-green-700" },
+  A_VENCER: { rotulo: "A Vencer", cls: "bg-amber-50 text-amber-700" },
+  VENCIDO: { rotulo: "Vencido", cls: "bg-red-50 text-red-700" },
+};
+
 function formatBRL(v: string | number): string {
   const n = typeof v === "string" ? Number(v) : v;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function formatDataBR(iso: string): string {
+function formatDataBR(iso: string | null): string {
+  if (!iso) return "—";
   const [ano, mes, dia] = iso.split("-");
   return `${dia}/${mes}/${ano}`;
 }
+
+const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 
 const emptyForm = {
   descricao: "",
@@ -41,7 +66,8 @@ const emptyForm = {
   categoriaId: "",
   tipo: "DESPESA" as "RECEITA" | "DESPESA",
   valor: "",
-  dataVencimento: new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }),
+  dataVencimento: hojeISO,
+  dataCompetencia: "",
   modo: "normal" as "normal" | "parcelado" | "recorrente",
   parcelas: "2",
   recorrenciaFimData: "",
@@ -55,31 +81,42 @@ export function LancamentosView() {
 
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [contasConectadas, setContasConectadas] = useState<ContaConectada[]>([]);
+  const [contaSelecionada, setContaSelecionada] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [modoLote, setModoLote] = useState(false);
+  const [editando, setEditando] = useState<Lancamento | null>(null);
+
+  const todasContas = useMemo(() => contasConectadas.flatMap((cc) => cc.contas.map((c) => ({ ...c, instituicao: cc.instituicao }))), [contasConectadas]);
+  const contaAtual = todasContas.find((c) => c.id === contaSelecionada) || null;
 
   async function carregar() {
     setLoading(true);
-    const [resL, resC] = await Promise.all([
-      apiFetch(`/api/lancamentos${somentePendentes ? "?pendentes=1" : ""}`),
+    const params = new URLSearchParams();
+    if (somentePendentes) params.set("pendentes", "1");
+    if (contaSelecionada) params.set("contaBancariaId", contaSelecionada);
+    const [resL, resC, resCt] = await Promise.all([
+      apiFetch(`/api/lancamentos?${params.toString()}`),
       apiFetch("/api/categorias"),
+      apiFetch("/api/contas"),
     ]);
     if (resL.ok) setLancamentos(await resL.json());
     if (resC.ok) setCategorias(await resC.json());
+    if (resCt.ok) setContasConectadas((await resCt.json()).contasConectadas || []);
     setLoading(false);
   }
 
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [somentePendentes]);
+  }, [somentePendentes, contaSelecionada]);
 
   function abrirNovo() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, dataVencimento: hojeISO });
     setErro("");
     setShowForm(true);
   }
@@ -115,6 +152,8 @@ export function LancamentosView() {
           tipo: form.tipo,
           valor: Number(form.valor),
           dataVencimento: form.dataVencimento,
+          dataCompetencia: form.dataCompetencia || undefined,
+          contaBancariaId: contaSelecionada || undefined,
           parcelas: form.modo === "parcelado" ? Number(form.parcelas) : undefined,
           recorrente: form.modo === "recorrente",
           recorrenciaFimData: form.modo === "recorrente" ? form.recorrenciaFimData || null : undefined,
@@ -134,6 +173,29 @@ export function LancamentosView() {
     }
   }
 
+  async function salvarEdicao() {
+    if (!editando) return;
+    setSalvando(true);
+    try {
+      await apiFetch("/api/lancamentos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editando.id,
+          categoriaId: editando.categoriaId,
+          dataVencimento: editando.dataVencimento,
+          dataCompetencia: editando.dataCompetencia || null,
+          recorrente: editando.recorrente,
+          pago: editando.pago,
+        }),
+      });
+      setEditando(null);
+      carregar();
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   const categoriasFiltradas = categorias.filter((c) => c.tipo === form.tipo);
 
   if (modoLote) {
@@ -142,7 +204,7 @@ export function LancamentosView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-lg font-bold text-gray-900">
           Lançamentos {somentePendentes && <span className="text-amber-600 font-medium text-sm">— sem categoria</span>}
         </h1>
@@ -156,61 +218,109 @@ export function LancamentosView() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2">
+        <Wallet className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <select className="input text-sm py-1.5 max-w-xs" value={contaSelecionada} onChange={(e) => setContaSelecionada(e.target.value)}>
+          <option value="">Todas as contas (visão geral)</option>
+          {todasContas.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome} — {c.instituicao}
+            </option>
+          ))}
+        </select>
+        {contaAtual && contaAtual.saldoAtual != null && (
+          <span className="text-xs text-gray-400">saldo atual: {formatBRL(contaAtual.saldoAtual)}</span>
+        )}
+      </div>
+
       {loading ? (
         <p className="text-gray-400 text-sm">Carregando...</p>
       ) : lancamentos.length === 0 ? (
         <p className="text-gray-400 text-sm">Nenhum lançamento encontrado.</p>
       ) : (
-        <div className="space-y-2">
-          {lancamentos.map((l) => {
-            const valorNum = Number(l.valor);
-            return (
-              <div key={l.id} className="card flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="font-medium text-sm text-gray-900 truncate">{l.descricao}</p>
-                    {l.recorrente && (
-                      <span title="Recorrente" className="inline-flex items-center gap-0.5 text-[11px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-                        <Repeat className="w-3 h-3" /> recorrente
-                      </span>
-                    )}
-                    {l.parcelaTotal && l.parcelaTotal > 1 && (
-                      <span title="Parcelado" className="inline-flex items-center gap-0.5 text-[11px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">
-                        <Layers className="w-3 h-3" /> {l.parcelaNumero}/{l.parcelaTotal}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {formatDataBR(l.dataVencimento)} {l.fornecedor ? `· ${l.fornecedor}` : ""}
-                  </p>
-                  {!l.categoriaId ? (
-                    <select
-                      onChange={(e) => e.target.value && categorizar(l.id, e.target.value)}
-                      defaultValue=""
-                      className="mt-1.5 text-xs border border-amber-300 bg-amber-50 rounded px-2 py-1"
-                    >
-                      <option value="" disabled>
-                        Categorizar...
-                      </option>
-                      {categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA")).map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.nome}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-xs text-gray-500 mt-0.5">{l.categoria?.nome}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <span className={`font-semibold text-sm ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(l.valor)}</span>
-                  <button onClick={() => excluir(l)} className="text-gray-300 hover:text-red-600" title="Excluir">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+        <div className="card !p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-xs text-gray-400">
+                <th className="font-medium px-3 py-2">Data</th>
+                <th className="font-medium px-3 py-2">Descrição</th>
+                <th className="font-medium px-3 py-2">Categoria</th>
+                <th className="font-medium px-3 py-2">Status</th>
+                <th className="font-medium px-3 py-2 text-right">Valor</th>
+                <th className="font-medium px-3 py-2 text-right">Saldo</th>
+                <th className="w-8"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {lancamentos.map((l) => {
+                const valorNum = Number(l.valor);
+                const status = STATUS_INFO[l.status];
+                return (
+                  <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50/70 last:border-0">
+                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap cursor-pointer" onClick={() => setEditando(l)}>
+                      {formatDataBR(l.dataVencimento)}
+                    </td>
+                    <td className="px-3 py-2 cursor-pointer" onClick={() => setEditando(l)}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-gray-900">{l.descricao}</span>
+                        {l.recorrente && (
+                          <span title="Recorrente" className="flex-shrink-0">
+                            <Repeat className="w-3 h-3 text-blue-500" />
+                          </span>
+                        )}
+                        {l.parcelaTotal && l.parcelaTotal > 1 && (
+                          <span className="inline-flex items-center gap-0.5 text-[11px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded flex-shrink-0">
+                            <Layers className="w-3 h-3" /> {l.parcelaNumero}/{l.parcelaTotal}
+                          </span>
+                        )}
+                      </div>
+                      {l.fornecedor && <p className="text-xs text-gray-400">{l.fornecedor}</p>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {!l.categoriaId ? (
+                        <select
+                          onChange={(e) => e.target.value && categorizar(l.id, e.target.value)}
+                          defaultValue=""
+                          className="text-xs border border-amber-300 bg-amber-50 rounded px-2 py-1"
+                        >
+                          <option value="" disabled>
+                            Categorizar...
+                          </option>
+                          {categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA")).map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nome}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          value={l.categoriaId}
+                          onChange={(e) => e.target.value && categorizar(l.id, e.target.value)}
+                          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 max-w-[160px]"
+                        >
+                          {categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA")).map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nome}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${status.cls}`}>{status.rotulo}</span>
+                    </td>
+                    <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(l.valor)}</td>
+                    <td className="px-3 py-2 text-right text-gray-500 whitespace-nowrap">{l.saldo != null ? formatBRL(l.saldo) : "—"}</td>
+                    <td className="px-2 py-2">
+                      <button onClick={() => excluir(l)} className="text-gray-300 hover:text-red-600" title="Excluir">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -254,6 +364,11 @@ export function LancamentosView() {
                 <label className="label">Data de vencimento</label>
                 <input className="input" type="date" value={form.dataVencimento} onChange={(e) => setForm((f) => ({ ...f, dataVencimento: e.target.value }))} />
               </div>
+            </div>
+
+            <div>
+              <label className="label">Data de competência (opcional)</label>
+              <input className="input" type="date" value={form.dataCompetencia} onChange={(e) => setForm((f) => ({ ...f, dataCompetencia: e.target.value }))} />
             </div>
 
             <div>
@@ -316,6 +431,89 @@ export function LancamentosView() {
             </div>
 
             <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
+              {salvando ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {editando && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm p-0 md:p-4">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">Editar lançamento</h2>
+              <button onClick={() => setEditando(null)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-500">{editando.descricao}</p>
+
+            <div>
+              <label className="label">Categoria</label>
+              <select
+                className="input"
+                value={editando.categoriaId || ""}
+                onChange={(e) => setEditando((ed) => (ed ? { ...ed, categoriaId: e.target.value || null } : ed))}
+              >
+                <option value="">Sem categoria</option>
+                {categorias
+                  .filter((c) => c.tipo === (Number(editando.valor) >= 0 ? "RECEITA" : "DESPESA"))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Data de vencimento{editando.contaBancaria?.tipo === "CREDIT" ? " (fatura)" : ""}</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={editando.dataVencimento}
+                  onChange={(e) => setEditando((ed) => (ed ? { ...ed, dataVencimento: e.target.value } : ed))}
+                />
+                {editando.contaBancaria?.tipo === "CREDIT" && (
+                  <p className="text-xs text-gray-400 mt-1">Lançamento de cartão — o vencimento é sempre o da fatura, não o da compra.</p>
+                )}
+              </div>
+              <div>
+                <label className="label">Data de competência</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={editando.dataCompetencia || ""}
+                  onChange={(e) => setEditando((ed) => (ed ? { ...ed, dataCompetencia: e.target.value } : ed))}
+                />
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={editando.recorrente}
+                disabled={Boolean(editando.parcelaGrupoId)}
+                onChange={(e) => setEditando((ed) => (ed ? { ...ed, recorrente: e.target.checked } : ed))}
+              />
+              Recorrente
+              {editando.parcelaGrupoId && <span className="text-xs text-gray-400">(parcelado não pode ser recorrente)</span>}
+            </label>
+
+            {editando.contaBancaria?.tipo === "CREDIT" ? (
+              <p className="text-xs text-gray-400">
+                Status é definido automaticamente: vira "Quitado" quando o pagamento da fatura é detectado na conta corrente vinculada.
+              </p>
+            ) : (
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={editando.pago} onChange={(e) => setEditando((ed) => (ed ? { ...ed, pago: e.target.checked } : ed))} />
+                Marcar como pago manualmente
+              </label>
+            )}
+
+            <button onClick={salvarEdicao} disabled={salvando} className="btn-primary w-full">
               {salvando ? "Salvando..." : "Salvar"}
             </button>
           </div>

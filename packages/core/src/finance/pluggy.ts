@@ -32,6 +32,7 @@
  */
 
 import { prisma } from "../prisma";
+import { somarMeses, limitesDoMes } from "./dre";
 
 const PLUGGY_BASE_URL = "https://api.pluggy.ai";
 
@@ -189,6 +190,75 @@ export async function listarTransacoes(accountId: string, desde?: string): Promi
   return todas;
 }
 
+// ---- Vencimento de fatura de cartão ----------------------------------------
+
+/**
+ * Data de vencimento da FATURA em que uma compra de cartão cai (pedido do
+ * Felipe, 05/08/2026: "o vencimento será sempre o vencimento da fatura",
+ * não a data da compra). Regra simplificada, já que o cadastro do cartão
+ * (Configurações > Cartões de Crédito) só pede o DIA de vencimento, sem dia
+ * de fechamento separado: toda compra feita num mês calendário entra na
+ * fatura que vence no mês SEGUINTE, no dia configurado. Cobre a maioria dos
+ * ciclos de cartão brasileiro (fechamento tipicamente ~1 semana antes do
+ * vencimento); compra feita bem perto do fechamento real pode ocasionalmente
+ * cair na fatura errada por 1 ciclo — ajustável na mão em Lançamentos.
+ */
+export function calcularVencimentoFatura(dataCompraISO: string, diaVencimentoFatura: number): string {
+  const proximoMes = somarMeses(dataCompraISO, 1).slice(0, 7); // YYYY-MM
+  const { ultimoDia } = limitesDoMes(proximoMes);
+  const dia = Math.min(diaVencimentoFatura, ultimoDia);
+  return `${proximoMes}-${String(dia).padStart(2, "0")}`;
+}
+
+// ---- Detecção de pagamento de fatura ---------------------------------------
+
+/**
+ * Depois que a conta corrente sincroniza, tenta identificar se algum
+ * lançamento novo é o pagamento da fatura de um cartão — e se for, marca
+ * TODOS os lançamentos daquela fatura (mesma contaBancariaId + mesma
+ * dataVencimento, que já é a data de vencimento da fatura) como pago=true
+ * (requisito do Felipe, 05/08/2026: "o sistema tem que identificar quando o
+ * cartão for pago através de um lançamento da própria conta corrente").
+ *
+ * Heurística (não é garantida — é a melhor aproximação sem um identificador
+ * oficial de "isto é um pagamento de fatura" na Pluggy): débito na conta
+ * corrente cuja descrição menciona "fatura"/"cartão" ou o nome do próprio
+ * cartão, casado com a fatura em aberto mais recente daquele cartão. Se
+ * errar, o Felipe pode desmarcar/marcar `pago` na mão em Lançamentos.
+ */
+async function detectarPagamentosDeFatura(tenantId: string, pagamentosCandidatos: { id: string; descricao: string; valor: unknown; dataVencimento: string }[]): Promise<void> {
+  if (pagamentosCandidatos.length === 0) return;
+
+  const cartoes = await prisma.financeContaBancaria.findMany({ where: { tenantId, tipo: "CREDIT" } });
+  if (cartoes.length === 0) return;
+
+  for (const pagamento of pagamentosCandidatos) {
+    if (Number(pagamento.valor) >= 0) continue; // só débito (saída de dinheiro) pode ser pagamento de fatura
+    const descricaoUpper = pagamento.descricao.toUpperCase();
+
+    for (const cartao of cartoes) {
+      const pareceComPagamentoDeFatura =
+        descricaoUpper.includes("FATURA") || descricaoUpper.includes("CARTAO") || descricaoUpper.includes("CARTÃO") || descricaoUpper.includes(cartao.nome.toUpperCase());
+      if (!pareceComPagamentoDeFatura) continue;
+
+      // Fatura em aberto mais recente daquele cartão, com vencimento até a
+      // data do pagamento (não faz sentido quitar uma fatura que ainda nem
+      // venceu).
+      const faturaEmAberto = await prisma.financeLancamento.findFirst({
+        where: { tenantId, contaBancariaId: cartao.id, pago: false, dataVencimento: { lte: pagamento.dataVencimento } },
+        orderBy: { dataVencimento: "desc" },
+        select: { dataVencimento: true },
+      });
+      if (!faturaEmAberto) continue;
+
+      await prisma.financeLancamento.updateMany({
+        where: { tenantId, contaBancariaId: cartao.id, pago: false, dataVencimento: faturaEmAberto.dataVencimento },
+        data: { pago: true, pagoReferenciaLancamentoId: pagamento.id },
+      });
+    }
+  }
+}
+
 // ---- Varredura diária → FinanceLancamento ----------------------------------
 
 /**
@@ -210,31 +280,50 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
   });
 
   let novos = 0;
-  for (const conta of contas) {
-    const ultimoLancamento = await prisma.financeLancamento.findFirst({
-      where: { tenantId, contaBancariaId: conta.id, origem: "PLUGGY" },
-      orderBy: { dataVencimento: "desc" },
-      select: { dataVencimento: true },
-    });
+  const candidatosPagamentoFatura: { id: string; descricao: string; valor: unknown; dataVencimento: string }[] = [];
 
-    const transacoes = await listarTransacoes(conta.pluggyAccountId, ultimoLancamento?.dataVencimento);
+  for (const conta of contas) {
+    // Marca d'água do que já foi sincronizado: usa o horário da ÚLTIMA
+    // sincronização da conexão (não o MAX(dataVencimento) dos lançamentos
+    // já gravados) — importante pra cartão de crédito, cuja dataVencimento
+    // agora é a data da FATURA (normalmente no futuro em relação à compra em
+    // si); usar dataVencimento como referência faria o sync pular
+    // transações novas reais. 3 dias de folga cobrem fuso/atraso de
+    // processamento; reprocessar não duplica (pluggyTransactionId @unique).
+    const desde = conta.contaConectada.ultimaSincronizacaoEm
+      ? new Date(conta.contaConectada.ultimaSincronizacaoEm.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      : undefined;
+
+    const transacoes = await listarTransacoes(conta.pluggyAccountId, desde);
 
     for (const t of transacoes) {
+      const dataVencimento =
+        conta.tipo === "CREDIT" && conta.diaVencimentoFatura ? calcularVencimentoFatura(t.date.slice(0, 10), conta.diaVencimentoFatura) : t.date.slice(0, 10);
+
+      // Lançamento de conta corrente (BANK) já é sempre "quitado" por
+      // definição (regra do Felipe — dinheiro que já saiu de fato); cartão
+      // depende da detecção de pagamento de fatura abaixo.
+      const pago = conta.tipo === "BANK";
+
       try {
-        await prisma.financeLancamento.create({
+        const criado = await prisma.financeLancamento.create({
           data: {
             tenantId,
             categoriaId: null, // sempre pendente — categorização é sempre humana (requisito 6)
             descricao: t.description,
             fornecedor: t.merchant?.name ?? null,
             valor: t.amount,
-            dataVencimento: t.date.slice(0, 10),
+            dataVencimento,
             origem: "PLUGGY",
             contaBancariaId: conta.id,
             pluggyTransactionId: t.id,
+            pago,
           },
         });
         novos++;
+        if (conta.tipo === "BANK") {
+          candidatosPagamentoFatura.push({ id: criado.id, descricao: criado.descricao, valor: criado.valor, dataVencimento: criado.dataVencimento });
+        }
       } catch (e: any) {
         // P2002 = unique constraint (pluggyTransactionId já existe) — é o
         // caso esperado de reprocessar um período que já tinha sido
@@ -248,6 +337,8 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
       data: { ultimaSincronizacaoEm: new Date() },
     });
   }
+
+  await detectarPagamentosDeFatura(tenantId, candidatosPagamentoFatura);
 
   return { novos };
 }

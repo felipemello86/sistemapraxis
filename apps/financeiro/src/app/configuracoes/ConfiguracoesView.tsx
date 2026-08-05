@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, Plus, Trash2, Minus } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronUp, ChevronRight, ArrowUp, ArrowDown, Plus, Trash2, Minus, CreditCard } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Tela de Configurações do módulo Financeiro — pedido do Felipe, 05/08/2026:
@@ -162,6 +163,15 @@ export function ConfiguracoesView() {
           blocos entram em cada total, se somam ou subtraem, e quais categorias vivem em cada bloco.
         </p>
       </div>
+
+      <Link href="/configuracoes/cartoes" className="card flex items-center gap-3 hover:bg-gray-50 transition-colors">
+        <CreditCard className="w-5 h-5 text-gray-400 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900">Cartões de Crédito</p>
+          <p className="text-xs text-gray-400">Dia de vencimento da fatura de cada cartão conectado</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+      </Link>
 
       {erro && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{erro}</p>}
 

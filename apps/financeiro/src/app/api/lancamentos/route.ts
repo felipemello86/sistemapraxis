@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma, limitesDoMes, somarMeses } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, limitesDoMes, somarMeses, dataAtualSP, calcularStatusLancamento } from "@praxis/core";
 import { randomUUID } from "crypto";
 
 // CRUD manual de lançamentos (requisito 8 do TaskList / DRE viva). Cobre os
@@ -11,8 +11,13 @@ import { randomUUID } from "crypto";
 //   - recorrente: 1 linha só, marcada `recorrente=true` — a projeção pros
 //     meses seguintes é virtual (ver calcularDre em @praxis/core), nunca
 //     grava linha nova aqui.
+//
+// Desde 05/08/2026 (pedido do Felipe: tela deve virar um extrato de
+// verdade) também calcula `status` (Quitado/Vencido/A Vencer, ver
+// lib/finance/status.ts) e `saldo` corrente por lançamento — este último só
+// quando filtrado por UMA conta específica.
 
-// GET /api/lancamentos?mes=YYYY-MM&pendentes=1&categoriaId=xxx
+// GET /api/lancamentos?mes=YYYY-MM&pendentes=1&categoriaId=xxx&contaBancariaId=xxx
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,10 +29,12 @@ export async function GET(req: NextRequest) {
   const mes = searchParams.get("mes");
   const pendentes = searchParams.get("pendentes") === "1";
   const categoriaId = searchParams.get("categoriaId");
+  const contaBancariaId = searchParams.get("contaBancariaId");
 
   const where: Record<string, unknown> = { tenantId: session.tenantId };
   if (pendentes) where.categoriaId = null;
   if (categoriaId) where.categoriaId = categoriaId;
+  if (contaBancariaId) where.contaBancariaId = contaBancariaId;
 
   if (mes) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
@@ -44,18 +51,53 @@ export async function GET(req: NextRequest) {
     ];
   }
 
+  // Filtrando por uma conta específica sem mês: mostra o extrato inteiro em
+  // ordem cronológica ASCENDENTE (como um extrato de banco de verdade) —
+  // precisa do histórico completo pra calcular o saldo corrente direito.
+  const modoExtrato = Boolean(contaBancariaId) && !mes;
+
   const lancamentos = await prisma.financeLancamento.findMany({
     where,
-    include: { categoria: { select: { nome: true, tipo: true, bloco: { select: { nome: true } } } } },
-    orderBy: { dataVencimento: "desc" },
-    take: 300,
+    include: {
+      categoria: { select: { nome: true, tipo: true, bloco: { select: { nome: true } } } },
+      contaBancaria: { select: { id: true, nome: true, tipo: true } },
+    },
+    orderBy: { dataVencimento: modoExtrato ? "asc" : "desc" },
+    take: modoExtrato ? 2000 : 300,
   });
+
+  const hoje = dataAtualSP();
+
+  // Saldo corrente: só dá pra calcular filtrando por UMA conta (precisa da
+  // âncora FinanceContaBancaria.saldoAtual). Caminha de trás pra frente
+  // (mais recente -> mais antigo) "desfazendo" cada lançamento QUITADO pra
+  // achar o saldo de antes dele; lançamento não-quitado (previsto) não
+  // mexe no saldo real ainda, por definição.
+  const saldoPorId = new Map<string, number | null>();
+  if (contaBancariaId) {
+    const conta = await prisma.financeContaBancaria.findUnique({ where: { id: contaBancariaId } });
+    if (conta?.saldoAtual != null) {
+      let corrente = Number(conta.saldoAtual);
+      const ordenadosDesc = [...lancamentos].sort((a, b) => b.dataVencimento.localeCompare(a.dataVencimento));
+      for (const l of ordenadosDesc) {
+        const status = calcularStatusLancamento({ contaTipo: l.contaBancaria?.tipo, pago: l.pago, dataVencimento: l.dataVencimento, hoje });
+        if (status === "QUITADO") {
+          saldoPorId.set(l.id, corrente);
+          corrente -= Number(l.valor);
+        } else {
+          saldoPorId.set(l.id, null);
+        }
+      }
+    }
+  }
 
   // Achata categoria.bloco.nome -> categoria.bloco (string), mesma
   // convenção de /api/categorias — mantém o shape que as telas já esperam.
   const resposta = lancamentos.map((l) => ({
     ...l,
     categoria: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo, bloco: l.categoria.bloco.nome } : null,
+    status: calcularStatusLancamento({ contaTipo: l.contaBancaria?.tipo, pago: l.pago, dataVencimento: l.dataVencimento, hoje }),
+    saldo: saldoPorId.get(l.id) ?? null,
   }));
 
   return NextResponse.json(resposta);
@@ -68,9 +110,11 @@ type NovoLancamentoBody = {
   tipo: "RECEITA" | "DESPESA";
   valor: number; // magnitude, sempre positivo — o sinal é aplicado aqui a partir de `tipo`
   dataVencimento: string; // YYYY-MM-DD (1ª parcela, se parcelado)
+  dataCompetencia?: string | null;
   parcelas?: number; // > 1 = parcelado
   recorrente?: boolean;
   recorrenciaFimData?: string | null;
+  contaBancariaId?: string | null;
   centroCusto?: string;
   observacoes?: string;
 };
@@ -84,7 +128,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json()) as NovoLancamentoBody;
-  const { descricao, fornecedor, categoriaId, tipo, valor, dataVencimento, parcelas, recorrente, recorrenciaFimData, centroCusto, observacoes } = body;
+  const { descricao, fornecedor, categoriaId, tipo, valor, dataVencimento, dataCompetencia, parcelas, recorrente, recorrenciaFimData, contaBancariaId, centroCusto, observacoes } = body;
 
   if (!descricao?.trim()) return NextResponse.json({ error: "descricao é obrigatória" }, { status: 400 });
   if (tipo !== "RECEITA" && tipo !== "DESPESA") return NextResponse.json({ error: "tipo deve ser RECEITA ou DESPESA" }, { status: 400 });
@@ -102,6 +146,8 @@ export async function POST(req: NextRequest) {
     categoriaId: categoriaId || null,
     descricao: descricao.trim(),
     fornecedor: fornecedor?.trim() || null,
+    dataCompetencia: dataCompetencia || null,
+    contaBancariaId: contaBancariaId || null,
     origem: "MANUAL" as const,
     centroCusto: centroCusto?.trim() || null,
     observacoes: observacoes?.trim() || null,
@@ -152,7 +198,8 @@ export async function POST(req: NextRequest) {
 }
 
 // PATCH /api/lancamentos — edita um lançamento (categorização é o caso mais
-// comum, ver banner de pendentes na tela de DRE)
+// comum, ver banner de pendentes na tela de DRE; também usado pra
+// recorrência, datas, conta e status "pago" via a tela de extrato)
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -160,12 +207,17 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
   }
 
-  const { id, categoriaId, descricao, fornecedor, valor, tipo, dataVencimento, recorrenciaFimData, centroCusto, observacoes } = await req.json();
+  const { id, categoriaId, descricao, fornecedor, valor, tipo, dataVencimento, dataCompetencia, recorrente, recorrenciaFimData, contaBancariaId, pago, centroCusto, observacoes } =
+    await req.json();
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
   const existente = await prisma.financeLancamento.findUnique({ where: { id } });
   if (!existente || existente.tenantId !== session.tenantId) {
     return NextResponse.json({ error: "Lançamento não encontrado" }, { status: 404 });
+  }
+
+  if (recorrente === true && existente.parcelaGrupoId) {
+    return NextResponse.json({ error: "um lançamento parcelado não pode virar recorrente" }, { status: 400 });
   }
 
   // Se valor OU tipo mudou, recalcula o sinal a partir do tipo informado
@@ -186,7 +238,11 @@ export async function PATCH(req: NextRequest) {
         ...(fornecedor !== undefined ? { fornecedor: fornecedor?.trim() || null } : {}),
         ...(novoValor !== undefined ? { valor: novoValor } : {}),
         ...(dataVencimento !== undefined ? { dataVencimento } : {}),
+        ...(dataCompetencia !== undefined ? { dataCompetencia: dataCompetencia || null } : {}),
+        ...(recorrente !== undefined ? { recorrente: Boolean(recorrente) } : {}),
         ...(recorrenciaFimData !== undefined ? { recorrenciaFimData: recorrenciaFimData || null } : {}),
+        ...(contaBancariaId !== undefined ? { contaBancariaId: contaBancariaId || null } : {}),
+        ...(pago !== undefined ? { pago: Boolean(pago) } : {}),
         ...(centroCusto !== undefined ? { centroCusto: centroCusto?.trim() || null } : {}),
         ...(observacoes !== undefined ? { observacoes: observacoes?.trim() || null } : {}),
       },
