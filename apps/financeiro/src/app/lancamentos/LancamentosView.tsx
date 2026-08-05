@@ -1,15 +1,21 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, X, Trash2, Repeat, Layers, ListChecks, Wallet } from "lucide-react";
+import { Plus, X, Trash2, Repeat, Layers, ListChecks, Wallet, ChevronLeft, ChevronRight, ChevronDown, ArrowUp, ArrowDown, Search, Calendar } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { CategorizacaoEmLoteView } from "./CategorizacaoEmLoteView";
 
 // Extrato bancário (pedido do Felipe, 05/08/2026): a tela de Lançamentos
 // deve se parecer com o extrato de um banco de verdade — cronológico,
 // filtrado por conta, com saldo corrente. Sem conta selecionada, cai de
-// volta pro modo "lista geral" (mais recentes primeiro, sem saldo — não dá
-// pra somar saldo de contas diferentes).
+// volta pro modo "lista geral" (sem saldo — não dá pra somar saldo de
+// contas diferentes).
+//
+// Filtros de período (pedido de 05/08/2026, 2ª rodada): dois seletores
+// mutuamente exclusivos — "mensal" (setas prev/next + popover ano/mês) e
+// "período específico" (Ano / Hoje / range customizado). O que estiver
+// ativo manda no fetch; o outro fica esmaecido na UI mas continua clicável
+// pra reassumir.
 
 type Categoria = { id: string; nome: string; tipo: string; bloco: string };
 type ContaBancaria = { id: string; nome: string; tipo: "BANK" | "CREDIT"; saldoAtual: string | null };
@@ -47,6 +53,8 @@ const STATUS_INFO: Record<StatusLancamento, { rotulo: string; cls: string }> = {
   VENCIDO: { rotulo: "Vencido", cls: "bg-red-50 text-red-700" },
 };
 
+const NOMES_MES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
 function formatBRL(v: string | number): string {
   const n = typeof v === "string" ? Number(v) : v;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -56,6 +64,23 @@ function formatDataBR(iso: string | null): string {
   if (!iso) return "—";
   const [ano, mes, dia] = iso.split("-");
   return `${dia}/${mes}/${ano}`;
+}
+
+function mesLabel(mes: string): string {
+  const [ano, m] = mes.split("-").map(Number);
+  return `${NOMES_MES[m - 1]}/${String(ano).slice(2)}`;
+}
+
+function mesAdjacenteLocal(mes: string, delta: number): string {
+  const [ano, m] = mes.split("-").map(Number);
+  const d = new Date(ano, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function limitesDoMesLocal(mes: string): { inicio: string; fim: string } {
+  const [ano, m] = mes.split("-").map(Number);
+  const ultimoDia = new Date(ano, m, 0).getDate();
+  return { inicio: `${mes}-01`, fim: `${mes}-${String(ultimoDia).padStart(2, "0")}` };
 }
 
 const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
@@ -75,6 +100,9 @@ const emptyForm = {
   observacoes: "",
 };
 
+type PeriodoTipo = "mensal" | "ano" | "hoje" | "range";
+type SortField = "data" | "valor";
+
 export function LancamentosView() {
   const searchParams = useSearchParams();
   const somentePendentes = searchParams.get("pendentes") === "1";
@@ -91,14 +119,44 @@ export function LancamentosView() {
   const [modoLote, setModoLote] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
 
+  // Período
+  const [periodoTipo, setPeriodoTipo] = useState<PeriodoTipo>("mensal");
+  const [mes, setMes] = useState(hojeISO.slice(0, 7));
+  const [ano, setAno] = useState(String(Number(hojeISO.slice(0, 4))));
+  const [rangeInicio, setRangeInicio] = useState(hojeISO);
+  const [rangeFim, setRangeFim] = useState(hojeISO);
+  const [mesPopoverAberto, setMesPopoverAberto] = useState(false);
+  const [anoPopoverNav, setAnoPopoverNav] = useState(Number(mes.slice(0, 4)));
+  const [especificoPopoverAberto, setEspecificoPopoverAberto] = useState(false);
+
+  // Ordenação + filtros de coluna
+  const [sortField, setSortField] = useState<SortField>("data");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [filtroDescricao, setFiltroDescricao] = useState("");
+  const [filtroCategorias, setFiltroCategorias] = useState<Set<string>>(new Set());
+  const [filtroStatus, setFiltroStatus] = useState<Set<StatusLancamento>>(new Set());
+  const [descPopoverAberto, setDescPopoverAberto] = useState(false);
+  const [catPopoverAberto, setCatPopoverAberto] = useState(false);
+  const [statusPopoverAberto, setStatusPopoverAberto] = useState(false);
+
   const todasContas = useMemo(() => contasConectadas.flatMap((cc) => cc.contas.map((c) => ({ ...c, instituicao: cc.instituicao }))), [contasConectadas]);
   const contaAtual = todasContas.find((c) => c.id === contaSelecionada) || null;
 
+  function periodoAtual(): { inicio: string; fim: string } {
+    if (periodoTipo === "mensal") return limitesDoMesLocal(mes);
+    if (periodoTipo === "ano") return { inicio: `${ano}-01-01`, fim: `${ano}-12-31` };
+    if (periodoTipo === "hoje") return { inicio: hojeISO, fim: hojeISO };
+    return { inicio: rangeInicio, fim: rangeFim };
+  }
+
   async function carregar() {
     setLoading(true);
+    const { inicio, fim } = periodoAtual();
     const params = new URLSearchParams();
     if (somentePendentes) params.set("pendentes", "1");
     if (contaSelecionada) params.set("contaBancariaId", contaSelecionada);
+    params.set("dataInicio", inicio);
+    params.set("dataFim", fim);
     const [resL, resC, resCt] = await Promise.all([
       apiFetch(`/api/lancamentos?${params.toString()}`),
       apiFetch("/api/categorias"),
@@ -113,7 +171,7 @@ export function LancamentosView() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [somentePendentes, contaSelecionada]);
+  }, [somentePendentes, contaSelecionada, periodoTipo, mes, ano, rangeInicio, rangeFim]);
 
   function abrirNovo() {
     setForm({ ...emptyForm, dataVencimento: hojeISO });
@@ -196,7 +254,53 @@ export function LancamentosView() {
     }
   }
 
+  function alternarSort(campo: SortField) {
+    if (sortField === campo) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortField(campo);
+      setSortDir("desc");
+    }
+  }
+
+  function toggleCategoriaFiltro(id: string) {
+    setFiltroCategorias((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleStatusFiltro(s: StatusLancamento) {
+    setFiltroStatus((prev) => {
+      const next = new Set(prev);
+      next.has(s) ? next.delete(s) : next.add(s);
+      return next;
+    });
+  }
+
+  const listaFiltrada = useMemo(() => {
+    let arr = lancamentos;
+    if (filtroDescricao.trim()) {
+      const q = filtroDescricao.trim().toLowerCase();
+      arr = arr.filter((l) => l.descricao.toLowerCase().includes(q) || (l.fornecedor || "").toLowerCase().includes(q));
+    }
+    if (filtroCategorias.size > 0) arr = arr.filter((l) => l.categoriaId && filtroCategorias.has(l.categoriaId));
+    if (filtroStatus.size > 0) arr = arr.filter((l) => filtroStatus.has(l.status));
+
+    return [...arr].sort((a, b) => {
+      const cmp = sortField === "data" ? a.dataVencimento.localeCompare(b.dataVencimento) : Number(a.valor) - Number(b.valor);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [lancamentos, filtroDescricao, filtroCategorias, filtroStatus, sortField, sortDir]);
+
   const categoriasFiltradas = categorias.filter((c) => c.tipo === form.tipo);
+
+  function rotuloEspecifico(): string {
+    if (periodoTipo === "ano") return `Ano ${ano}`;
+    if (periodoTipo === "hoje") return "Hoje";
+    if (periodoTipo === "range") return `${formatDataBR(rangeInicio)} – ${formatDataBR(rangeFim)}`;
+    return "Período específico";
+  }
 
   if (modoLote) {
     return <CategorizacaoEmLoteView onVoltar={() => { setModoLote(false); carregar(); }} />;
@@ -218,7 +322,7 @@ export function LancamentosView() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Wallet className="w-4 h-4 text-gray-400 flex-shrink-0" />
         <select className="input text-sm py-1.5 max-w-xs" value={contaSelecionada} onChange={(e) => setContaSelecionada(e.target.value)}>
           <option value="">Todas as contas (visão geral)</option>
@@ -228,39 +332,227 @@ export function LancamentosView() {
             </option>
           ))}
         </select>
-        {contaAtual && contaAtual.saldoAtual != null && (
-          <span className="text-xs text-gray-400">saldo atual: {formatBRL(contaAtual.saldoAtual)}</span>
-        )}
+        {contaAtual && contaAtual.saldoAtual != null && <span className="text-xs text-gray-400 mr-1">saldo atual: {formatBRL(contaAtual.saldoAtual)}</span>}
+
+        {/* Seletor de mês */}
+        <div className={`relative flex items-center gap-0.5 border rounded-lg px-1 py-1 transition-opacity ${periodoTipo === "mensal" ? "border-gray-300" : "border-gray-200 opacity-40 hover:opacity-70"}`}>
+          <button
+            onClick={() => {
+              setPeriodoTipo("mensal");
+              setMes((m) => mesAdjacenteLocal(m, -1));
+            }}
+            className="text-gray-400 hover:text-gray-900 p-1"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
+              setPeriodoTipo("mensal");
+              setAnoPopoverNav(Number(mes.slice(0, 4)));
+              setMesPopoverAberto((v) => !v);
+            }}
+            className="text-sm font-medium text-gray-700 px-1 min-w-[84px] text-center"
+          >
+            {mesLabel(mes)}
+          </button>
+          <button
+            onClick={() => {
+              setPeriodoTipo("mensal");
+              setMes((m) => mesAdjacenteLocal(m, 1));
+            }}
+            className="text-gray-400 hover:text-gray-900 p-1"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {mesPopoverAberto && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMesPopoverAberto(false)} />
+              <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-2">
+                  <button onClick={() => setAnoPopoverNav((a) => a - 1)} className="text-gray-400 hover:text-gray-900">
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-sm font-semibold text-gray-900">{anoPopoverNav}</span>
+                  <button onClick={() => setAnoPopoverNav((a) => a + 1)} className="text-gray-400 hover:text-gray-900">
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  {NOMES_MES.map((nome, i) => {
+                    const valor = `${anoPopoverNav}-${String(i + 1).padStart(2, "0")}`;
+                    const ativo = valor === mes;
+                    return (
+                      <button
+                        key={nome}
+                        onClick={() => {
+                          setMes(valor);
+                          setPeriodoTipo("mensal");
+                          setMesPopoverAberto(false);
+                        }}
+                        className={`text-xs py-1.5 rounded ${ativo ? "bg-gray-900 text-white" : "hover:bg-gray-100 text-gray-600"}`}
+                      >
+                        {nome.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Seletor de período específico */}
+        <div className={`relative border rounded-lg px-2.5 py-1.5 transition-opacity ${periodoTipo !== "mensal" ? "border-gray-300" : "border-gray-200 opacity-40 hover:opacity-70"}`}>
+          <button onClick={() => setEspecificoPopoverAberto((v) => !v)} className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+            <Calendar className="w-3.5 h-3.5 text-gray-400" /> {rotuloEspecifico()} <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+          </button>
+
+          {especificoPopoverAberto && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setEspecificoPopoverAberto(false)} />
+              <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64 space-y-3" onClick={(e) => e.stopPropagation()}>
+                <div className="flex gap-1">
+                  {(
+                    [
+                      ["ano", "Ano"],
+                      ["hoje", "Hoje"],
+                      ["range", "Período"],
+                    ] as const
+                  ).map(([tipo, rotulo]) => (
+                    <button
+                      key={tipo}
+                      onClick={() => setPeriodoTipo(tipo)}
+                      className={`flex-1 text-xs py-1.5 rounded border ${periodoTipo === tipo ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 text-gray-600"}`}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+
+                {periodoTipo === "ano" && <input type="number" className="input text-sm py-1.5" value={ano} onChange={(e) => setAno(e.target.value)} />}
+
+                {periodoTipo === "range" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="label">De</label>
+                      <input type="date" className="input text-sm py-1.5" value={rangeInicio} onChange={(e) => setRangeInicio(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="label">Até</label>
+                      <input type="date" className="input text-sm py-1.5" value={rangeFim} onChange={(e) => setRangeFim(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {periodoTipo === "hoje" && <p className="text-xs text-gray-400">Mostrando lançamentos de hoje, {formatDataBR(hojeISO)}.</p>}
+                {periodoTipo === "mensal" && <p className="text-xs text-gray-400">Escolha Ano, Hoje ou Período pra ativar este filtro no lugar do mês.</p>}
+
+                <button onClick={() => setEspecificoPopoverAberto(false)} className="btn-primary w-full text-sm py-1.5">
+                  Fechar
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {loading ? (
         <p className="text-gray-400 text-sm">Carregando...</p>
-      ) : lancamentos.length === 0 ? (
+      ) : listaFiltrada.length === 0 ? (
         <p className="text-gray-400 text-sm">Nenhum lançamento encontrado.</p>
       ) : (
         <div className="card !p-0 overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs text-gray-400">
-                <th className="font-medium px-3 py-2">Data</th>
-                <th className="font-medium px-3 py-2 w-64">Descrição</th>
-                <th className="font-medium px-3 py-2 w-40">Categoria</th>
-                <th className="font-medium px-3 py-2">Status</th>
-                <th className="font-medium px-3 py-2 text-right">Valor</th>
-                <th className="font-medium px-3 py-2 text-right">Saldo</th>
+                <th className="font-medium px-2 py-2 w-[76px] cursor-pointer select-none whitespace-nowrap" onClick={() => alternarSort("data")}>
+                  <span className="inline-flex items-center gap-0.5">
+                    Data {sortField === "data" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                  </span>
+                </th>
+                <th className="relative font-medium px-2 py-2 cursor-pointer select-none" onClick={() => setDescPopoverAberto((v) => !v)}>
+                  <span className={filtroDescricao ? "text-blue-700" : ""}>Descrição</span>
+                  {filtroDescricao && <Search className="inline w-3 h-3 ml-1 text-blue-600" />}
+                  {descPopoverAberto && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setDescPopoverAberto(false)} />
+                      <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56 normal-case font-normal" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          autoFocus
+                          className="input text-xs py-1.5"
+                          placeholder="Buscar descrição/fornecedor..."
+                          value={filtroDescricao}
+                          onChange={(e) => setFiltroDescricao(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+                </th>
+                <th className="relative font-medium px-2 py-2 w-40 cursor-pointer select-none" onClick={() => setCatPopoverAberto((v) => !v)}>
+                  <span className={filtroCategorias.size > 0 ? "text-blue-700" : ""}>Categoria{filtroCategorias.size > 0 ? ` (${filtroCategorias.size})` : ""}</span>
+                  {catPopoverAberto && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setCatPopoverAberto(false)} />
+                      <div
+                        className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56 max-h-72 overflow-y-auto normal-case font-normal"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {filtroCategorias.size > 0 && (
+                          <button onClick={() => setFiltroCategorias(new Set())} className="text-xs text-blue-600 hover:underline mb-1">
+                            Limpar filtro
+                          </button>
+                        )}
+                        {categorias.map((c) => (
+                          <label key={c.id} className="flex items-center gap-1.5 text-xs py-1 cursor-pointer hover:bg-gray-50 px-1 rounded">
+                            <input type="checkbox" checked={filtroCategorias.has(c.id)} onChange={() => toggleCategoriaFiltro(c.id)} />
+                            {c.nome}
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </th>
+                <th className="relative font-medium px-2 py-2 w-[92px] cursor-pointer select-none" onClick={() => setStatusPopoverAberto((v) => !v)}>
+                  <span className={filtroStatus.size > 0 ? "text-blue-700" : ""}>Status</span>
+                  {statusPopoverAberto && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setStatusPopoverAberto(false)} />
+                      <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-36 normal-case font-normal" onClick={(e) => e.stopPropagation()}>
+                        {filtroStatus.size > 0 && (
+                          <button onClick={() => setFiltroStatus(new Set())} className="text-xs text-blue-600 hover:underline mb-1">
+                            Limpar filtro
+                          </button>
+                        )}
+                        {(["VENCIDO", "A_VENCER", "QUITADO"] as const).map((s) => (
+                          <label key={s} className="flex items-center gap-1.5 text-xs py-1 cursor-pointer hover:bg-gray-50 px-1 rounded">
+                            <input type="checkbox" checked={filtroStatus.has(s)} onChange={() => toggleStatusFiltro(s)} />
+                            {STATUS_INFO[s].rotulo}
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </th>
+                <th className="font-medium px-2 py-2 w-28 text-right cursor-pointer select-none whitespace-nowrap" onClick={() => alternarSort("valor")}>
+                  <span className="inline-flex items-center gap-0.5">
+                    Valor {sortField === "valor" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                  </span>
+                </th>
+                <th className="font-medium px-2 py-2 w-28 text-right">Saldo</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
             <tbody>
-              {lancamentos.map((l) => {
+              {listaFiltrada.map((l) => {
                 const valorNum = Number(l.valor);
                 const status = STATUS_INFO[l.status];
                 return (
                   <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50/70 last:border-0">
-                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap cursor-pointer" onClick={() => setEditando(l)}>
+                    <td className="px-2 py-2 text-gray-500 whitespace-nowrap cursor-pointer" onClick={() => setEditando(l)}>
                       {formatDataBR(l.dataVencimento)}
                     </td>
-                    <td className="px-3 py-2 cursor-pointer max-w-0" onClick={() => setEditando(l)} title={l.descricao}>
+                    <td className="px-2 py-2 cursor-pointer" onClick={() => setEditando(l)} title={l.descricao}>
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="font-medium text-gray-900 truncate">{l.descricao}</span>
                         {l.recorrente && (
@@ -276,12 +568,12 @@ export function LancamentosView() {
                       </div>
                       {l.fornecedor && <p className="text-xs text-gray-400 truncate">{l.fornecedor}</p>}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       {!l.categoriaId ? (
                         <select
                           onChange={(e) => e.target.value && categorizar(l.id, e.target.value)}
                           defaultValue=""
-                          className="text-xs border border-amber-300 bg-amber-50 rounded px-2 py-1 w-40"
+                          className="text-xs border border-amber-300 bg-amber-50 rounded px-2 py-1 w-full"
                         >
                           <option value="" disabled>
                             Categorizar...
@@ -296,7 +588,7 @@ export function LancamentosView() {
                         <select
                           value={l.categoriaId}
                           onChange={(e) => e.target.value && categorizar(l.id, e.target.value)}
-                          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 w-40"
+                          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 w-full"
                         >
                           {categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA")).map((c) => (
                             <option key={c.id} value={c.id}>
@@ -306,11 +598,11 @@ export function LancamentosView() {
                         </select>
                       )}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="px-2 py-2 whitespace-nowrap">
                       <span className={`inline-block text-[11px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap ${status.cls}`}>{status.rotulo}</span>
                     </td>
-                    <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(l.valor)}</td>
-                    <td className="px-3 py-2 text-right text-gray-500 whitespace-nowrap">{l.saldo != null ? formatBRL(l.saldo) : "—"}</td>
+                    <td className={`px-2 py-2 text-right font-semibold whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(l.valor)}</td>
+                    <td className="px-2 py-2 text-right text-gray-500 whitespace-nowrap">{l.saldo != null ? formatBRL(l.saldo) : "—"}</td>
                     <td className="px-2 py-2">
                       <button onClick={() => excluir(l)} className="text-gray-300 hover:text-red-600" title="Excluir">
                         <Trash2 className="w-3.5 h-3.5" />

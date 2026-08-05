@@ -17,7 +17,7 @@ import { randomUUID } from "crypto";
 // lib/finance/status.ts) e `saldo` corrente por lançamento — este último só
 // quando filtrado por UMA conta específica.
 
-// GET /api/lancamentos?mes=YYYY-MM&pendentes=1&categoriaId=xxx&contaBancariaId=xxx
+// GET /api/lancamentos?mes=YYYY-MM&dataInicio=YYYY-MM-DD&dataFim=YYYY-MM-DD&pendentes=1&categoriaId=xxx&contaBancariaId=xxx
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const mes = searchParams.get("mes");
+  const dataInicioParam = searchParams.get("dataInicio");
+  const dataFimParam = searchParams.get("dataFim");
   const pendentes = searchParams.get("pendentes") === "1";
   const categoriaId = searchParams.get("categoriaId");
   const contaBancariaId = searchParams.get("contaBancariaId");
@@ -36,25 +38,38 @@ export async function GET(req: NextRequest) {
   if (categoriaId) where.categoriaId = categoriaId;
   if (contaBancariaId) where.contaBancariaId = contaBancariaId;
 
+  // Período pode vir como `mes` (legado, YYYY-MM) ou como range explícito
+  // (dataInicio/dataFim — usado pelos seletores de Ano/Hoje/Período
+  // específico da tela de extrato).
+  let inicio: string | null = null;
+  let fim: string | null = null;
   if (mes) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
       return NextResponse.json({ error: `Mês inválido: "${mes}" (esperado YYYY-MM)` }, { status: 400 });
     }
-    const { inicio, fim } = limitesDoMes(mes);
-    // Lançamentos "reais" do mês (não recorrentes) OU raízes de
-    // recorrência já vigentes nesse mês (dataVencimento <= fim do mês,
-    // ainda sem ter acabado). Só mostra a LINHA raiz aqui (não projeta
-    // ocorrências virtuais) — CRUD só faz sentido em cima de linhas reais.
+    ({ inicio, fim } = limitesDoMes(mes));
+  } else if (dataInicioParam && dataFimParam) {
+    inicio = dataInicioParam;
+    fim = dataFimParam;
+  }
+
+  // Quando filtra por UMA conta, o saldo corrente exige o HISTÓRICO
+  // COMPLETO da conta na query (a âncora é o saldo de HOJE — pra achar o
+  // saldo no início de um período passado, precisa caminhar por tudo que
+  // aconteceu entre hoje e aquele período, não só pelo período em si). Por
+  // isso: com conta selecionada, o período só é aplicado DEPOIS, filtrando
+  // a resposta já calculada — nunca na query.
+  const aplicarPeriodoNaQuery = !contaBancariaId;
+  if (inicio && fim && aplicarPeriodoNaQuery) {
+    // Lançamentos "reais" do período (não recorrentes) OU raízes de
+    // recorrência já vigentes (dataVencimento <= fim, ainda sem ter
+    // acabado). Só mostra a LINHA raiz aqui (não projeta ocorrências
+    // virtuais) — CRUD só faz sentido em cima de linhas reais.
     where.OR = [
       { recorrente: false, dataVencimento: { gte: inicio, lte: fim } },
       { recorrente: true, dataVencimento: { lte: fim }, OR: [{ recorrenciaFimData: null }, { recorrenciaFimData: { gte: inicio } }] },
     ];
   }
-
-  // Filtrando por uma conta específica sem mês: mostra o extrato inteiro em
-  // ordem cronológica ASCENDENTE (como um extrato de banco de verdade) —
-  // precisa do histórico completo pra calcular o saldo corrente direito.
-  const modoExtrato = Boolean(contaBancariaId) && !mes;
 
   const lancamentos = await prisma.financeLancamento.findMany({
     where,
@@ -62,8 +77,8 @@ export async function GET(req: NextRequest) {
       categoria: { select: { nome: true, tipo: true, bloco: { select: { nome: true } } } },
       contaBancaria: { select: { id: true, nome: true, tipo: true } },
     },
-    orderBy: { dataVencimento: modoExtrato ? "asc" : "desc" },
-    take: modoExtrato ? 2000 : 300,
+    orderBy: { dataVencimento: "desc" },
+    take: 5000,
   });
 
   const hoje = dataAtualSP();
@@ -72,7 +87,9 @@ export async function GET(req: NextRequest) {
   // âncora FinanceContaBancaria.saldoAtual). Caminha de trás pra frente
   // (mais recente -> mais antigo) "desfazendo" cada lançamento QUITADO pra
   // achar o saldo de antes dele; lançamento não-quitado (previsto) não
-  // mexe no saldo real ainda, por definição.
+  // mexe no saldo real ainda, por definição. Roda sobre o histórico
+  // COMPLETO (não o período filtrado) — o filtro de período só corta a
+  // lista DEPOIS que os saldos já estão certos.
   const saldoPorId = new Map<string, number | null>();
   if (contaBancariaId) {
     const conta = await prisma.financeContaBancaria.findUnique({ where: { id: contaBancariaId } });
@@ -93,12 +110,20 @@ export async function GET(req: NextRequest) {
 
   // Achata categoria.bloco.nome -> categoria.bloco (string), mesma
   // convenção de /api/categorias — mantém o shape que as telas já esperam.
-  const resposta = lancamentos.map((l) => ({
+  let resposta = lancamentos.map((l) => ({
     ...l,
     categoria: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo, bloco: l.categoria.bloco.nome } : null,
     status: calcularStatusLancamento({ contaTipo: l.contaBancaria?.tipo, pago: l.pago, dataVencimento: l.dataVencimento, hoje }),
     saldo: saldoPorId.get(l.id) ?? null,
   }));
+
+  // Período ainda não aplicado (caso de conta selecionada) — filtra agora,
+  // já com status/saldo corretos calculados sobre o histórico completo.
+  if (inicio && fim && !aplicarPeriodoNaQuery) {
+    resposta = resposta.filter((l) =>
+      !l.recorrente ? l.dataVencimento >= inicio! && l.dataVencimento <= fim! : l.dataVencimento <= fim! && (!l.recorrenciaFimData || l.recorrenciaFimData >= inicio!)
+    );
+  }
 
   return NextResponse.json(resposta);
 }
