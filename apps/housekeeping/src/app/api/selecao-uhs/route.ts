@@ -685,7 +685,10 @@ export async function PATCH(req: NextRequest) {
 
     const assignment = await prisma.dailyAssignment.findUnique({
       where: { id: assignmentId },
-      select: { id: true, uhId: true, camareiraId: true, status: true },
+      select: {
+        id: true, uhId: true, camareiraId: true, status: true,
+        cleaningSession: { select: { inspection: { select: { finalizadaEm: true } } } },
+      },
     });
     if (!assignment) return NextResponse.json({ error: "Atribuição não encontrada" }, { status: 404 });
 
@@ -693,31 +696,51 @@ export async function PATCH(req: NextRequest) {
 
     const agora = new Date();
 
-    await prisma.cleaningSession.upsert({
-      where: { assignmentId: assignment.id },
-      create: {
-        assignmentId: assignment.id,
-        uhId: assignment.uhId,
-        camareiraId: assignment.camareiraId,
-        iniciadaEm: agora,
-        finalizadaEm: agora,
-        duracaoSegundos: 0,
-        excluidoDoScore: true,
-        justificativaExclusao: justificativa.trim(),
-      },
-      update: {
-        finalizadaEm: agora,
-        duracaoSegundos: 0,
-        excluidoDoScore: true,
-        justificativaExclusao: justificativa.trim(),
-      },
-    });
+    // Bug encontrado pelo Felipe (05/08/2026): existe um caso em que a
+    // Governanta já tinha inspecionado a UH (InspectionSession finalizada)
+    // antes de alguém clicar em "Limpeza sem Registro" — a Atribuição tinha
+    // ficado presa num status anterior por algum outro motivo. Nesse caso
+    // NÃO criamos/sobrescrevemos a CleaningSession (ela é real, a Governanta
+    // já a usou pra inspecionar — zerar a duração e marcar
+    // excluidoDoScore=true aqui penalizaria a camareira por um trabalho já
+    // validado), só corrigimos o status pra bater com o que já aconteceu de
+    // verdade. Sem isso o card ficava "empancado" na coluna Inspeção do
+    // Quadro (Tempo Real) mesmo já tendo o evento "C" registrado.
+    const inspecaoJaFinalizada = !!assignment.cleaningSession?.inspection?.finalizadaEm;
 
-    await prisma.dailyAssignment.update({
-      where: { id: assignment.id },
-      data: { status: "CONCLUIDO" },
-    });
-    await prisma.uH.update({ where: { id: assignment.uhId }, data: { status: "AGUARDANDO_INSPECAO" } });
+    if (inspecaoJaFinalizada) {
+      await prisma.dailyAssignment.update({
+        where: { id: assignment.id },
+        data: { status: "INSPECIONADO" },
+      });
+      await prisma.uH.update({ where: { id: assignment.uhId }, data: { status: "PRONTO" } });
+    } else {
+      await prisma.cleaningSession.upsert({
+        where: { assignmentId: assignment.id },
+        create: {
+          assignmentId: assignment.id,
+          uhId: assignment.uhId,
+          camareiraId: assignment.camareiraId,
+          iniciadaEm: agora,
+          finalizadaEm: agora,
+          duracaoSegundos: 0,
+          excluidoDoScore: true,
+          justificativaExclusao: justificativa.trim(),
+        },
+        update: {
+          finalizadaEm: agora,
+          duracaoSegundos: 0,
+          excluidoDoScore: true,
+          justificativaExclusao: justificativa.trim(),
+        },
+      });
+
+      await prisma.dailyAssignment.update({
+        where: { id: assignment.id },
+        data: { status: "CONCLUIDO" },
+      });
+      await prisma.uH.update({ where: { id: assignment.uhId }, data: { status: "AGUARDANDO_INSPECAO" } });
+    }
 
     await emitEvent({
       tenantId,
