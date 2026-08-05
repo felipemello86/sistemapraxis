@@ -157,13 +157,30 @@ export type PluggyTransaction = {
 };
 
 /** Busca transações de uma conta, opcionalmente só a partir de uma data
- * (ISO) — usado na varredura diária pra não reprocessar o histórico
- * inteiro toda vez. */
+ * (YYYY-MM-DD), usado na varredura diária pra não reprocessar o histórico
+ * inteiro toda vez.
+ *
+ * `/transactions` (v1, por página) foi desativado pela Pluggy — descoberto
+ * em produção (05/08/2026): "410 ENDPOINT_DEPRECATED — Use GET
+ * /v2/transactions with cursor pagination instead". `/v2/transactions` usa
+ * paginação por cursor (`after`, vindo do campo `next` da resposta
+ * anterior) em vez de página numerada — por isso o loop abaixo, seguindo a
+ * própria recomendação da doc de paginar o máximo por chamada (500) e
+ * repetir enquanto houver `next`. */
 export async function listarTransacoes(accountId: string, desde?: string): Promise<PluggyTransaction[]> {
-  const query = new URLSearchParams({ accountId, pageSize: "500" });
-  if (desde) query.set("from", desde);
-  const data = await pluggyFetch<{ results: PluggyTransaction[] }>(`/transactions?${query.toString()}`);
-  return data.results;
+  const todas: PluggyTransaction[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const query = new URLSearchParams({ accountId });
+    if (desde) query.set("dateFrom", desde);
+    if (cursor) query.set("after", cursor);
+    const data: { results: PluggyTransaction[]; next: string | null } = await pluggyFetch(`/v2/transactions?${query.toString()}`);
+    todas.push(...data.results);
+    cursor = data.next;
+  } while (cursor);
+
+  return todas;
 }
 
 // ---- Varredura diária → FinanceLancamento ----------------------------------

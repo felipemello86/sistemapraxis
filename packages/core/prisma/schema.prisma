@@ -1281,6 +1281,14 @@ model Review {
 
   stage          ReviewStage @default(RECEBIDA)
   skippedToFinal Boolean     @default(false) // nota alta movida direto pra Finalizadas
+  // "Finalizar Direto" pra avaliações que NÃO são nota máxima — pedido do
+  // Felipe (05/08/2026): pulam de Avaliação Recebida direto pra Finalizadas
+  // sem passar por Execução/Avaliação da Eficácia, mas exigindo ao menos 1
+  // categoria informada (ver finalizeDirectComCategoriaAction). Campo
+  // separado de skippedToFinal de propósito — aquele é reservado pro atalho
+  // de nota máxima (>= FINAL_THRESHOLD) e o ReviewCard mostra um badge que
+  // diz literalmente "Nota máxima", o que seria enganoso aqui.
+  finalizadaDiretoComCategoria Boolean @default(false)
 
   analysisDueAt       DateTime? // prazo de 2 dias úteis para iniciar análise
   analyzedById        String?

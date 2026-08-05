@@ -73,6 +73,7 @@ export default async function TratamentoPage() {
     checkInDate: r.checkInDate?.toISOString() ?? null,
     stage: r.stage,
     skippedToFinal: r.skippedToFinal,
+    finalizadaDiretoComCategoria: r.finalizadaDiretoComCategoria,
     analysisDueAt: r.analysisDueAt?.toISOString() ?? null,
     attendants: r.attendants.map((a) => ({
       attendantId: a.attendantId,

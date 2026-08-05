@@ -151,6 +151,64 @@ async function moveDirectToFinalActionImpl(reviewId: string) {
   revalidatePath("/tratamento");
 }
 
+export type FinalizeDirectWithCategoryInput = {
+  reviewId: string;
+  categoryIds: string[];
+};
+
+// "Finalizar Direto" pra avaliações que NÃO são nota máxima — pedido do
+// Felipe (05/08/2026). Diferente de moveDirectToFinalActionImpl (reservado
+// pra nota máxima, sem exigir nada), este atalho exige ao menos 1 categoria
+// informada antes de pular Análise & Planejamento / Execução / Avaliação da
+// Eficácia inteiras. Não pede atendente nem plano de ação/eficácia — só a
+// categorização, exatamente o mínimo pedido.
+async function finalizeDirectComCategoriaActionImpl(input: FinalizeDirectWithCategoryInput) {
+  const session = await requireRole("GERENTE", "MASTER");
+  const review = await prisma.review.findFirstOrThrow({
+    where: { id: input.reviewId, tenantId: session.tenantId },
+  });
+
+  if (review.stage !== "RECEBIDA") {
+    throw new Error('Esse atalho só está disponível enquanto o card está em "Avaliação Recebida".');
+  }
+  if (review.ratingNormalized >= FINAL_THRESHOLD) {
+    throw new Error('Avaliações com nota máxima já usam o atalho "Finalizar Direto" sem exigir categorização.');
+  }
+  if (input.categoryIds.length === 0) {
+    throw new Error("Selecione ao menos uma categoria antes de finalizar direto.");
+  }
+
+  await prisma.$transaction([
+    prisma.reviewCategory.deleteMany({ where: { reviewId: review.id } }),
+    prisma.reviewCategory.createMany({
+      data: input.categoryIds.map((categoryId) => ({ reviewId: review.id, categoryId })),
+    }),
+    prisma.review.update({
+      where: { id: review.id },
+      data: { stage: "FINALIZADA", finalizadaDiretoComCategoria: true },
+    }),
+  ]);
+
+  await logReviewEvent(
+    review.id,
+    session.userId,
+    "FINALIZADA_DIRETO_CATEGORIA",
+    "Finalizada direto a partir de Avaliação Recebida, com categorização informada (sem plano de ação/eficácia)."
+  );
+
+  await logAlert({
+    tenantId: session.tenantId,
+    type: "CARD_FINALIZADO",
+    message: `Avaliação de ${review.guestName} (nota ${review.ratingNormalized.toFixed(2)}) finalizada direto, com categorização informada.`,
+    targetUserIds: [],
+    reviewId: review.id,
+  });
+
+  revalidatePath("/tratamento");
+  revalidatePath("/dashboard");
+  revalidatePath("/desempenho");
+}
+
 export type SaveAnalysisInput = {
   reviewId: string;
   attendants: { attendantId: string; score: number; observation: string }[];
@@ -1201,6 +1259,9 @@ export async function startAnalysisAction(reviewId: string) {
 }
 export async function moveDirectToFinalAction(reviewId: string) {
   return safeAction(moveDirectToFinalActionImpl)(reviewId);
+}
+export async function finalizeDirectComCategoriaAction(input: FinalizeDirectWithCategoryInput) {
+  return safeAction(finalizeDirectComCategoriaActionImpl)(input);
 }
 export async function saveAnalysisAction(input: SaveAnalysisInput) {
   return safeAction(saveAnalysisActionImpl)(input);

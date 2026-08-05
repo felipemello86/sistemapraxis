@@ -53,6 +53,15 @@ export function ReviewCard({
           Nota máxima · finalizada automaticamente
         </div>
       )}
+      {review.finalizadaDiretoComCategoria && (
+        // Distinto do badge verde acima de propósito — essa finalização NÃO
+        // teve nota máxima, só pulou as etapas com categorização informada
+        // (pedido do Felipe, 05/08/2026). Cor azul evita sugerir "avaliação
+        // perfeita".
+        <div className="mt-2 text-[11px] text-blue-600 font-medium">
+          Finalizada direto · categorização informada
+        </div>
+      )}
     </button>
   );
 }

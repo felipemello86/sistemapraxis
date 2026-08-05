@@ -25,6 +25,10 @@ export type KanbanReview = {
   checkInDate: string | null;
   stage: string;
   skippedToFinal: boolean;
+  // "Finalizar Direto" pra notas que não são máximas — pulou de Avaliação
+  // Recebida pra Finalizadas com só a categorização informada, sem plano de
+  // ação/eficácia. Ver comentário no schema (Review.finalizadaDiretoComCategoria).
+  finalizadaDiretoComCategoria: boolean;
   analysisDueAt: string | null;
   attendants: { attendantId: string; name: string; score: number; observation: string }[];
   categoryIds: string[];

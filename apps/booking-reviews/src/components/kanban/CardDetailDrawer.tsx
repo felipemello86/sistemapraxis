@@ -12,6 +12,7 @@ import {
   deleteManagerialNoteAction,
   deleteReviewAction,
   deleteReviewAttachmentAction,
+  finalizeDirectComCategoriaAction,
   finalizeFiveStarAnalysisAction,
   finalizeReviewAction,
   moveDirectToFinalAction,
@@ -46,6 +47,7 @@ const LOG_ACTION_LABEL: Record<string, string> = {
   ANALISE_CONCLUIDA: "Análise & Planejamento concluída",
   FINALIZADA_AUTOMATICA: "Finalizada automaticamente (nota máxima)",
   FINALIZADA_NOTA_MAXIMA: "Finalizada (nota máxima)",
+  FINALIZADA_DIRETO_CATEGORIA: "Finalizada direto (categorização informada)",
   PLANEJAMENTO_REABERTO: "Planejamento reaberto para edição",
   PLANEJAMENTO_REJEITADO: "Planejamento rejeitado",
   EXECUCAO_CONCLUIDA: "Execução concluída",
@@ -311,14 +313,69 @@ export function CardDetailDrawer({
             >
               Iniciar Análise & Planejamento
             </button>
-            {review.ratingNormalized >= FINAL_THRESHOLD && (
+            {review.ratingNormalized >= FINAL_THRESHOLD ? (
+              // Nota máxima — atalho livre, sem exigir nada (ver
+              // moveDirectToFinalAction). Rótulo alinhado ao pedido do
+              // Felipe (05/08/2026: "Finalizar Direto"); o threshold
+              // (FINAL_THRESHOLD = 4,75, não 5,0 cravado) foi mantido de
+              // propósito — cobre notas da Booking que normalizam pra
+              // 4,8/4,9 e já eram tratadas como nota máxima antes desse
+              // pedido.
               <button
                 disabled={isPending}
                 onClick={() => run(() => moveDirectToFinalAction(review.id))}
                 className="w-full rounded-md border border-green-300 text-green-700 text-sm font-medium py-2 hover:bg-green-50 disabled:opacity-60"
               >
-                Nota máxima — mover direto para Finalizadas
+                Finalizar Direto
               </button>
+            ) : (
+              // Nota não-máxima — mesmo atalho "Finalizar Direto", mas só
+              // libera depois de informar ao menos 1 categoria (pedido
+              // explícito do Felipe, 05/08/2026: "para as demais, o usuário
+              // tem que pelo menos informar a categorização"). Sem plano de
+              // ação/eficácia — esses continuam exigidos só no fluxo
+              // completo (Iniciar Análise & Planejamento acima).
+              <div className="border border-slate-200 rounded-md p-3 space-y-2.5">
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                    Finalizar Direto
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Pula Análise & Planejamento, Execução e Avaliação da Eficácia — exige ao menos
+                    uma categoria.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex items-center gap-1.5 text-sm border border-slate-200 rounded-full px-3 py-1 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={categoryIds.includes(c.id)}
+                        onChange={() =>
+                          setCategoryIds((prev) =>
+                            prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]
+                          )
+                        }
+                      />
+                      {c.name}
+                    </label>
+                  ))}
+                </div>
+                <button
+                  disabled={isPending || categoryIds.length === 0}
+                  onClick={() =>
+                    run(() =>
+                      finalizeDirectComCategoriaAction({ reviewId: review.id, categoryIds })
+                    )
+                  }
+                  className="w-full rounded-md border border-green-300 text-green-700 text-sm font-medium py-2 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Finalizar Direto
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -678,6 +735,29 @@ export function CardDetailDrawer({
             <p className="text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
               Avaliação finalizada.
             </p>
+            {review.finalizadaDiretoComCategoria && (
+              // Finalizada via atalho "Finalizar Direto" (nota não-máxima) —
+              // não passou por plano de ação/eficácia, então mostramos as
+              // categorias informadas aqui pra manter alguma rastreabilidade
+              // (pedido do Felipe, 05/08/2026).
+              <div>
+                <h4 className="font-semibold text-slate-700 mb-1">
+                  Categorização (Finalizar Direto)
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {categories
+                    .filter((c) => review.categoryIds.includes(c.id))
+                    .map((c) => (
+                      <span
+                        key={c.id}
+                        className="text-xs border border-slate-200 rounded-full px-2.5 py-1"
+                      >
+                        {c.name}
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )}
             {review.attendants.length > 0 && (
               <div>
                 <h4 className="font-semibold text-slate-700 mb-1">Atendentes avaliadas</h4>
