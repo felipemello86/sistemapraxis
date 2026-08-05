@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, X, Trash2, Repeat, Layers } from "lucide-react";
+import { Plus, X, Trash2, Repeat, Layers, ListChecks } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { CategorizacaoEmLoteView } from "./CategorizacaoEmLoteView";
 
 type Categoria = { id: string; nome: string; tipo: string; bloco: string };
 
@@ -59,6 +60,7 @@ export function LancamentosView() {
   const [form, setForm] = useState(emptyForm);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [modoLote, setModoLote] = useState(false);
 
   async function carregar() {
     setLoading(true);
@@ -134,15 +136,24 @@ export function LancamentosView() {
 
   const categoriasFiltradas = categorias.filter((c) => c.tipo === form.tipo);
 
+  if (modoLote) {
+    return <CategorizacaoEmLoteView onVoltar={() => { setModoLote(false); carregar(); }} />;
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-bold text-gray-900">
           Lançamentos {somentePendentes && <span className="text-amber-600 font-medium text-sm">— sem categoria</span>}
         </h1>
-        <button onClick={abrirNovo} className="btn-primary flex items-center gap-1.5 text-sm">
-          <Plus className="w-4 h-4" /> Novo
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setModoLote(true)} className="flex items-center gap-1.5 text-sm border border-gray-300 rounded-lg px-3 py-1.5 text-gray-700 hover:bg-gray-50">
+            <ListChecks className="w-4 h-4" /> Categorizar em lote
+          </button>
+          <button onClick={abrirNovo} className="btn-primary flex items-center gap-1.5 text-sm">
+            <Plus className="w-4 h-4" /> Novo
+          </button>
+        </div>
       </div>
 
       {loading ? (
