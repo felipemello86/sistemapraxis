@@ -121,6 +121,7 @@ model Tenant {
   // Financeiro (DRE viva) — pedido do Felipe (05/08/2026), ver bloco de
   // models no fim do arquivo. Módulo habilitado só pro tenant bnbflex por
   // enquanto (ver TenantModule), mas já nasce multi-tenant-ready.
+  financeBlocos           FinanceBloco[]
   financeCategorias       FinanceCategoria[]
   financeLancamentos      FinanceLancamento[]
   financeOrcamentos       FinanceOrcamento[]
@@ -2861,12 +2862,14 @@ model PaymentEvent {
 // modeladas em cima da estrutura real da planilha "DRE Julho 2026.xlsx" que
 // ele já usa hoje (exportada do Conta Azul, que está sendo aposentado).
 //
-// Fórmula da DRE (fixa, replicada em lib/finance/dre.ts — os "blocos" abaixo
-// são o vocabulário usado pra montá-la):
-//   Margem Bruta      = RECEITA_BRUTA + GASTOS_VARIAVEIS + DESPESAS_VEICULOS
-//   Despesas          = DESPESAS_FUNCIONARIOS + DESPESAS_ADMINISTRATIVAS + DESPESAS_SEDE
+// Fórmula da DRE (os 4 totais abaixo são fixos por decisão explícita do
+// Felipe, 05/08/2026 — o que É customizável pelo tenant, via tela de
+// Configurações, é a composição: quais FinanceBloco entram em cada total e
+// se somam ou subtraem. Ver lib/finance/dre.ts pro cálculo real):
+//   Margem Bruta      = Σ FinanceBloco com totalizador=MARGEM_BRUTA (×sinal)
+//   Despesas          = Σ FinanceBloco com totalizador=DESPESAS (×sinal)
 //   Geração de Caixa  = Margem Bruta + Despesas
-//   Lucro/Prejuízo    = Geração de Caixa + DESPESAS_DIRETORIA + FINANCEIRAS
+//   Lucro/Prejuízo    = Geração de Caixa + Σ FinanceBloco com totalizador=LUCRO_PREJUIZO_EXTRA (×sinal)
 //
 // Referência temporal: TUDO se organiza pela Data de Vencimento (regra
 // explícita do Felipe — não é data de competência nem data de pagamento
@@ -2874,6 +2877,42 @@ model PaymentEvent {
 // dataVencimento cai naquele mês, mais a projeção de lançamentos recorrentes
 // (ver FinanceLancamento.recorrente) que ainda não têm uma linha própria
 // naquele mês.
+
+// Super-categoria configurável (pedido do Felipe, 05/08/2026: "categorias,
+// super-categorias e relações de soma e subtração devem ser
+// customizáveis"). Substituiu o enum fixo de 8 blocos que existia antes —
+// agora o tenant cria/renomeia/reordena/apaga blocos livremente na tela de
+// Configurações; o que fica fixo são só os NOMES dos 4 totais finais (ver
+// comentário acima em FinanceCategoria), não os blocos que alimentam cada
+// um.
+model FinanceBloco {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome  String
+  ordem Int    @default(0) // ordem de exibição entre os blocos do mesmo totalizador
+
+  // Em qual dos 4 totais fixos da DRE este bloco entra: MARGEM_BRUTA |
+  // DESPESAS | LUCRO_PREJUIZO_EXTRA (soma direto no Lucro/Prejuízo, depois
+  // da Geração de Caixa — é onde vivem hoje "Despesas com Diretoria" e
+  // "Despesas e Receitas Financeiras", mas o tenant pode reatribuir).
+  totalizador String
+
+  // 1 = soma, -1 = subtrai do totalizador acima. Cada FinanceLancamento já
+  // carrega o sinal certo no valor (despesa negativa) — este campo é uma
+  // inversão EXTRA por cima disso, só pra dar controle explícito na tela de
+  // Configurações sem precisar remexer lançamento por lançamento.
+  sinal Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categorias FinanceCategoria[]
+
+  @@unique([tenantId, nome])
+  @@index([tenantId, totalizador])
+}
 
 model FinanceCategoria {
   id       String @id @default(cuid())
@@ -2883,11 +2922,9 @@ model FinanceCategoria {
   nome String
   tipo String // RECEITA | DESPESA — define o sinal esperado de valor nos lançamentos dessa categoria
 
-  // Bloco da DRE (ver fórmula acima): RECEITA_BRUTA | GASTOS_VARIAVEIS |
-  // DESPESAS_VEICULOS | DESPESAS_FUNCIONARIOS | DESPESAS_ADMINISTRATIVAS |
-  // DESPESAS_SEDE | DESPESAS_DIRETORIA | FINANCEIRAS
-  bloco String
-  ordem Int    @default(0) // ordem de exibição dentro do bloco, herdada da planilha original
+  blocoId String
+  bloco   FinanceBloco @relation(fields: [blocoId], references: [id], onDelete: Restrict) // Restrict: bloco só se apaga vazio (ver Configurações)
+  ordem   Int          @default(0) // ordem de exibição dentro do bloco, herdada da planilha original
 
   ativo Boolean @default(true) // categorias antigas não somem do histórico, só saem do seletor de novos lançamentos
 
@@ -2898,7 +2935,7 @@ model FinanceCategoria {
   orcamentos  FinanceOrcamento[]
 
   @@unique([tenantId, nome])
-  @@index([tenantId, bloco])
+  @@index([tenantId, blocoId])
 }
 
 // Uma conexão (Pluggy "Item") = uma autorização de acesso a uma instituição.
@@ -3020,8 +3057,10 @@ model FinanceLancamento {
 // problema clássico de unique constraint com colunas nulas no Postgres
 // (NULL nunca é igual a NULL, então duas colunas opcionais não bloqueariam
 // duplicata sozinhas). alvoChave é o id de FinanceCategoria (quando
-// alvoTipo=CATEGORIA) ou o nome do bloco (quando alvoTipo=BLOCO) — sem FK
-// de banco pro caso CATEGORIA por causa disso; validado na API.
+// alvoTipo=CATEGORIA) ou o id de FinanceBloco (quando alvoTipo=BLOCO, desde
+// a introdução dos blocos configuráveis — antes era o nome fixo do bloco) —
+// sem FK de banco em nenhum dos dois casos por causa do discriminador;
+// validado na API.
 model FinanceOrcamento {
   id       String @id @default(cuid())
   tenantId String

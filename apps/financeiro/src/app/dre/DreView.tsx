@@ -14,22 +14,6 @@ const MESES_PT = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-// Duplicado de @praxis/core/finance/dre.ts de propósito: este é um
-// componente client, e @praxis/core importa `prisma` (singleton
-// PrismaClient, Node-only) no módulo — importar o pacote inteiro aqui
-// quebraria o bundle do navegador. Só os rótulos, puramente estáticos,
-// precisam existir dos dois lados.
-const DRE_BLOCO_LABELS: Record<string, string> = {
-  RECEITA_BRUTA: "Receita Bruta",
-  GASTOS_VARIAVEIS: "Gastos Variáveis",
-  DESPESAS_VEICULOS: "Despesas com Veículos e Transporte",
-  DESPESAS_FUNCIONARIOS: "Despesas com Funcionários",
-  DESPESAS_ADMINISTRATIVAS: "Despesas Administrativas e Comerciais",
-  DESPESAS_SEDE: "Despesas com Sede e Estrutura",
-  DESPESAS_DIRETORIA: "Despesas com Diretoria",
-  FINANCEIRAS: "Despesas e Receitas Financeiras",
-};
-
 type DreLinha = {
   id: string;
   categoriaId: string | null;
@@ -43,14 +27,14 @@ type DreLinha = {
 type DreCategoria = {
   categoriaId: string;
   nome: string;
-  bloco: string;
   total: string;
   orcado: string | null;
   lancamentos: DreLinha[];
 };
 
 type DreBlocoResumo = {
-  bloco: string;
+  blocoId: string;
+  nome: string;
   total: string;
   orcado: string | null;
   categorias: DreCategoria[];
@@ -60,6 +44,7 @@ type DreResponse = {
   mes: string;
   blocos: DreBlocoResumo[];
   margemBrutaRS: string;
+  margemBrutaPercent: string | null;
   despesasRS: string;
   geracaoDeCaixaRS: string;
   lucroPrejuizoRS: string;
@@ -82,13 +67,14 @@ function labelMes(mes: string): string {
   return `${MESES_PT[mesNum - 1]} de ${ano}`;
 }
 
-function RollupCard({ titulo, valor }: { titulo: string; valor: string }) {
+function RollupCard({ titulo, valor, percent }: { titulo: string; valor: string; percent?: string | null }) {
   const n = Number(valor);
   const positivo = n >= 0;
   return (
     <div className="card">
       <p className="text-xs font-medium text-gray-500 mb-1">{titulo}</p>
       <p className={`text-xl font-bold ${positivo ? "text-green-700" : "text-red-600"}`}>{formatBRL(valor)}</p>
+      {percent != null && <p className="text-xs text-gray-400 mt-0.5">{Number(percent).toFixed(1)}% da receita bruta</p>}
     </div>
   );
 }
@@ -107,7 +93,7 @@ function BlocoCard({ bloco }: { bloco: DreBlocoResumo }) {
     <div className="card">
       <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between text-left">
         <div className="min-w-0">
-          <p className="font-semibold text-sm text-gray-900">{DRE_BLOCO_LABELS[bloco.bloco] ?? bloco.bloco}</p>
+          <p className="font-semibold text-sm text-gray-900">{bloco.nome}</p>
           {pctOrcamento != null && (
             <p className={`text-xs mt-0.5 ${estourou ? "text-red-600" : "text-gray-400"}`}>
               {pctOrcamento.toFixed(0)}% do orçamento ({formatBRL(bloco.orcado!)}){estourou ? " — estourou" : ""}
@@ -202,15 +188,15 @@ export function DreView() {
           )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <RollupCard titulo="Margem Bruta" valor={dre.margemBrutaRS} />
+            <RollupCard titulo="Margem Bruta" valor={dre.margemBrutaRS} percent={dre.margemBrutaPercent} />
             <RollupCard titulo="Despesas" valor={dre.despesasRS} />
-            <RollupCard titulo="Geração de Caixa" valor={dre.geracaoDeCaixaRS} />
+            <RollupCard titulo="Geração de Caixa (Lucro Operacional)" valor={dre.geracaoDeCaixaRS} />
             <RollupCard titulo="Lucro / Prejuízo" valor={dre.lucroPrejuizoRS} />
           </div>
 
           <div className="space-y-2">
             {dre.blocos.map((b) => (
-              <BlocoCard key={b.bloco} bloco={b} />
+              <BlocoCard key={b.blocoId} bloco={b} />
             ))}
           </div>
         </>

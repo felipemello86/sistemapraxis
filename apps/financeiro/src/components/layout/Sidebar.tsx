@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { LineChart, Receipt, Target, Landmark, Menu, X, LayoutGrid, BedDouble, Wrench, Star, Package, UtensilsCrossed, Sparkles } from "lucide-react";
+import { LineChart, Receipt, Target, Landmark, Settings, Menu, X, LayoutGrid, BedDouble, Wrench, Star, Package, UtensilsCrossed, Sparkles } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Mesmo padrão do Sidebar dos demais módulos (ver
@@ -18,6 +18,7 @@ const navItems = [
   { href: "/lancamentos", icon: Receipt,   label: "Lançamentos" },
   { href: "/orcamento",   icon: Target,    label: "Orçamento" },
   { href: "/contas",      icon: Landmark,  label: "Contas conectadas" },
+  { href: "/configuracoes", icon: Settings, label: "Configurações" },
 ];
 
 function hubUrl(tenantSlug: string) {

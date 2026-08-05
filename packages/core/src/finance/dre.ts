@@ -13,47 +13,30 @@
 //      recorrenciaFimData (ou indefinidamente). Nada é gravado no banco pra
 //      isso — é recalculado a cada consulta.
 //
-// Fórmula fixa da DRE (replicada da planilha real do Felipe, verificada
-// aritmeticamente linha a linha em "DRE Julho 2026.xlsx"):
+// Fórmula da DRE (05/08/2026 — desde a introdução dos blocos configuráveis,
+// os NOMES destes 4 totais são fixos, mas a COMPOSIÇÃO é dado, não código:
+// cada FinanceBloco decide, via seu campo `totalizador`, em qual desses 4
+// totais entra, e via `sinal` (1 ou -1) se soma ou subtrai — ver tela de
+// Configurações. Isto substitui o antigo enum fixo DRE_BLOCOS):
 //
-//   Margem Bruta      = RECEITA_BRUTA + GASTOS_VARIAVEIS + DESPESAS_VEICULOS
-//   Despesas          = DESPESAS_FUNCIONARIOS + DESPESAS_ADMINISTRATIVAS + DESPESAS_SEDE
+//   Margem Bruta      = Σ blocos com totalizador=MARGEM_BRUTA (×sinal)
+//   Despesas          = Σ blocos com totalizador=DESPESAS (×sinal)
 //   Geração de Caixa  = Margem Bruta + Despesas
-//   Lucro/Prejuízo    = Geração de Caixa + DESPESAS_DIRETORIA + FINANCEIRAS
+//   Lucro/Prejuízo    = Geração de Caixa + Σ blocos com totalizador=LUCRO_PREJUIZO_EXTRA (×sinal)
 //
-// (Os nomes dos blocos já vêm com sinal embutido no `valor` de cada
-// lançamento — despesa é negativa, receita é positiva — então "somar tudo"
-// é sempre a operação certa, nunca precisa de subtração explícita.)
+// Margem Bruta % = Margem Bruta ÷ (receita operacional bruta), onde
+// "receita operacional bruta" é a soma de tudo que é tipo=RECEITA dentro dos
+// blocos do totalizador MARGEM_BRUTA (ex.: Diárias, Reserva Direta... —
+// exclui receitas financeiras, que vivem em LUCRO_PREJUIZO_EXTRA). Pedido
+// explícito do Felipe, 05/08/2026.
+//
+// (Os valores já vêm com sinal embutido — despesa é negativa, receita é
+// positiva —, então "somar tudo" já é a operação certa a maior parte do
+// tempo; o `sinal` do bloco é uma inversão extra por cima disso, opcional.)
 
 import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
-
-export const DRE_BLOCOS = [
-  "RECEITA_BRUTA",
-  "GASTOS_VARIAVEIS",
-  "DESPESAS_VEICULOS",
-  "DESPESAS_FUNCIONARIOS",
-  "DESPESAS_ADMINISTRATIVAS",
-  "DESPESAS_SEDE",
-  "DESPESAS_DIRETORIA",
-  "FINANCEIRAS",
-] as const;
-
-export type DreBloco = (typeof DRE_BLOCOS)[number];
-
-// Rótulos em pt-BR pra exibição — mesmos nomes da planilha original do
-// Felipe, fonte única pra qualquer tela que precise mostrar um bloco
-// (evita cada componente reinventar essa tradução).
-export const DRE_BLOCO_LABELS: Record<DreBloco, string> = {
-  RECEITA_BRUTA: "Receita Bruta",
-  GASTOS_VARIAVEIS: "Gastos Variáveis",
-  DESPESAS_VEICULOS: "Despesas com Veículos e Transporte",
-  DESPESAS_FUNCIONARIOS: "Despesas com Funcionários",
-  DESPESAS_ADMINISTRATIVAS: "Despesas Administrativas e Comerciais",
-  DESPESAS_SEDE: "Despesas com Sede e Estrutura",
-  DESPESAS_DIRETORIA: "Despesas com Diretoria",
-  FINANCEIRAS: "Despesas e Receitas Financeiras",
-};
+import type { DreTotalizador } from "./categoria-defaults";
 
 const ZERO = new Prisma.Decimal(0);
 
@@ -70,15 +53,20 @@ export interface DreLinhaLancamento {
 export interface DreCategoriaResumo {
   categoriaId: string;
   nome: string;
-  bloco: DreBloco;
+  tipo: string; // RECEITA | DESPESA
+  blocoId: string;
   total: Prisma.Decimal;
   orcado: Prisma.Decimal | null;
   lancamentos: DreLinhaLancamento[];
 }
 
 export interface DreBlocoResumo {
-  bloco: DreBloco;
-  total: Prisma.Decimal;
+  blocoId: string;
+  nome: string;
+  ordem: number;
+  totalizador: DreTotalizador;
+  sinal: number;
+  total: Prisma.Decimal; // já multiplicado pelo `sinal` do bloco
   orcado: Prisma.Decimal | null;
   categorias: DreCategoriaResumo[];
 }
@@ -87,6 +75,7 @@ export interface DreMensal {
   mes: string; // YYYY-MM
   blocos: DreBlocoResumo[];
   margemBrutaRS: Prisma.Decimal;
+  margemBrutaPercent: Prisma.Decimal | null; // null quando não há receita bruta no mês (divisão por zero)
   despesasRS: Prisma.Decimal;
   geracaoDeCaixaRS: Prisma.Decimal;
   lucroPrejuizoRS: Prisma.Decimal;
@@ -178,7 +167,8 @@ function projetarDataNoMes(dataVencimentoRaiz: string, mesAlvo: string): string 
 export async function calcularDre(tenantId: string, mes: string): Promise<DreMensal> {
   const { inicio, fim } = limitesDoMes(mes);
 
-  const [categorias, lancamentosDoMes, candidatosRecorrentes, orcamentosDoMes] = await Promise.all([
+  const [blocosDoTenant, categorias, lancamentosDoMes, candidatosRecorrentes, orcamentosDoMes] = await Promise.all([
+    prisma.financeBloco.findMany({ where: { tenantId }, orderBy: { ordem: "asc" } }),
     prisma.financeCategoria.findMany({ where: { tenantId } }),
     prisma.financeLancamento.findMany({
       where: { tenantId, recorrente: false, dataVencimento: { gte: inicio, lte: fim } },
@@ -226,12 +216,12 @@ export async function calcularDre(tenantId: string, mes: string): Promise<DreMen
   const pendentesCategorizacao = linhas.filter((l) => l.categoriaId === null);
 
   const orcadoPorCategoria = new Map<string, Prisma.Decimal>();
-  const orcadoPorBloco = new Map<DreBloco, Prisma.Decimal>();
+  const orcadoPorBloco = new Map<string, Prisma.Decimal>();
   for (const o of orcamentosDoMes) {
     if (o.alvoTipo === "CATEGORIA") {
       orcadoPorCategoria.set(o.alvoChave, o.valor);
     } else if (o.alvoTipo === "BLOCO") {
-      orcadoPorBloco.set(o.alvoChave as DreBloco, o.valor);
+      orcadoPorBloco.set(o.alvoChave, o.valor);
     }
   }
 
@@ -244,23 +234,23 @@ export async function calcularDre(tenantId: string, mes: string): Promise<DreMen
     linhasPorCategoria.set(l.categoriaId, arr);
   }
 
-  const categoriasPorBloco = new Map<DreBloco, DreCategoriaResumo[]>();
+  const categoriasPorBloco = new Map<string, DreCategoriaResumo[]>();
   for (const [categoriaId, linhasDaCategoria] of linhasPorCategoria) {
     const categoria = categoriaPorId.get(categoriaId);
     if (!categoria) continue; // categoria foi apagada de fato (raro — ver onDelete: SetNull) — ignora, não quebra a DRE
-    const bloco = categoria.bloco as DreBloco;
     const total = linhasDaCategoria.reduce((acc, l) => acc.add(l.valor), ZERO);
     const resumo: DreCategoriaResumo = {
       categoriaId,
       nome: categoria.nome,
-      bloco,
+      tipo: categoria.tipo,
+      blocoId: categoria.blocoId,
       total,
       orcado: orcadoPorCategoria.get(categoriaId) ?? null,
       lancamentos: linhasDaCategoria.sort((a, b) => a.dataEfetiva.localeCompare(b.dataEfetiva)),
     };
-    const arr = categoriasPorBloco.get(bloco) ?? [];
+    const arr = categoriasPorBloco.get(categoria.blocoId) ?? [];
     arr.push(resumo);
-    categoriasPorBloco.set(bloco, arr);
+    categoriasPorBloco.set(categoria.blocoId, arr);
   }
 
   // Ordena categorias dentro de cada bloco pela `ordem` do catálogo (mesma
@@ -269,29 +259,44 @@ export async function calcularDre(tenantId: string, mes: string): Promise<DreMen
     arr.sort((a, b) => (categoriaPorId.get(a.categoriaId)?.ordem ?? 0) - (categoriaPorId.get(b.categoriaId)?.ordem ?? 0));
   }
 
-  const blocos: DreBlocoResumo[] = DRE_BLOCOS.map((bloco) => {
-    const categoriasDoBloco = categoriasPorBloco.get(bloco) ?? [];
-    const total = categoriasDoBloco.reduce((acc, c) => acc.add(c.total), ZERO);
+  const blocos: DreBlocoResumo[] = blocosDoTenant.map((bloco) => {
+    const categoriasDoBloco = categoriasPorBloco.get(bloco.id) ?? [];
+    const totalBruto = categoriasDoBloco.reduce((acc, c) => acc.add(c.total), ZERO);
     return {
-      bloco,
-      total,
-      orcado: orcadoPorBloco.get(bloco) ?? null,
+      blocoId: bloco.id,
+      nome: bloco.nome,
+      ordem: bloco.ordem,
+      totalizador: bloco.totalizador as DreTotalizador,
+      sinal: bloco.sinal,
+      total: totalBruto.mul(bloco.sinal),
+      orcado: orcadoPorBloco.get(bloco.id) ?? null,
       categorias: categoriasDoBloco,
     };
   });
 
-  const totalPorBloco = new Map(blocos.map((b) => [b.bloco, b.total]));
-  const somar = (...nomes: DreBloco[]) => nomes.reduce((acc, b) => acc.add(totalPorBloco.get(b) ?? ZERO), ZERO);
+  const somarPorTotalizador = (totalizador: DreTotalizador) =>
+    blocos.filter((b) => b.totalizador === totalizador).reduce((acc, b) => acc.add(b.total), ZERO);
 
-  const margemBrutaRS = somar("RECEITA_BRUTA", "GASTOS_VARIAVEIS", "DESPESAS_VEICULOS");
-  const despesasRS = somar("DESPESAS_FUNCIONARIOS", "DESPESAS_ADMINISTRATIVAS", "DESPESAS_SEDE");
+  const margemBrutaRS = somarPorTotalizador("MARGEM_BRUTA");
+  const despesasRS = somarPorTotalizador("DESPESAS");
   const geracaoDeCaixaRS = margemBrutaRS.add(despesasRS);
-  const lucroPrejuizoRS = geracaoDeCaixaRS.add(totalPorBloco.get("DESPESAS_DIRETORIA") ?? ZERO).add(totalPorBloco.get("FINANCEIRAS") ?? ZERO);
+  const lucroPrejuizoRS = geracaoDeCaixaRS.add(somarPorTotalizador("LUCRO_PREJUIZO_EXTRA"));
+
+  // Margem Bruta % — só sobre a receita OPERACIONAL (tipo=RECEITA dentro
+  // dos blocos que alimentam Margem Bruta), pra não diluir com receita
+  // financeira (que vive em LUCRO_PREJUIZO_EXTRA e nem entra nesta conta).
+  const receitaBrutaOperacionalRS = blocos
+    .filter((b) => b.totalizador === "MARGEM_BRUTA")
+    .flatMap((b) => b.categorias)
+    .filter((c) => c.tipo === "RECEITA")
+    .reduce((acc, c) => acc.add(c.total), ZERO);
+  const margemBrutaPercent = receitaBrutaOperacionalRS.isZero() ? null : margemBrutaRS.dividedBy(receitaBrutaOperacionalRS).mul(100);
 
   return {
     mes,
     blocos,
     margemBrutaRS,
+    margemBrutaPercent,
     despesasRS,
     geracaoDeCaixaRS,
     lucroPrejuizoRS,

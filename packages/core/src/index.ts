@@ -38,6 +38,7 @@ export type {
   SubscriptionPlan,
   TenantSubscription,
   PaymentEvent,
+  FinanceBloco,
   FinanceCategoria,
   FinanceLancamento,
   FinanceOrcamento,

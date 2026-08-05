@@ -13,7 +13,7 @@
 //   npx tsx scripts/enable-finance-module.ts
 
 import { prisma } from "../src/prisma";
-import { DEFAULT_FINANCE_CATEGORIAS } from "../src/finance/categoria-defaults";
+import { DEFAULT_FINANCE_BLOCOS, DEFAULT_FINANCE_CATEGORIAS } from "../src/finance/categoria-defaults";
 
 const TENANT_SLUG = "bnbflex";
 const FELIPE_EMAIL = "felipe_mello86@hotmail.com";
@@ -46,12 +46,23 @@ async function main() {
   if (jaTemCategorias > 0) {
     console.log(`Tenant já tem ${jaTemCategorias} categoria(s) financeira(s) — seed de categorias pulado.`);
   } else {
+    const blocoIdPorNome = new Map<string, string>();
+    for (const b of DEFAULT_FINANCE_BLOCOS) {
+      const bloco = await prisma.financeBloco.upsert({
+        where: { tenantId_nome: { tenantId: tenant.id, nome: b.nome } },
+        update: {},
+        create: { tenantId: tenant.id, nome: b.nome, ordem: b.ordem, totalizador: b.totalizador, sinal: b.sinal },
+      });
+      blocoIdPorNome.set(b.nome, bloco.id);
+    }
     for (const cat of DEFAULT_FINANCE_CATEGORIAS) {
+      const blocoId = blocoIdPorNome.get(cat.blocoNome);
+      if (!blocoId) throw new Error(`Bloco "${cat.blocoNome}" não encontrado (categoria "${cat.nome}").`);
       await prisma.financeCategoria.create({
-        data: { tenantId: tenant.id, nome: cat.nome, tipo: cat.tipo, bloco: cat.bloco, ordem: cat.ordem },
+        data: { tenantId: tenant.id, nome: cat.nome, tipo: cat.tipo, blocoId, ordem: cat.ordem },
       });
     }
-    console.log(`${DEFAULT_FINANCE_CATEGORIAS.length} categorias financeiras criadas (ver categoria-defaults.ts).`);
+    console.log(`${DEFAULT_FINANCE_BLOCOS.length} blocos + ${DEFAULT_FINANCE_CATEGORIAS.length} categorias financeiras criadas (ver categoria-defaults.ts).`);
   }
 }
 

@@ -12,13 +12,13 @@
 
 import { prisma } from "../prisma";
 import { sendPushToUser } from "../push";
-import { calcularDre, DRE_BLOCO_LABELS, type DreBloco } from "./dre";
+import { calcularDre } from "./dre";
 
 export interface ResumoAlertaFinanceiro {
   tenantId: string;
   mes: string;
   pendentesCategorizacao: number;
-  estourosDeOrcamento: { nome: string; bloco: DreBloco; pctConsumido: number }[];
+  estourosDeOrcamento: { nome: string; blocoId: string; pctConsumido: number }[];
 }
 
 /** Calcula a DRE do mês e devolve o que precisa de atenção — sem enviar
@@ -34,7 +34,7 @@ export async function calcularAlertasFinanceiros(tenantId: string, mes: string):
       const orcado = Number(bloco.orcado);
       const pct = orcado > 0 ? (Math.abs(Number(bloco.total)) / orcado) * 100 : 0;
       if (pct > 100) {
-        estourosDeOrcamento.push({ nome: DRE_BLOCO_LABELS[bloco.bloco], bloco: bloco.bloco, pctConsumido: pct });
+        estourosDeOrcamento.push({ nome: bloco.nome, blocoId: bloco.blocoId, pctConsumido: pct });
       }
     }
     for (const cat of bloco.categorias) {
@@ -42,7 +42,7 @@ export async function calcularAlertasFinanceiros(tenantId: string, mes: string):
         const orcado = Number(cat.orcado);
         const pct = orcado > 0 ? (Math.abs(Number(cat.total)) / orcado) * 100 : 0;
         if (pct > 100) {
-          estourosDeOrcamento.push({ nome: cat.nome, bloco: bloco.bloco, pctConsumido: pct });
+          estourosDeOrcamento.push({ nome: cat.nome, blocoId: bloco.blocoId, pctConsumido: pct });
         }
       }
     }

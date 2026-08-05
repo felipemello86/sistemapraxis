@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   const orcamentos = await prisma.financeOrcamento.findMany({
     where: { tenantId: session.tenantId, mes },
-    include: { categoria: { select: { nome: true, bloco: true } } },
+    include: { categoria: { select: { nome: true, blocoId: true } } },
   });
 
   return NextResponse.json(orcamentos);
@@ -47,6 +47,20 @@ export async function POST(req: NextRequest) {
   if (!alvoChave) return NextResponse.json({ error: "alvoChave é obrigatória" }, { status: 400 });
   if (!mes || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return NextResponse.json({ error: "mes inválido (esperado YYYY-MM)" }, { status: 400 });
   if (valor == null || valor < 0) return NextResponse.json({ error: "valor deve ser >= 0" }, { status: 400 });
+
+  // alvoChave agora é sempre um id real (categoriaId ou blocoId, desde os
+  // blocos configuráveis) — confere que pertence ao tenant antes de gravar.
+  if (alvoTipo === "BLOCO") {
+    const bloco = await prisma.financeBloco.findUnique({ where: { id: alvoChave } });
+    if (!bloco || bloco.tenantId !== session.tenantId) {
+      return NextResponse.json({ error: "Bloco não encontrado" }, { status: 404 });
+    }
+  } else {
+    const categoria = await prisma.financeCategoria.findUnique({ where: { id: alvoChave } });
+    if (!categoria || categoria.tenantId !== session.tenantId) {
+      return NextResponse.json({ error: "Categoria não encontrada" }, { status: 404 });
+    }
+  }
 
   try {
     const orcamento = await prisma.financeOrcamento.upsert({

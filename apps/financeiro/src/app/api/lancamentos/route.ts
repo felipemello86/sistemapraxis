@@ -46,12 +46,19 @@ export async function GET(req: NextRequest) {
 
   const lancamentos = await prisma.financeLancamento.findMany({
     where,
-    include: { categoria: { select: { nome: true, bloco: true, tipo: true } } },
+    include: { categoria: { select: { nome: true, tipo: true, bloco: { select: { nome: true } } } } },
     orderBy: { dataVencimento: "desc" },
     take: 300,
   });
 
-  return NextResponse.json(lancamentos);
+  // Achata categoria.bloco.nome -> categoria.bloco (string), mesma
+  // convenção de /api/categorias — mantém o shape que as telas já esperam.
+  const resposta = lancamentos.map((l) => ({
+    ...l,
+    categoria: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo, bloco: l.categoria.bloco.nome } : null,
+  }));
+
+  return NextResponse.json(resposta);
 }
 
 type NovoLancamentoBody = {

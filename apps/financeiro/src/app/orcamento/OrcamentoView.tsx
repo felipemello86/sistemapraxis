@@ -8,26 +8,8 @@ import { apiFetch } from "@/lib/apiFetch";
 // (upsert) assim que perde o foco, sem botão "Salvar" geral — mesma
 // filosofia de autosave já usada noutras telas de configuração da suíte.
 
-// Duplicado de @praxis/core/finance/dre.ts de propósito (mesmo motivo do
-// DreView.tsx): componente client, @praxis/core importa `prisma` no
-// módulo — não dá pra importar o pacote inteiro aqui.
-const DRE_BLOCOS = [
-  "RECEITA_BRUTA", "GASTOS_VARIAVEIS", "DESPESAS_VEICULOS", "DESPESAS_FUNCIONARIOS",
-  "DESPESAS_ADMINISTRATIVAS", "DESPESAS_SEDE", "DESPESAS_DIRETORIA", "FINANCEIRAS",
-];
-
-const DRE_BLOCO_LABELS: Record<string, string> = {
-  RECEITA_BRUTA: "Receita Bruta",
-  GASTOS_VARIAVEIS: "Gastos Variáveis",
-  DESPESAS_VEICULOS: "Despesas com Veículos e Transporte",
-  DESPESAS_FUNCIONARIOS: "Despesas com Funcionários",
-  DESPESAS_ADMINISTRATIVAS: "Despesas Administrativas e Comerciais",
-  DESPESAS_SEDE: "Despesas com Sede e Estrutura",
-  DESPESAS_DIRETORIA: "Despesas com Diretoria",
-  FINANCEIRAS: "Despesas e Receitas Financeiras",
-};
-
-type Categoria = { id: string; nome: string; tipo: string; bloco: string };
+type Bloco = { id: string; nome: string; ordem: number; totalizador: string; sinal: number };
+type Categoria = { id: string; nome: string; tipo: string; blocoId: string; bloco: string };
 type Orcamento = { id: string; alvoTipo: string; alvoChave: string; valor: string };
 
 function mesAtualSP(): string {
@@ -65,6 +47,7 @@ function ValorInput({ valorInicial, onSalvar }: { valorInicial: string; onSalvar
 
 export function OrcamentoView() {
   const [mes, setMes] = useState(mesAtualSP());
+  const [blocos, setBlocos] = useState<Bloco[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [orcamentos, setOrcamentos] = useState<Orcamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +55,8 @@ export function OrcamentoView() {
 
   async function carregar() {
     setLoading(true);
-    const [resC, resO] = await Promise.all([apiFetch("/api/categorias"), apiFetch(`/api/orcamento?mes=${mes}`)]);
+    const [resB, resC, resO] = await Promise.all([apiFetch("/api/blocos"), apiFetch("/api/categorias"), apiFetch(`/api/orcamento?mes=${mes}`)]);
+    if (resB.ok) setBlocos(await resB.json());
     if (resC.ok) setCategorias(await resC.json());
     if (resO.ok) setOrcamentos(await resO.json());
     setLoading(false);
@@ -121,17 +105,17 @@ export function OrcamentoView() {
         <p className="text-gray-400 text-sm">Carregando...</p>
       ) : (
         <div className="space-y-2">
-          {DRE_BLOCOS.map((bloco) => {
-            const categoriasDoBloco = categorias.filter((c) => c.bloco === bloco);
-            const aberto = abertos.has(bloco);
+          {blocos.map((bloco) => {
+            const categoriasDoBloco = categorias.filter((c) => c.blocoId === bloco.id);
+            const aberto = abertos.has(bloco.id);
             return (
-              <div key={bloco} className="card">
+              <div key={bloco.id} className="card">
                 <div className="flex items-center justify-between gap-3">
-                  <button onClick={() => toggleBloco(bloco)} className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 min-w-0 flex-1 text-left">
+                  <button onClick={() => toggleBloco(bloco.id)} className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 min-w-0 flex-1 text-left">
                     {aberto ? <ChevronUp className="w-4 h-4 flex-shrink-0 text-gray-400" /> : <ChevronDown className="w-4 h-4 flex-shrink-0 text-gray-400" />}
-                    <span className="truncate">{DRE_BLOCO_LABELS[bloco]}</span>
+                    <span className="truncate">{bloco.nome}</span>
                   </button>
-                  <ValorInput valorInicial={valorDe("BLOCO", bloco)} onSalvar={(v) => salvar("BLOCO", bloco, v)} />
+                  <ValorInput valorInicial={valorDe("BLOCO", bloco.id)} onSalvar={(v) => salvar("BLOCO", bloco.id, v)} />
                 </div>
 
                 {aberto && (
