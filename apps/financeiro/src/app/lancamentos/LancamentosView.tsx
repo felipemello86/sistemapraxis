@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, X, Trash2, Repeat, Layers, ListChecks, Wallet, ChevronLeft, ChevronRight, ChevronDown, ArrowUp, ArrowDown, Search, Calendar } from "lucide-react";
+import { Plus, X, Trash2, Repeat, Layers, ListChecks, Wallet, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Search } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { CategorizacaoEmLoteView } from "./CategorizacaoEmLoteView";
 
@@ -100,7 +100,8 @@ const emptyForm = {
   observacoes: "",
 };
 
-type PeriodoTipo = "mensal" | "ano" | "hoje" | "range";
+type PeriodoModo = "mensal" | "especifico";
+type PeriodoEspecificoTipo = "ano" | "hoje" | "range";
 type SortField = "data" | "valor";
 
 export function LancamentosView() {
@@ -119,15 +120,19 @@ export function LancamentosView() {
   const [modoLote, setModoLote] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
 
-  // Período
-  const [periodoTipo, setPeriodoTipo] = useState<PeriodoTipo>("mensal");
+  // Período — o usuário escolhe explicitamente o modo (Mensal ou Período
+  // específico) numa aba; dentro de "específico" escolhe entre Ano, Hoje ou
+  // um range customizado. Sem popovers pra essa segunda parte (só pro
+  // seletor de mês, que precisa da grade de 12 meses) — evita os bugs de
+  // popover-dentro-de-th que apareceram antes.
+  const [periodoModo, setPeriodoModo] = useState<PeriodoModo>("mensal");
+  const [periodoEspecificoTipo, setPeriodoEspecificoTipo] = useState<PeriodoEspecificoTipo>("ano");
   const [mes, setMes] = useState(hojeISO.slice(0, 7));
   const [ano, setAno] = useState(String(Number(hojeISO.slice(0, 4))));
   const [rangeInicio, setRangeInicio] = useState(hojeISO);
   const [rangeFim, setRangeFim] = useState(hojeISO);
   const [mesPopoverAberto, setMesPopoverAberto] = useState(false);
   const [anoPopoverNav, setAnoPopoverNav] = useState(Number(mes.slice(0, 4)));
-  const [especificoPopoverAberto, setEspecificoPopoverAberto] = useState(false);
 
   // Ordenação + filtros de coluna
   const [sortField, setSortField] = useState<SortField>("data");
@@ -143,9 +148,9 @@ export function LancamentosView() {
   const contaAtual = todasContas.find((c) => c.id === contaSelecionada) || null;
 
   function periodoAtual(): { inicio: string; fim: string } {
-    if (periodoTipo === "mensal") return limitesDoMesLocal(mes);
-    if (periodoTipo === "ano") return { inicio: `${ano}-01-01`, fim: `${ano}-12-31` };
-    if (periodoTipo === "hoje") return { inicio: hojeISO, fim: hojeISO };
+    if (periodoModo === "mensal") return limitesDoMesLocal(mes);
+    if (periodoEspecificoTipo === "ano") return { inicio: `${ano}-01-01`, fim: `${ano}-12-31` };
+    if (periodoEspecificoTipo === "hoje") return { inicio: hojeISO, fim: hojeISO };
     return { inicio: rangeInicio, fim: rangeFim };
   }
 
@@ -171,7 +176,7 @@ export function LancamentosView() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [somentePendentes, contaSelecionada, periodoTipo, mes, ano, rangeInicio, rangeFim]);
+  }, [somentePendentes, contaSelecionada, periodoModo, periodoEspecificoTipo, mes, ano, rangeInicio, rangeFim]);
 
   function abrirNovo() {
     setForm({ ...emptyForm, dataVencimento: hojeISO });
@@ -295,13 +300,6 @@ export function LancamentosView() {
 
   const categoriasFiltradas = categorias.filter((c) => c.tipo === form.tipo);
 
-  function rotuloEspecifico(): string {
-    if (periodoTipo === "ano") return `Ano ${ano}`;
-    if (periodoTipo === "hoje") return "Hoje";
-    if (periodoTipo === "range") return `${formatDataBR(rangeInicio)} – ${formatDataBR(rangeFim)}`;
-    return "Período específico";
-  }
-
   if (modoLote) {
     return <CategorizacaoEmLoteView onVoltar={() => { setModoLote(false); carregar(); }} />;
   }
@@ -334,127 +332,114 @@ export function LancamentosView() {
         </select>
         {contaAtual && contaAtual.saldoAtual != null && <span className="text-xs text-gray-400 mr-1">saldo atual: {formatBRL(contaAtual.saldoAtual)}</span>}
 
-        {/* Seletor de mês */}
-        <div className={`relative flex items-center gap-0.5 border rounded-lg px-1 py-1 transition-opacity ${periodoTipo === "mensal" ? "border-gray-300" : "border-gray-200 opacity-40 hover:opacity-70"}`}>
+        {/* Escolha explícita do tipo de período — Mensal ou Período específico */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
           <button
-            onClick={() => {
-              setPeriodoTipo("mensal");
-              setMes((m) => mesAdjacenteLocal(m, -1));
-            }}
-            className="text-gray-400 hover:text-gray-900 p-1"
+            onClick={() => setPeriodoModo("mensal")}
+            className={`text-xs font-medium px-2.5 py-1.5 rounded-md ${periodoModo === "mensal" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
           >
-            <ChevronLeft className="w-4 h-4" />
+            Mensal
           </button>
           <button
-            onClick={() => {
-              setPeriodoTipo("mensal");
-              setAnoPopoverNav(Number(mes.slice(0, 4)));
-              setMesPopoverAberto((v) => !v);
-            }}
-            className="text-sm font-medium text-gray-700 px-1 min-w-[84px] text-center"
+            onClick={() => setPeriodoModo("especifico")}
+            className={`text-xs font-medium px-2.5 py-1.5 rounded-md ${periodoModo === "especifico" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
           >
-            {mesLabel(mes)}
+            Período específico
           </button>
-          <button
-            onClick={() => {
-              setPeriodoTipo("mensal");
-              setMes((m) => mesAdjacenteLocal(m, 1));
-            }}
-            className="text-gray-400 hover:text-gray-900 p-1"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-
-          {mesPopoverAberto && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setMesPopoverAberto(false)} />
-              <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-2">
-                  <button onClick={() => setAnoPopoverNav((a) => a - 1)} className="text-gray-400 hover:text-gray-900">
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="text-sm font-semibold text-gray-900">{anoPopoverNav}</span>
-                  <button onClick={() => setAnoPopoverNav((a) => a + 1)} className="text-gray-400 hover:text-gray-900">
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-3 gap-1">
-                  {NOMES_MES.map((nome, i) => {
-                    const valor = `${anoPopoverNav}-${String(i + 1).padStart(2, "0")}`;
-                    const ativo = valor === mes;
-                    return (
-                      <button
-                        key={nome}
-                        onClick={() => {
-                          setMes(valor);
-                          setPeriodoTipo("mensal");
-                          setMesPopoverAberto(false);
-                        }}
-                        className={`text-xs py-1.5 rounded ${ativo ? "bg-gray-900 text-white" : "hover:bg-gray-100 text-gray-600"}`}
-                      >
-                        {nome.slice(0, 3)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
-        {/* Seletor de período específico */}
-        <div className={`relative border rounded-lg px-2.5 py-1.5 transition-opacity ${periodoTipo !== "mensal" ? "border-gray-300" : "border-gray-200 opacity-40 hover:opacity-70"}`}>
-          <button onClick={() => setEspecificoPopoverAberto((v) => !v)} className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-            <Calendar className="w-3.5 h-3.5 text-gray-400" /> {rotuloEspecifico()} <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-          </button>
+        {periodoModo === "mensal" ? (
+          <div className="relative flex items-center gap-0.5 border border-gray-300 rounded-lg px-1 py-1">
+            <button onClick={() => setMes((m) => mesAdjacenteLocal(m, -1))} className="text-gray-400 hover:text-gray-900 p-1">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                setAnoPopoverNav(Number(mes.slice(0, 4)));
+                setMesPopoverAberto((v) => !v);
+              }}
+              className="text-sm font-medium text-gray-700 px-1 min-w-[84px] text-center"
+            >
+              {mesLabel(mes)}
+            </button>
+            <button onClick={() => setMes((m) => mesAdjacenteLocal(m, 1))} className="text-gray-400 hover:text-gray-900 p-1">
+              <ChevronRight className="w-4 h-4" />
+            </button>
 
-          {especificoPopoverAberto && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setEspecificoPopoverAberto(false)} />
-              <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-64 space-y-3" onClick={(e) => e.stopPropagation()}>
-                <div className="flex gap-1">
-                  {(
-                    [
-                      ["ano", "Ano"],
-                      ["hoje", "Hoje"],
-                      ["range", "Período"],
-                    ] as const
-                  ).map(([tipo, rotulo]) => (
-                    <button
-                      key={tipo}
-                      onClick={() => setPeriodoTipo(tipo)}
-                      className={`flex-1 text-xs py-1.5 rounded border ${periodoTipo === tipo ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 text-gray-600"}`}
-                    >
-                      {rotulo}
+            {mesPopoverAberto && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMesPopoverAberto(false);
+                  }}
+                />
+                <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 w-56" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => setAnoPopoverNav((a) => a - 1)} className="text-gray-400 hover:text-gray-900">
+                      <ChevronLeft className="w-4 h-4" />
                     </button>
-                  ))}
-                </div>
-
-                {periodoTipo === "ano" && <input type="number" className="input text-sm py-1.5" value={ano} onChange={(e) => setAno(e.target.value)} />}
-
-                {periodoTipo === "range" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="label">De</label>
-                      <input type="date" className="input text-sm py-1.5" value={rangeInicio} onChange={(e) => setRangeInicio(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="label">Até</label>
-                      <input type="date" className="input text-sm py-1.5" value={rangeFim} onChange={(e) => setRangeFim(e.target.value)} />
-                    </div>
+                    <span className="text-sm font-semibold text-gray-900">{anoPopoverNav}</span>
+                    <button onClick={() => setAnoPopoverNav((a) => a + 1)} className="text-gray-400 hover:text-gray-900">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
-
-                {periodoTipo === "hoje" && <p className="text-xs text-gray-400">Mostrando lançamentos de hoje, {formatDataBR(hojeISO)}.</p>}
-                {periodoTipo === "mensal" && <p className="text-xs text-gray-400">Escolha Ano, Hoje ou Período pra ativar este filtro no lugar do mês.</p>}
-
-                <button onClick={() => setEspecificoPopoverAberto(false)} className="btn-primary w-full text-sm py-1.5">
-                  Fechar
+                  <div className="grid grid-cols-3 gap-1">
+                    {NOMES_MES.map((nome, i) => {
+                      const valor = `${anoPopoverNav}-${String(i + 1).padStart(2, "0")}`;
+                      const ativo = valor === mes;
+                      return (
+                        <button
+                          key={nome}
+                          onClick={() => {
+                            setMes(valor);
+                            setMesPopoverAberto(false);
+                          }}
+                          className={`text-xs py-1.5 rounded ${ativo ? "bg-gray-900 text-white" : "hover:bg-gray-100 text-gray-600"}`}
+                        >
+                          {nome.slice(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-2 py-1">
+            <div className="flex gap-1">
+              {(
+                [
+                  ["ano", "Ano"],
+                  ["hoje", "Hoje"],
+                  ["range", "Período"],
+                ] as const
+              ).map(([tipo, rotulo]) => (
+                <button
+                  key={tipo}
+                  onClick={() => setPeriodoEspecificoTipo(tipo)}
+                  className={`text-xs py-1 px-2 rounded ${periodoEspecificoTipo === tipo ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+                >
+                  {rotulo}
                 </button>
+              ))}
+            </div>
+
+            {periodoEspecificoTipo === "ano" && <input type="number" className="input text-xs py-1 w-20" value={ano} onChange={(e) => setAno(e.target.value)} />}
+
+            {periodoEspecificoTipo === "range" && (
+              <div className="flex items-center gap-1.5">
+                <input type="date" className="input text-xs py-1" value={rangeInicio} onChange={(e) => setRangeInicio(e.target.value)} />
+                <span className="text-gray-400 text-xs">até</span>
+                <input type="date" className="input text-xs py-1" value={rangeFim} onChange={(e) => setRangeFim(e.target.value)} />
               </div>
-            </>
-          )}
-        </div>
+            )}
+
+            {periodoEspecificoTipo === "hoje" && <span className="text-xs text-gray-400">{formatDataBR(hojeISO)}</span>}
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -476,7 +461,13 @@ export function LancamentosView() {
                   {filtroDescricao && <Search className="inline w-3 h-3 ml-1 text-blue-600" />}
                   {descPopoverAberto && (
                     <>
-                      <div className="fixed inset-0 z-40" onClick={() => setDescPopoverAberto(false)} />
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDescPopoverAberto(false);
+                        }}
+                      />
                       <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56 normal-case font-normal" onClick={(e) => e.stopPropagation()}>
                         <input
                           autoFocus
@@ -493,7 +484,13 @@ export function LancamentosView() {
                   <span className={filtroCategorias.size > 0 ? "text-blue-700" : ""}>Categoria{filtroCategorias.size > 0 ? ` (${filtroCategorias.size})` : ""}</span>
                   {catPopoverAberto && (
                     <>
-                      <div className="fixed inset-0 z-40" onClick={() => setCatPopoverAberto(false)} />
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCatPopoverAberto(false);
+                        }}
+                      />
                       <div
                         className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56 max-h-72 overflow-y-auto normal-case font-normal"
                         onClick={(e) => e.stopPropagation()}
@@ -517,7 +514,13 @@ export function LancamentosView() {
                   <span className={filtroStatus.size > 0 ? "text-blue-700" : ""}>Status</span>
                   {statusPopoverAberto && (
                     <>
-                      <div className="fixed inset-0 z-40" onClick={() => setStatusPopoverAberto(false)} />
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatusPopoverAberto(false);
+                        }}
+                      />
                       <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-36 normal-case font-normal" onClick={(e) => e.stopPropagation()}>
                         {filtroStatus.size > 0 && (
                           <button onClick={() => setFiltroStatus(new Set())} className="text-xs text-blue-600 hover:underline mb-1">
