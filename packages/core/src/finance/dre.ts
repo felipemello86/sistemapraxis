@@ -26,7 +26,7 @@
 // é sempre a operação certa, nunca precisa de subtração explícita.)
 
 import { prisma } from "../prisma";
-import { Prisma } from "../generated";
+import { Prisma } from "../../generated";
 
 export const DRE_BLOCOS = [
   "RECEITA_BRUTA",
