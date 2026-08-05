@@ -51,6 +51,12 @@ export function resolverDestinoNotificacao(
       return { modulo: "governance", caminho: "/selecao" };
     case "falhas-gerenciais":
       return { modulo: "governance", caminho: "/falhas-gerenciais" };
+    // NC urgente / solicitação de manutenção pendente de decisão (ver
+    // aplicarBloqueioPorUrgencia/criarSolicitacaoManutencao em
+    // packages/core/src/maintenanceUrgente.ts) — pedido do Felipe,
+    // 05/08/2026.
+    case "decisao-bloqueio":
+      return { modulo: "governance", caminho: "/decisao-bloqueio" };
     // SPA de aba única (ver ViewId em lib/types.ts) — a aba inicial vem de
     // ?view= na URL, lido em components/dashboard.tsx via useSearchParams.
     case "correcao":

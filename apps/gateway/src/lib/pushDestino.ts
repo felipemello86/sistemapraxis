@@ -45,6 +45,12 @@ export function resolverDestinoNotificacao(
       return { modulo: "governance", caminho: "/selecao" };
     case "falhas-gerenciais":
       return { modulo: "governance", caminho: "/falhas-gerenciais" };
+    // NC urgente / solicitação de manutenção pendente de decisão (ver
+    // aplicarBloqueioPorUrgencia/criarSolicitacaoManutencao em
+    // packages/core/src/maintenanceUrgente.ts) — pedido do Felipe,
+    // 05/08/2026.
+    case "decisao-bloqueio":
+      return { modulo: "governance", caminho: "/decisao-bloqueio" };
     case "correcao":
       return { modulo: "upkeep", caminho: "/?view=correcao" };
     case "performance":

@@ -62,6 +62,14 @@ export function resolverDestinoNotificacao(
       return { modulo: "governance", caminho: "/selecao" };
     case "falhas-gerenciais":
       return { modulo: "governance", caminho: "/falhas-gerenciais" };
+    // NC urgente / solicitação de manutenção pendente de decisão (ver
+    // aplicarBloqueioPorUrgencia/criarSolicitacaoManutencao em
+    // packages/core/src/maintenanceUrgente.ts) — Atendimento/Gerente/
+    // Governanta/Master tocam a notificação e caem direto na tela de
+    // Decisão de Bloqueio (pedido do Felipe, 05/08/2026; antes esse `view`
+    // não tinha case aqui, então a notificação abria o app na tela padrão).
+    case "decisao-bloqueio":
+      return { modulo: "governance", caminho: "/decisao-bloqueio" };
     // Telas do Manutenção são uma SPA de aba única (ver ViewId em
     // apps/maintenance/src/lib/types.ts) — a aba inicial vem de ?view= na
     // URL (ver dashboard.tsx, useSearchParams).
