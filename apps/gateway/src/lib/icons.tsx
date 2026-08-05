@@ -84,6 +84,17 @@ export function IconCalendar({ size = 28 }: IconProps) {
   );
 }
 
+// Novo — módulo Financeiro (cifrão dentro de um círculo).
+export function IconCoin({ size = 28 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M14.5 9.5a2.5 2 0 0 0-2.5-1.5c-1.5 0-2.5 1-2.5 2s1 1.5 2.5 2 2.5 1 2.5 2-1 2-2.5 2a2.5 2 0 0 1-2.5-1.5" />
+      <line x1="12" y1="6.5" x2="12" y2="17.5" />
+    </svg>
+  );
+}
+
 export function IconGear({ size = 28 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

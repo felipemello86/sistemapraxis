@@ -1,0 +1,13 @@
+{
+  "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/cron/sync-pluggy",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/alertas",
+      "schedule": "0 12 * * 1-5"
+    }
+  ]
+}

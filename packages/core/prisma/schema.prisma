@@ -117,6 +117,15 @@ model Tenant {
   // arquivo). Nada aqui é visível pro tenant nem pelos módulos de negócio.
   subscription  TenantSubscription?
   paymentEvents PaymentEvent[]
+
+  // Financeiro (DRE viva) — pedido do Felipe (05/08/2026), ver bloco de
+  // models no fim do arquivo. Módulo habilitado só pro tenant bnbflex por
+  // enquanto (ver TenantModule), mas já nasce multi-tenant-ready.
+  financeCategorias       FinanceCategoria[]
+  financeLancamentos      FinanceLancamento[]
+  financeOrcamentos       FinanceOrcamento[]
+  financeContasConectadas FinanceContaConectada[]
+  financeContasBancarias  FinanceContaBancaria[]
 }
 
 enum SuiteModule {
@@ -135,6 +144,12 @@ enum SuiteModule {
   // Fase 1: só visualização de Reserva (as importadas via Channex e as
   // futuras criadas manualmente) — sem criar/editar ainda.
   RECEPTION
+  // Financeiro — DRE viva, pedido do Felipe (05/08/2026), app próprio em
+  // apps/financeiro. Habilitado só pro tenant bnbflex via TenantModule
+  // (ver scripts/enable-finance-module.ts) — os demais tenants nem sabem
+  // que existe, mesmo com o módulo já presente no código (mesmo padrão de
+  // isolamento que todo módulo da suíte já usa, nada de special-case).
+  FINANCE
 }
 
 // Licenciamento por módulo: um tenant só enxerga um módulo se houver uma
@@ -2829,4 +2844,195 @@ model PaymentEvent {
   createdAt DateTime @default(now())
 
   @@index([tenantId, createdAt])
+}
+
+// ============================================================================
+// FINANCEIRO — DRE viva (pedido do Felipe, 05/08/2026)
+// ============================================================================
+// Não são regras contábeis oficiais — são as regras de gestão do Felipe,
+// modeladas em cima da estrutura real da planilha "DRE Julho 2026.xlsx" que
+// ele já usa hoje (exportada do Conta Azul, que está sendo aposentado).
+//
+// Fórmula da DRE (fixa, replicada em lib/finance/dre.ts — os "blocos" abaixo
+// são o vocabulário usado pra montá-la):
+//   Margem Bruta      = RECEITA_BRUTA + GASTOS_VARIAVEIS + DESPESAS_VEICULOS
+//   Despesas          = DESPESAS_FUNCIONARIOS + DESPESAS_ADMINISTRATIVAS + DESPESAS_SEDE
+//   Geração de Caixa  = Margem Bruta + Despesas
+//   Lucro/Prejuízo    = Geração de Caixa + DESPESAS_DIRETORIA + FINANCEIRAS
+//
+// Referência temporal: TUDO se organiza pela Data de Vencimento (regra
+// explícita do Felipe — não é data de competência nem data de pagamento
+// efetivo). Uma DRE de um mês = soma de todo FinanceLancamento cuja
+// dataVencimento cai naquele mês, mais a projeção de lançamentos recorrentes
+// (ver FinanceLancamento.recorrente) que ainda não têm uma linha própria
+// naquele mês.
+
+model FinanceCategoria {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome String
+  tipo String // RECEITA | DESPESA — define o sinal esperado de valor nos lançamentos dessa categoria
+
+  // Bloco da DRE (ver fórmula acima): RECEITA_BRUTA | GASTOS_VARIAVEIS |
+  // DESPESAS_VEICULOS | DESPESAS_FUNCIONARIOS | DESPESAS_ADMINISTRATIVAS |
+  // DESPESAS_SEDE | DESPESAS_DIRETORIA | FINANCEIRAS
+  bloco String
+  ordem Int    @default(0) // ordem de exibição dentro do bloco, herdada da planilha original
+
+  ativo Boolean @default(true) // categorias antigas não somem do histórico, só saem do seletor de novos lançamentos
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lancamentos FinanceLancamento[]
+  orcamentos  FinanceOrcamento[]
+
+  @@unique([tenantId, nome])
+  @@index([tenantId, bloco])
+}
+
+// Uma conexão (Pluggy "Item") = uma autorização de acesso a uma instituição.
+// Um Item pode expor mais de uma conta (ex.: corrente + poupança) — por isso
+// FinanceContaBancaria é uma entidade separada, filha desta.
+model FinanceContaConectada {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  pluggyItemId String @unique
+  instituicao  String // ex.: "Unicred", "Cartão Carrefour", "Midway (Riachuelo)"
+
+  // Espelha o status do Item na Pluggy: LOGIN_IN_PROGRESS | UPDATED |
+  // OUTDATED | LOGIN_ERROR | WAITING_USER_INPUT | UPDATING (ver docs Pluggy
+  // — item lifecycle). Usado pra avisar quando uma conexão precisa de nova
+  // autorização do Felipe.
+  status                String    @default("LOGIN_IN_PROGRESS")
+  ultimaSincronizacaoEm DateTime?
+  erro                  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contas FinanceContaBancaria[]
+
+  @@index([tenantId])
+}
+
+model FinanceContaBancaria {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contaConectadaId String
+  contaConectada   FinanceContaConectada @relation(fields: [contaConectadaId], references: [id], onDelete: Cascade)
+
+  pluggyAccountId String  @unique
+  nome            String // ex.: "Unicred - Conta Corrente", "Unicred Visa"
+  tipo            String // BANK | CREDIT (vocabulário da Pluggy)
+  saldoAtual      Decimal? @db.Decimal(12, 2)
+  limiteCredito   Decimal? @db.Decimal(12, 2) // só preenchido pra tipo=CREDIT
+
+  lancamentos FinanceLancamento[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model FinanceLancamento {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Nulo = veio da varredura da Pluggy e ainda não foi categorizado (ver
+  // requisito do Felipe: o sistema deve "provocar" ele proativamente até
+  // isso ser resolvido). Nunca fica nulo em lançamento MANUAL — a API exige
+  // categoria no momento da criação manual.
+  categoriaId String?
+  categoria   FinanceCategoria? @relation(fields: [categoriaId], references: [id])
+
+  descricao  String
+  fornecedor String?
+
+  // Sinal já embutido no valor (negativo = despesa, positivo = receita) —
+  // mesma convenção da planilha do Felipe, evita ambiguidade na hora de
+  // somar tudo pra fechar a DRE.
+  valor Decimal @db.Decimal(12, 2)
+
+  // Data de Vencimento — referência OFICIAL pra decidir em qual DRE mensal
+  // este lançamento aparece (regra explícita do Felipe, 05/08/2026).
+  dataVencimento String // YYYY-MM-DD
+
+  // Parcelamento: cada parcela é uma linha própria e materializada (regra
+  // do Felipe: R$1000 em 10x = 10 FinanceLancamento, um por mês, cada um na
+  // sua Data de Vencimento). parcelaGrupoId agrupa as N linhas da mesma
+  // compra original; parcelaNumero/Total é só pra exibição ("3/10").
+  parcelaGrupoId String?
+  parcelaNumero  Int?
+  parcelaTotal   Int?
+
+  // Recorrência: OPOSTO do parcelamento — uma ÚNICA linha (marcada aqui),
+  // que a lib/finance/dre.ts projeta virtualmente em toda DRE mensal a
+  // partir do mês de dataVencimento (usando o dia-do-mês de
+  // dataVencimento como "template") até recorrenciaFimData (null = sem
+  // fim). Não gera lançamento novo no banco todo mês.
+  recorrente         Boolean @default(false)
+  recorrenciaFimData String? // YYYY-MM-DD, null = indefinido; só relevante se recorrente=true
+
+  // MANUAL (digitado por alguém) | PLUGGY (veio da varredura automática)
+  origem String @default("MANUAL")
+
+  contaBancariaId    String?
+  contaBancaria      FinanceContaBancaria? @relation(fields: [contaBancariaId], references: [id])
+  pluggyTransactionId String? @unique // idempotência: reprocessar a mesma sincronização não duplica o lançamento
+
+  // Referência livre por unidade/flat ou sócio (ex.: "203 VI", "1406 DO") —
+  // dimensão que o Felipe já usa hoje via "Centro de Custo" no Conta Azul,
+  // preservada aqui como campo simples (sem catálogo próprio nesta v1).
+  centroCusto String?
+
+  observacoes   String?
+  criadoPorNome String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, dataVencimento])
+  @@index([tenantId, categoriaId])
+  @@index([tenantId, recorrente])
+  @@index([parcelaGrupoId])
+}
+
+// Orçamento (linha de base) configurável tanto por categoria individual
+// quanto por bloco inteiro, escolhido linha a linha (pedido do Felipe,
+// 05/08/2026). alvoTipo+alvoChave em vez de duas FKs nulas: evita o
+// problema clássico de unique constraint com colunas nulas no Postgres
+// (NULL nunca é igual a NULL, então duas colunas opcionais não bloqueariam
+// duplicata sozinhas). alvoChave é o id de FinanceCategoria (quando
+// alvoTipo=CATEGORIA) ou o nome do bloco (quando alvoTipo=BLOCO) — sem FK
+// de banco pro caso CATEGORIA por causa disso; validado na API.
+model FinanceOrcamento {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  alvoTipo  String // CATEGORIA | BLOCO
+  alvoChave String // categoriaId (cuid) ou nome do bloco
+
+  // Link "de verdade" só quando alvoTipo=CATEGORIA — puramente de
+  // conveniência (join fácil, cascade ao apagar a categoria); a
+  // igualdade contra alvoChave é mantida pela API, não pelo banco.
+  categoriaId String?
+  categoria   FinanceCategoria? @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  mes   String  @db.VarChar(7) // YYYY-MM
+  valor Decimal @db.Decimal(12, 2) // valor orçado, sempre positivo — comparado ao valor absoluto realizado
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, alvoTipo, alvoChave, mes])
 }

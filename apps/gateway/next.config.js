@@ -72,6 +72,17 @@ const nextConfig = {
       );
     }
 
+    // Financeiro — pedido do Felipe, 05/08/2026. Só pro tenant bnbflex por
+    // enquanto (ver TenantModule), mas o rewrite é genérico igual aos demais.
+    if (process.env.FINANCEIRO_APP_URL) {
+      rules.push(
+        { source: "/:cliente/financeiro", destination: `${process.env.FINANCEIRO_APP_URL}/financeiro` },
+        { source: "/:cliente/financeiro/:path*", destination: `${process.env.FINANCEIRO_APP_URL}/financeiro/:path*` },
+        { source: "/financeiro", destination: `${process.env.FINANCEIRO_APP_URL}/financeiro` },
+        { source: "/financeiro/:path*", destination: `${process.env.FINANCEIRO_APP_URL}/financeiro/:path*` }
+      );
+    }
+
     return rules;
   },
 };

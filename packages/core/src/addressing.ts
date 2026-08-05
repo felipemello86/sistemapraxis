@@ -13,6 +13,7 @@ export const MODULE_SLUGS: Record<SuiteModule, string> = {
   // uma regra de rewrite correspondente em nenhum next.config.js.
   INTELLIGENCE: "inteligencia",
   RECEPTION: "recepcao",
+  FINANCE: "financeiro",
 };
 
 export const MODULE_LABELS: Record<SuiteModule, string> = {
@@ -23,6 +24,7 @@ export const MODULE_LABELS: Record<SuiteModule, string> = {
   RESTAURANT: "Restaurante",
   INTELLIGENCE: "Central de Inteligência",
   RECEPTION: "Recepção",
+  FINANCE: "Financeiro",
 };
 
 const SLUG_TO_MODULE: Record<string, SuiteModule> = Object.fromEntries(

@@ -14,7 +14,7 @@ import { prisma } from "../src/prisma";
 const TENANT_SLUG = "bnbflex";
 const CAMAREIRA_EMAIL = "vleandra049@gmail.com"; // Leandra Vitória
 const UH_NUMERO = "602-V"; // UH real, sem manutenção pendente
-const PROGRAMA_NOME = "Arrumação Padrão (25 min)";
+const PROGRAMA_NOME = "Arrumação Iniciante (25 min)";
 
 async function main() {
   const tenant = await prisma.tenant.findUniqueOrThrow({ where: { slug: TENANT_SLUG } });

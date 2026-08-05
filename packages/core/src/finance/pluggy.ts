@@ -1,0 +1,230 @@
+/**
+ * Integração com a Pluggy (pluggy.ai) — agregador de Open Finance
+ * brasileiro, escolhido pra ligar o módulo Financeiro à conta corrente e
+ * aos cartões de crédito reais do Felipe (Unicred Conta Corrente, Unicred
+ * Visa, Cartão Carrefour, Cartão Riachuelo/Midway — cobertura confirmada em
+ * docs.pluggy.ai/docs/open-finance-institutions-coverage, 05/08/2026).
+ * Decisão explícita do Felipe: aposentar o Conta Azul (caro, exigia
+ * importação manual de extrato) por uma conexão viva com o banco.
+ *
+ * Como todo integração externa desta suíte (ver channel-manager/channex.ts,
+ * mesmo princípio): isolamento de fornecedor — só este arquivo (e
+ * webhook/route.ts do lado do app) sabe que a Pluggy existe. Trocar de
+ * agregador um dia custa reescrever isto, nada além disso.
+ *
+ * *** BLOQUEADO até o Felipe criar a conta em dashboard.pluggy.ai e gerar
+ * Client ID + Client Secret — sem isso getClientId()/getClientSecret()
+ * abaixo lançam erro claro em vez de falhar silenciosamente. ***
+ *
+ * Fluxo (ver docs.pluggy.ai):
+ *   1. Autenticação própria (clientId+clientSecret → apiKey, ~2h de vida) —
+ *      nunca as credenciais do banco do Felipe passam pelo Praxis: quem
+ *      autentica com o banco é o widget Pluggy Connect, no navegador dele.
+ *   2. Front-end pede um `connectToken` pra este backend (ver
+ *      criarConnectToken) e abre o widget Pluggy Connect com ele.
+ *   3. O Felipe autoriza o banco/cartão no widget; a Pluggy devolve um
+ *      `itemId` — persistimos em FinanceContaConectada.
+ *   4. Varredura diária (requisito 6 da spec): pra cada FinanceContaBancaria
+ *      já conectada, buscar transações novas (buscarTransacoesNovas) e
+ *      materializar como FinanceLancamento com origem=PLUGGY,
+ *      categoriaId=null (pendente de categorização — dispara os alertas de
+ *      alertas.ts).
+ */
+
+import { prisma } from "../prisma";
+
+const PLUGGY_BASE_URL = "https://api.pluggy.ai";
+
+function getClientId(): string {
+  const id = process.env.PLUGGY_CLIENT_ID;
+  if (!id) {
+    throw new Error(
+      "PLUGGY_CLIENT_ID não configurado. Crie uma conta em dashboard.pluggy.ai, gere Client ID + Client Secret e defina nas env vars deste app."
+    );
+  }
+  return id;
+}
+
+function getClientSecret(): string {
+  const secret = process.env.PLUGGY_CLIENT_SECRET;
+  if (!secret) {
+    throw new Error(
+      "PLUGGY_CLIENT_SECRET não configurado. Crie uma conta em dashboard.pluggy.ai, gere Client ID + Client Secret e defina nas env vars deste app."
+    );
+  }
+  return secret;
+}
+
+// A apiKey da Pluggy expira (~2h) — cache em memória do processo, simples
+// e suficiente pro volume desta suíte (1 tenant usando o módulo por
+// enquanto). Se expirar no meio de uma execução, o próximo pluggyFetch
+// pega 401 e re-autentica sozinho (ver pluggyFetch).
+let apiKeyCache: { key: string; obtidoEm: number } | null = null;
+const API_KEY_TTL_MS = 100 * 60 * 1000; // 100min — margem sobre o ~2h real
+
+async function getApiKey(): Promise<string> {
+  if (apiKeyCache && Date.now() - apiKeyCache.obtidoEm < API_KEY_TTL_MS) {
+    return apiKeyCache.key;
+  }
+  const res = await fetch(`${PLUGGY_BASE_URL}/auth`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId: getClientId(), clientSecret: getClientSecret() }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Pluggy /auth ${res.status}: ${body}`);
+  }
+  const data = (await res.json()) as { apiKey: string };
+  apiKeyCache = { key: data.apiKey, obtidoEm: Date.now() };
+  return data.apiKey;
+}
+
+async function pluggyFetch<T>(path: string, init?: RequestInit, tentouReautenticar = false): Promise<T> {
+  const apiKey = await getApiKey();
+  const res = await fetch(`${PLUGGY_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-KEY": apiKey,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+  });
+  if (res.status === 401 && !tentouReautenticar) {
+    apiKeyCache = null; // força nova autenticação
+    return pluggyFetch<T>(path, init, true);
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Pluggy API ${res.status} em ${path}: ${body}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ---- Connect Token (pro widget Pluggy Connect no front-end) --------------
+
+/**
+ * Gera um connectToken de uso único pro widget Pluggy Connect. `itemId`
+ * opcional: passar quando for RE-autorizar uma conexão existente (status
+ * LOGIN_ERROR/OUTDATED), em vez de criar uma nova do zero.
+ */
+export async function criarConnectToken(itemId?: string): Promise<string> {
+  const body = itemId ? { itemId } : {};
+  const data = await pluggyFetch<{ accessToken: string }>("/connect_token", { method: "POST", body: JSON.stringify(body) });
+  return data.accessToken;
+}
+
+// ---- Item (conexão com uma instituição) -----------------------------------
+
+export type PluggyItem = {
+  id: string;
+  connector: { id: number; name: string };
+  status: "LOGIN_IN_PROGRESS" | "UPDATING" | "UPDATED" | "LOGIN_ERROR" | "OUTDATED" | "WAITING_USER_INPUT";
+  executionStatus: string;
+  lastUpdatedAt: string | null;
+};
+
+export async function buscarItem(itemId: string): Promise<PluggyItem> {
+  return pluggyFetch<PluggyItem>(`/items/${itemId}`);
+}
+
+// ---- Contas (bancárias/cartão) dentro de um Item --------------------------
+
+export type PluggyAccount = {
+  id: string;
+  itemId: string;
+  type: "BANK" | "CREDIT";
+  name: string;
+  balance: number;
+  creditData?: { creditLimit?: number };
+};
+
+export async function listarContas(itemId: string): Promise<PluggyAccount[]> {
+  const data = await pluggyFetch<{ results: PluggyAccount[] }>(`/accounts?itemId=${itemId}`);
+  return data.results;
+}
+
+// ---- Transações -------------------------------------------------------------
+
+export type PluggyTransaction = {
+  id: string;
+  accountId: string;
+  description: string;
+  amount: number; // negativo = saída, positivo = entrada (mesma convenção que já usamos em FinanceLancamento.valor)
+  date: string; // ISO — vira dataVencimento (YYYY-MM-DD) na hora de gravar
+  category?: string; // categorização automática da própria Pluggy — usada só como sugestão, nunca grava direto (categorização final é sempre humana, ver requisito 6)
+  merchant?: { name?: string };
+};
+
+/** Busca transações de uma conta, opcionalmente só a partir de uma data
+ * (ISO) — usado na varredura diária pra não reprocessar o histórico
+ * inteiro toda vez. */
+export async function listarTransacoes(accountId: string, desde?: string): Promise<PluggyTransaction[]> {
+  const query = new URLSearchParams({ accountId, pageSize: "500" });
+  if (desde) query.set("from", desde);
+  const data = await pluggyFetch<{ results: PluggyTransaction[] }>(`/transactions?${query.toString()}`);
+  return data.results;
+}
+
+// ---- Varredura diária → FinanceLancamento ----------------------------------
+
+/**
+ * Varredura diária (requisito 6): busca transações novas de TODAS as
+ * FinanceContaBancaria já conectadas de um tenant e materializa como
+ * FinanceLancamento com origem=PLUGGY e categoriaId=null (pendente —
+ * dispara o alerta de categorização em alertas.ts). Idempotente via
+ * pluggyTransactionId @unique: reprocessar não duplica.
+ *
+ * Quem chama isto é o cron diário do app (ver
+ * apps/financeiro/src/app/api/cron/sync-pluggy/route.ts) — não é chamado
+ * na hora do Connect (a 1ª carga de cada conta nova roda por esta mesma
+ * função, só que sem filtro `desde`, no dia seguinte ao connect).
+ */
+export async function sincronizarContasDoTenant(tenantId: string): Promise<{ novos: number }> {
+  const contas = await prisma.financeContaBancaria.findMany({
+    where: { tenantId },
+    include: { contaConectada: true },
+  });
+
+  let novos = 0;
+  for (const conta of contas) {
+    const ultimoLancamento = await prisma.financeLancamento.findFirst({
+      where: { tenantId, contaBancariaId: conta.id, origem: "PLUGGY" },
+      orderBy: { dataVencimento: "desc" },
+      select: { dataVencimento: true },
+    });
+
+    const transacoes = await listarTransacoes(conta.pluggyAccountId, ultimoLancamento?.dataVencimento);
+
+    for (const t of transacoes) {
+      try {
+        await prisma.financeLancamento.create({
+          data: {
+            tenantId,
+            categoriaId: null, // sempre pendente — categorização é sempre humana (requisito 6)
+            descricao: t.description,
+            fornecedor: t.merchant?.name ?? null,
+            valor: t.amount,
+            dataVencimento: t.date.slice(0, 10),
+            origem: "PLUGGY",
+            contaBancariaId: conta.id,
+            pluggyTransactionId: t.id,
+          },
+        });
+        novos++;
+      } catch (e: any) {
+        // P2002 = unique constraint (pluggyTransactionId já existe) — é o
+        // caso esperado de reprocessar um período que já tinha sido
+        // sincronizado antes; qualquer outro erro é propagado.
+        if (e?.code !== "P2002") throw e;
+      }
+    }
+
+    await prisma.financeContaConectada.update({
+      where: { id: conta.contaConectadaId },
+      data: { ultimaSincronizacaoEm: new Date() },
+    });
+  }
+
+  return { novos };
+}

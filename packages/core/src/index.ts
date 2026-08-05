@@ -13,6 +13,7 @@ export * from "./maintenanceCancelamentoPorLiberacao";
 export * from "./aiEvents";
 export * from "./stripe";
 export * from "./channel-manager";
+export * from "./finance";
 export type {
   SuiteModule,
   User,
@@ -37,4 +38,9 @@ export type {
   SubscriptionPlan,
   TenantSubscription,
   PaymentEvent,
+  FinanceCategoria,
+  FinanceLancamento,
+  FinanceOrcamento,
+  FinanceContaConectada,
+  FinanceContaBancaria,
 } from "../generated";

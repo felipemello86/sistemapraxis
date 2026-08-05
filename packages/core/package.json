@@ -19,7 +19,9 @@
     "grant:housekeeping-access": "tsx scripts/grant-housekeeping-access.ts",
     "grant:intelligence-access": "tsx scripts/grant-intelligence-access.ts",
     "add:arrumacao-simples": "tsx scripts/add-arrumacao-simples.ts",
-    "enable:housekeeping-module": "tsx scripts/enable-housekeeping-module.ts"
+    "enable:housekeeping-module": "tsx scripts/enable-housekeeping-module.ts",
+    "enable:finance-module": "tsx scripts/enable-finance-module.ts",
+    "seed:finance-categorias": "tsx scripts/seed-finance-categorias.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
