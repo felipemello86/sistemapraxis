@@ -168,8 +168,18 @@ async function finalizeDirectComCategoriaActionImpl(input: FinalizeDirectWithCat
     where: { id: input.reviewId, tenantId: session.tenantId },
   });
 
-  if (review.stage !== "RECEBIDA") {
-    throw new Error('Esse atalho só está disponível enquanto o card está em "Avaliação Recebida".');
+  // Liberado em RECEBIDA e ANALISE_PLANEJAMENTO — pedido do Felipe
+  // (05/08/2026) após notar que a maioria das avaliações já sai de
+  // "Avaliação Recebida" rapidinho (fluxo entra direto em Análise &
+  // Planejamento), então restringir só a RECEBIDA deixava o atalho
+  // praticamente inacessível na prática. Não precisa checar se já existe
+  // plano de ação/eficácia: esses só são criados por saveAnalysisAction,
+  // que já move o stage pra EXECUCAO — então um card ainda em
+  // ANALISE_PLANEJAMENTO nunca tem nada desses dois pra perder.
+  if (review.stage !== "RECEBIDA" && review.stage !== "ANALISE_PLANEJAMENTO") {
+    throw new Error(
+      'Esse atalho só está disponível enquanto o card está em "Avaliação Recebida" ou "Análise & Planejamento".'
+    );
   }
   if (review.ratingNormalized >= FINAL_THRESHOLD) {
     throw new Error('Avaliações com nota máxima já usam o atalho "Finalizar Direto" sem exigir categorização.');

@@ -469,6 +469,29 @@ export function CardDetailDrawer({
               </div>
             </section>
 
+            {/* Atalho "Finalizar Direto" também disponível aqui — a maioria
+                das avaliações já sai de Avaliação Recebida rápido, então
+                restringir o atalho só àquele estágio o deixava pouco
+                acessível na prática (pedido do Felipe, 05/08/2026). Reusa
+                a mesma categorização marcada acima; não mexe em plano de
+                ação/eficácia, que continuam opcionais nesta seção. */}
+            <div className="border border-slate-200 rounded-md p-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-slate-500">
+                Já categorizou? Pule o plano de ação e eficácia e finalize direto.
+              </p>
+              <button
+                disabled={isPending || categoryIds.length === 0}
+                onClick={() =>
+                  run(() =>
+                    finalizeDirectComCategoriaAction({ reviewId: review.id, categoryIds })
+                  )
+                }
+                className="shrink-0 rounded-md border border-green-300 text-green-700 text-sm font-medium px-4 py-1.5 hover:bg-green-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Finalizar Direto
+              </button>
+            </div>
+
             <section>
               <h3 className="text-sm font-semibold text-slate-700 mb-2">Plano de Ação</h3>
               <div className="space-y-2">
