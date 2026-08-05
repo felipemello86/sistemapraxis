@@ -5,13 +5,14 @@ import { ArrowLeft, Check, CreditCard } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Configuração dos cartões de crédito conectados — pedido do Felipe,
-// 05/08/2026: pra compras no cartão sempre usarem a data de vencimento da
-// FATURA (não a data da compra), o sistema precisa saber o dia do mês em
-// que cada fatura vence. Sem dia de fechamento separado de propósito — só
-// o vencimento, regra simplificada explicada em lib/finance/pluggy.ts
-// (calcularVencimentoFatura).
+// 05/08/2026, 2 rodadas: pra compras no cartão sempre usarem a data de
+// vencimento da FATURA (não a data da compra), o sistema precisa saber o
+// dia de FECHAMENTO e o dia de VENCIMENTO de cada fatura. Os dois juntos
+// definem o ciclo (ver calcularVencimentoFatura em lib/finance/pluggy.ts) —
+// ex.: fechamento=1, vencimento=10 → compras de 2/jul a 1/ago formam a
+// fatura que vence em 10/ago.
 
-type Cartao = { id: string; nome: string; instituicao: string; diaVencimentoFatura: number | null };
+type Cartao = { id: string; nome: string; instituicao: string; diaVencimentoFatura: number | null; diaFechamentoFatura: number | null };
 
 function DiaInput({ valorInicial, onSalvar }: { valorInicial: number | null; onSalvar: (v: number) => void }) {
   const [valor, setValor] = useState(valorInicial != null ? String(valorInicial) : "");
@@ -19,7 +20,7 @@ function DiaInput({ valorInicial, onSalvar }: { valorInicial: number | null; onS
   useEffect(() => setValor(valorInicial != null ? String(valorInicial) : ""), [valorInicial]);
 
   return (
-    <div className="relative w-24 flex-shrink-0">
+    <div className="relative w-20 flex-shrink-0">
       <input
         type="number"
         min="1"
@@ -57,8 +58,8 @@ export function CartoesView() {
     carregar();
   }, []);
 
-  async function salvarDia(id: string, dia: number) {
-    await apiFetch("/api/contas/cartoes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, diaVencimentoFatura: dia }) });
+  async function salvarCampo(id: string, campo: "diaVencimentoFatura" | "diaFechamentoFatura", dia: number) {
+    await apiFetch("/api/contas/cartoes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, [campo]: dia }) });
     carregar();
   }
 
@@ -71,8 +72,9 @@ export function CartoesView() {
       <div>
         <h1 className="text-lg font-bold text-gray-900">Cartões de Crédito</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Informe o dia do mês em que a fatura de cada cartão vence. A partir disso, toda compra passa a ter como Data de Vencimento a data da fatura
-          em que ela cai, não a data da compra.
+          Informe o dia de fechamento e o dia de vencimento da fatura de cada cartão. A partir disso, toda compra passa a ter como Data de
+          Vencimento a data da fatura em que ela cai, não a data da compra — e o filtro "Mensal" em Lançamentos mostra exatamente as compras
+          daquele ciclo.
         </p>
       </div>
 
@@ -89,8 +91,10 @@ export function CartoesView() {
                 <p className="text-sm font-medium text-gray-900 truncate">{c.nome}</p>
                 <p className="text-xs text-gray-400 truncate">{c.instituicao}</p>
               </div>
-              <span className="text-xs text-gray-400 flex-shrink-0">vence todo dia</span>
-              <DiaInput valorInicial={c.diaVencimentoFatura} onSalvar={(dia) => salvarDia(c.id, dia)} />
+              <span className="text-xs text-gray-400 flex-shrink-0">fecha dia</span>
+              <DiaInput valorInicial={c.diaFechamentoFatura} onSalvar={(dia) => salvarCampo(c.id, "diaFechamentoFatura", dia)} />
+              <span className="text-xs text-gray-400 flex-shrink-0">vence dia</span>
+              <DiaInput valorInicial={c.diaVencimentoFatura} onSalvar={(dia) => salvarCampo(c.id, "diaVencimentoFatura", dia)} />
             </div>
           ))}
         </div>

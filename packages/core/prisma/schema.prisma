@@ -2987,6 +2987,14 @@ model FinanceContaBancaria {
   // (pedido do Felipe, 05/08/2026).
   diaVencimentoFatura Int?
 
+  // Dia do mês em que a fatura FECHA (1-31) — junto com diaVencimentoFatura,
+  // define o ciclo completo da fatura (pedido do Felipe, 05/08/2026, 2ª
+  // rodada). Ex.: fechamento=1, vencimento=10 → compras de 2/jul a 1/ago
+  // formam a fatura que vence em 10/ago. Sem isso, calcularVencimentoFatura
+  // caía sempre no mês seguinte à compra, o que juntava datas de fechamento
+  // reais que variam por cartão.
+  diaFechamentoFatura Int?
+
   lancamentos FinanceLancamento[]
 
   createdAt DateTime @default(now())

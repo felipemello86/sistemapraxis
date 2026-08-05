@@ -195,19 +195,48 @@ export async function listarTransacoes(accountId: string, desde?: string): Promi
 /**
  * Data de vencimento da FATURA em que uma compra de cartão cai (pedido do
  * Felipe, 05/08/2026: "o vencimento será sempre o vencimento da fatura",
- * não a data da compra). Regra simplificada, já que o cadastro do cartão
- * (Configurações > Cartões de Crédito) só pede o DIA de vencimento, sem dia
- * de fechamento separado: toda compra feita num mês calendário entra na
- * fatura que vence no mês SEGUINTE, no dia configurado. Cobre a maioria dos
- * ciclos de cartão brasileiro (fechamento tipicamente ~1 semana antes do
- * vencimento); compra feita bem perto do fechamento real pode ocasionalmente
- * cair na fatura errada por 1 ciclo — ajustável na mão em Lançamentos.
+ * não a data da compra). Usa o ciclo real do cartão — dia de FECHAMENTO +
+ * dia de VENCIMENTO, ambos configurados em Configurações > Cartões de
+ * Crédito (pedido do Felipe, 05/08/2026, 2ª rodada — a versão anterior só
+ * tinha o dia de vencimento e assumia "sempre mês seguinte", o que juntava
+ * datas de fechamento reais que variam por cartão).
+ *
+ * Regra, com exemplo do Felipe (fechamento=1, vencimento=10):
+ *   1. Acha o MÊS DE FECHAMENTO da compra: se o dia da compra é <= dia de
+ *      fechamento, fecha no mesmo mês da compra; senão, rola pro fechamento
+ *      do mês seguinte. Ex.: compra em 1/ago (dia 1 <= 1) fecha em agosto;
+ *      compra em 2/jul (dia 2 > 1) fecha em agosto também (rolou).
+ *   2. A partir do mês de fechamento, o VENCIMENTO cai no mesmo mês se
+ *      diaVencimento >= diaFechamento (ex.: fecha dia 1, vence dia 10 — os
+ *      dois em agosto); senão, no mês seguinte ao fechamento (ex.: fecha dia
+ *      25, vence dia 5 — fechamento em agosto, vencimento em setembro).
+ *
+ * Sem diaFechamentoFatura configurado (cartão legado, cadastro antigo),
+ * cai no fallback de antes: sempre mês seguinte à compra, no dia de
+ * vencimento.
  */
-export function calcularVencimentoFatura(dataCompraISO: string, diaVencimentoFatura: number): string {
-  const proximoMes = somarMeses(dataCompraISO, 1).slice(0, 7); // YYYY-MM
-  const { ultimoDia } = limitesDoMes(proximoMes);
+export function calcularVencimentoFatura(dataCompraISO: string, diaVencimentoFatura: number, diaFechamentoFatura?: number | null): string {
+  if (!diaFechamentoFatura) {
+    const proximoMes = somarMeses(dataCompraISO, 1).slice(0, 7); // YYYY-MM
+    const { ultimoDia } = limitesDoMes(proximoMes);
+    const dia = Math.min(diaVencimentoFatura, ultimoDia);
+    return `${proximoMes}-${String(dia).padStart(2, "0")}`;
+  }
+
+  const [anoStr, mesStr, diaStr] = dataCompraISO.split("-");
+  const diaCompra = Number(diaStr);
+
+  // Mês de fechamento da fatura que engloba essa compra.
+  let mesFechamento = `${anoStr}-${mesStr}`;
+  if (diaCompra > diaFechamentoFatura) mesFechamento = somarMeses(mesFechamento + "-01", 1).slice(0, 7);
+
+  // Mês de vencimento a partir do mês de fechamento.
+  let mesVencimento = mesFechamento;
+  if (diaVencimentoFatura < diaFechamentoFatura) mesVencimento = somarMeses(mesFechamento + "-01", 1).slice(0, 7);
+
+  const { ultimoDia } = limitesDoMes(mesVencimento);
   const dia = Math.min(diaVencimentoFatura, ultimoDia);
-  return `${proximoMes}-${String(dia).padStart(2, "0")}`;
+  return `${mesVencimento}-${String(dia).padStart(2, "0")}`;
 }
 
 // ---- Detecção de pagamento de fatura ---------------------------------------
@@ -298,7 +327,9 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
 
     for (const t of transacoes) {
       const dataVencimento =
-        conta.tipo === "CREDIT" && conta.diaVencimentoFatura ? calcularVencimentoFatura(t.date.slice(0, 10), conta.diaVencimentoFatura) : t.date.slice(0, 10);
+        conta.tipo === "CREDIT" && conta.diaVencimentoFatura
+          ? calcularVencimentoFatura(t.date.slice(0, 10), conta.diaVencimentoFatura, conta.diaFechamentoFatura)
+          : t.date.slice(0, 10);
 
       // Lançamento de conta corrente (BANK) já é sempre "quitado" por
       // definição (regra do Felipe — dinheiro que já saiu de fato); cartão
