@@ -169,16 +169,22 @@ export type PluggyTransaction = {
  * repetir enquanto houver `next`. */
 export async function listarTransacoes(accountId: string, desde?: string): Promise<PluggyTransaction[]> {
   const todas: PluggyTransaction[] = [];
-  let cursor: string | null = null;
 
-  do {
-    const query = new URLSearchParams({ accountId });
-    if (desde) query.set("dateFrom", desde);
-    if (cursor) query.set("after", cursor);
-    const data: { results: PluggyTransaction[]; next: string | null } = await pluggyFetch(`/v2/transactions?${query.toString()}`);
+  const queryInicial = new URLSearchParams({ accountId });
+  if (desde) queryInicial.set("dateFrom", desde);
+
+  // `next` já vem pronto como "?accountId=...&after=..." (a query string
+  // inteira da próxima página, não um valor de cursor isolado) — usar
+  // direto, sem reembrulhar num novo URLSearchParams (foi exatamente esse
+  // erro que causou "400 INVALID_CURSOR" em produção, 05/08/2026: o cursor
+  // acabava com a query string inteira dentro dele, dupla-codificada).
+  let proximaQuery: string | null = `?${queryInicial.toString()}`;
+
+  while (proximaQuery) {
+    const data: { results: PluggyTransaction[]; next: string | null } = await pluggyFetch(`/v2/transactions${proximaQuery}`);
     todas.push(...data.results);
-    cursor = data.next;
-  } while (cursor);
+    proximaQuery = data.next;
+  }
 
   return todas;
 }
