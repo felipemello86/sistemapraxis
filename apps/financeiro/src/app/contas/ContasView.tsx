@@ -15,7 +15,11 @@ declare global {
   }
 }
 
-const PLUGGY_CONNECT_SCRIPT = "https://cdn.pluggy.ai/pluggy-connect/v2.9.0/pluggy-connect.js";
+// "latest" em vez de fixar um número de versão — confirmado em
+// docs.pluggy.ai/docs/setup-pluggyconnect-widget-on-your-app (05/08/2026)
+// que a Pluggy publica esse alias, evitando o script apontar pra uma
+// versão que pode deixar de existir no CDN deles.
+const PLUGGY_CONNECT_SCRIPT = "https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js";
 
 type ContaBancaria = { id: string; nome: string; tipo: string; saldoAtual: string | null; limiteCredito: string | null };
 type ContaConectada = { id: string; instituicao: string; status: string; ultimaSincronizacaoEm: string | null; contas: ContaBancaria[] };
