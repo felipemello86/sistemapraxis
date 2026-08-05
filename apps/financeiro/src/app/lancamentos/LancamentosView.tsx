@@ -11,11 +11,10 @@ import { CategorizacaoEmLoteView } from "./CategorizacaoEmLoteView";
 // volta pro modo "lista geral" (sem saldo — não dá pra somar saldo de
 // contas diferentes).
 //
-// Filtros de período (pedido de 05/08/2026, 2ª rodada): dois seletores
-// mutuamente exclusivos — "mensal" (setas prev/next + popover ano/mês) e
-// "período específico" (Ano / Hoje / range customizado). O que estiver
-// ativo manda no fetch; o outro fica esmaecido na UI mas continua clicável
-// pra reassumir.
+// Filtros de período (pedido de 05/08/2026, 2ª e 3ª rodadas): duas abas
+// explícitas — "Mensal" (setas prev/next + popover ano/mês) e "Período
+// específico" (Ano via lista suspensa / Dia via calendário, default hoje /
+// range customizado). A aba ativa manda no fetch.
 
 type Categoria = { id: string; nome: string; tipo: string; bloco: string };
 type ContaBancaria = { id: string; nome: string; tipo: "BANK" | "CREDIT"; saldoAtual: string | null };
@@ -101,7 +100,7 @@ const emptyForm = {
 };
 
 type PeriodoModo = "mensal" | "especifico";
-type PeriodoEspecificoTipo = "ano" | "hoje" | "range";
+type PeriodoEspecificoTipo = "ano" | "dia" | "range";
 type SortField = "data" | "valor";
 
 export function LancamentosView() {
@@ -121,18 +120,27 @@ export function LancamentosView() {
   const [editando, setEditando] = useState<Lancamento | null>(null);
 
   // Período — o usuário escolhe explicitamente o modo (Mensal ou Período
-  // específico) numa aba; dentro de "específico" escolhe entre Ano, Hoje ou
-  // um range customizado. Sem popovers pra essa segunda parte (só pro
-  // seletor de mês, que precisa da grade de 12 meses) — evita os bugs de
+  // específico) numa aba; dentro de "específico" escolhe entre Ano, Dia
+  // (default hoje, mas qualquer dia via calendário) ou um range
+  // customizado. Sem popovers pra essa segunda parte (só pro seletor de
+  // mês, que precisa da grade de 12 meses) — evita os bugs de
   // popover-dentro-de-th que apareceram antes.
   const [periodoModo, setPeriodoModo] = useState<PeriodoModo>("mensal");
   const [periodoEspecificoTipo, setPeriodoEspecificoTipo] = useState<PeriodoEspecificoTipo>("ano");
   const [mes, setMes] = useState(hojeISO.slice(0, 7));
   const [ano, setAno] = useState(String(Number(hojeISO.slice(0, 4))));
+  const [diaEspecifico, setDiaEspecifico] = useState(hojeISO);
   const [rangeInicio, setRangeInicio] = useState(hojeISO);
   const [rangeFim, setRangeFim] = useState(hojeISO);
   const [mesPopoverAberto, setMesPopoverAberto] = useState(false);
   const [anoPopoverNav, setAnoPopoverNav] = useState(Number(mes.slice(0, 4)));
+
+  const anosDisponiveis = useMemo(() => {
+    const atual = Number(hojeISO.slice(0, 4));
+    const anos: number[] = [];
+    for (let a = atual + 5; a >= atual - 15; a--) anos.push(a);
+    return anos;
+  }, []);
 
   // Ordenação + filtros de coluna
   const [sortField, setSortField] = useState<SortField>("data");
@@ -150,7 +158,7 @@ export function LancamentosView() {
   function periodoAtual(): { inicio: string; fim: string } {
     if (periodoModo === "mensal") return limitesDoMesLocal(mes);
     if (periodoEspecificoTipo === "ano") return { inicio: `${ano}-01-01`, fim: `${ano}-12-31` };
-    if (periodoEspecificoTipo === "hoje") return { inicio: hojeISO, fim: hojeISO };
+    if (periodoEspecificoTipo === "dia") return { inicio: diaEspecifico, fim: diaEspecifico };
     return { inicio: rangeInicio, fim: rangeFim };
   }
 
@@ -176,7 +184,7 @@ export function LancamentosView() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [somentePendentes, contaSelecionada, periodoModo, periodoEspecificoTipo, mes, ano, rangeInicio, rangeFim]);
+  }, [somentePendentes, contaSelecionada, periodoModo, periodoEspecificoTipo, mes, ano, diaEspecifico, rangeInicio, rangeFim]);
 
   function abrirNovo() {
     setForm({ ...emptyForm, dataVencimento: hojeISO });
@@ -413,7 +421,7 @@ export function LancamentosView() {
               {(
                 [
                   ["ano", "Ano"],
-                  ["hoje", "Hoje"],
+                  ["dia", "Dia"],
                   ["range", "Período"],
                 ] as const
               ).map(([tipo, rotulo]) => (
@@ -427,7 +435,15 @@ export function LancamentosView() {
               ))}
             </div>
 
-            {periodoEspecificoTipo === "ano" && <input type="number" className="input text-xs py-1 w-20" value={ano} onChange={(e) => setAno(e.target.value)} />}
+            {periodoEspecificoTipo === "ano" && (
+              <select className="input text-xs py-1 w-24" value={ano} onChange={(e) => setAno(e.target.value)}>
+                {anosDisponiveis.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            )}
 
             {periodoEspecificoTipo === "range" && (
               <div className="flex items-center gap-1.5">
@@ -437,7 +453,7 @@ export function LancamentosView() {
               </div>
             )}
 
-            {periodoEspecificoTipo === "hoje" && <span className="text-xs text-gray-400">{formatDataBR(hojeISO)}</span>}
+            {periodoEspecificoTipo === "dia" && <input type="date" className="input text-xs py-1" value={diaEspecifico} onChange={(e) => setDiaEspecifico(e.target.value)} />}
           </div>
         )}
       </div>
