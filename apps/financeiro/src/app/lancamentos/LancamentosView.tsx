@@ -243,8 +243,8 @@ export function LancamentosView() {
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs text-gray-400">
                 <th className="font-medium px-3 py-2">Data</th>
-                <th className="font-medium px-3 py-2">Descrição</th>
-                <th className="font-medium px-3 py-2">Categoria</th>
+                <th className="font-medium px-3 py-2 w-64">Descrição</th>
+                <th className="font-medium px-3 py-2 w-40">Categoria</th>
                 <th className="font-medium px-3 py-2">Status</th>
                 <th className="font-medium px-3 py-2 text-right">Valor</th>
                 <th className="font-medium px-3 py-2 text-right">Saldo</th>
@@ -260,28 +260,28 @@ export function LancamentosView() {
                     <td className="px-3 py-2 text-gray-500 whitespace-nowrap cursor-pointer" onClick={() => setEditando(l)}>
                       {formatDataBR(l.dataVencimento)}
                     </td>
-                    <td className="px-3 py-2 cursor-pointer" onClick={() => setEditando(l)}>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium text-gray-900">{l.descricao}</span>
+                    <td className="px-3 py-2 cursor-pointer max-w-0" onClick={() => setEditando(l)} title={l.descricao}>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-medium text-gray-900 truncate">{l.descricao}</span>
                         {l.recorrente && (
                           <span title="Recorrente" className="flex-shrink-0">
                             <Repeat className="w-3 h-3 text-blue-500" />
                           </span>
                         )}
                         {l.parcelaTotal && l.parcelaTotal > 1 && (
-                          <span className="inline-flex items-center gap-0.5 text-[11px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded flex-shrink-0">
+                          <span className="inline-flex items-center gap-0.5 text-[11px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap">
                             <Layers className="w-3 h-3" /> {l.parcelaNumero}/{l.parcelaTotal}
                           </span>
                         )}
                       </div>
-                      {l.fornecedor && <p className="text-xs text-gray-400">{l.fornecedor}</p>}
+                      {l.fornecedor && <p className="text-xs text-gray-400 truncate">{l.fornecedor}</p>}
                     </td>
                     <td className="px-3 py-2">
                       {!l.categoriaId ? (
                         <select
                           onChange={(e) => e.target.value && categorizar(l.id, e.target.value)}
                           defaultValue=""
-                          className="text-xs border border-amber-300 bg-amber-50 rounded px-2 py-1"
+                          className="text-xs border border-amber-300 bg-amber-50 rounded px-2 py-1 w-40"
                         >
                           <option value="" disabled>
                             Categorizar...
@@ -296,7 +296,7 @@ export function LancamentosView() {
                         <select
                           value={l.categoriaId}
                           onChange={(e) => e.target.value && categorizar(l.id, e.target.value)}
-                          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 max-w-[160px]"
+                          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 w-40"
                         >
                           {categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA")).map((c) => (
                             <option key={c.id} value={c.id}>
@@ -306,8 +306,8 @@ export function LancamentosView() {
                         </select>
                       )}
                     </td>
-                    <td className="px-3 py-2">
-                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${status.cls}`}>{status.rotulo}</span>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className={`inline-block text-[11px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap ${status.cls}`}>{status.rotulo}</span>
                     </td>
                     <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(l.valor)}</td>
                     <td className="px-3 py-2 text-right text-gray-500 whitespace-nowrap">{l.saldo != null ? formatBRL(l.saldo) : "—"}</td>
