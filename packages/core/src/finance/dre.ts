@@ -37,6 +37,7 @@
 import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
 import type { DreTotalizador } from "./categoria-defaults";
+import { carregarContextoRateio, fatorRateio, type FiltroCentroCusto } from "./centro-de-custo";
 
 const ZERO = new Prisma.Decimal(0);
 
@@ -177,8 +178,16 @@ function projetarDataNoMes(dataVencimentoRaiz: string, mesAlvo: string): string 
 }
 
 /** Calcula a DRE de um tenant para um mês específico (passado, atual ou
- * futuro — mesma função pras três situações, requisito 2). */
-export async function calcularDre(tenantId: string, mes: string): Promise<DreMensal> {
+ * futuro — mesma função pras três situações, requisito 2).
+ *
+ * `filtroCentroCusto` (pedido do Felipe, 05/08/2026): default GERAL (soma
+ * de tudo, sem rateio). Filtrando por Empreendimento ou Unidade, cada
+ * lançamento entra só com a fatia que cabe àquele filtro — ver
+ * lib/finance/centro-de-custo.ts pra fórmula do rateio (lançamento marcado
+ * numa Unidade específica vai 100% pra ela; marcado num Empreendimento ou
+ * em "Administração" é dividido entre as Unidades relevantes). */
+export async function calcularDre(tenantId: string, mes: string, filtroCentroCusto?: FiltroCentroCusto): Promise<DreMensal> {
+  const filtro: FiltroCentroCusto = filtroCentroCusto ?? { tipo: "GERAL" };
   const { inicio, fim } = limitesDoMes(mes);
 
   const [blocosDoTenant, categorias, lancamentosDoMes, candidatosRecorrentes, orcamentosDoMes] = await Promise.all([
@@ -200,28 +209,36 @@ export async function calcularDre(tenantId: string, mes: string): Promise<DreMen
 
   const categoriaPorId = new Map(categorias.map((c) => [c.id, c]));
 
+  // Só busca a contagem de Unidades ativas quando o filtro precisa dela
+  // (GERAL não rateia nada — economiza uma consulta no caso comum).
+  const ctxRateio = filtro.tipo === "GERAL" ? null : await carregarContextoRateio(tenantId);
+
   const linhas: DreLinhaLancamento[] = [];
 
   for (const l of lancamentosDoMes) {
+    const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
+    if (fator === 0) continue; // fora do Empreendimento/Unidade filtrado
     linhas.push({
       id: l.id,
       categoriaId: l.categoriaId,
       descricao: l.descricao,
       fornecedor: l.fornecedor,
-      valor: l.valor,
+      valor: fator === 1 ? l.valor : l.valor.mul(fator),
       dataEfetiva: l.dataVencimento,
       projetadaDeRecorrencia: false,
     });
   }
 
   for (const l of candidatosRecorrentes) {
+    const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
+    if (fator === 0) continue;
     const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;
     linhas.push({
       id: l.id,
       categoriaId: l.categoriaId,
       descricao: l.descricao,
       fornecedor: l.fornecedor,
-      valor: l.valor,
+      valor: fator === 1 ? l.valor : l.valor.mul(fator),
       dataEfetiva: raizEstaNesteMes ? l.dataVencimento : projetarDataNoMes(l.dataVencimento, mes),
       projetadaDeRecorrencia: !raizEstaNesteMes,
     });

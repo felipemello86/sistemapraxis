@@ -70,6 +70,10 @@ type DreResponse = {
   mesSeguinte: string;
 };
 
+type Empreendimento = { id: string; nome: string };
+type Unidade = { id: string; nome: string; empreendimentoId: string; empreendimento: string };
+type CentroCustoTipo = "GERAL" | "EMPREENDIMENTO" | "UNIDADE";
+
 function mesAtualSP(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
 }
@@ -192,6 +196,27 @@ export function DreView() {
   // bloco.categorias do /api/dre vem vazio e a detecção falharia.
   const [blocosReceita, setBlocosReceita] = useState<Set<string>>(new Set());
 
+  // Centro de Custo (pedido do Felipe, 05/08/2026): Geral (default, soma de
+  // tudo) | Empreendimento (rateia Administração/outros lançamentos entre
+  // as unidades daquele prédio) | Unidade (idem, mas pra uma unidade só).
+  // Ver lib/finance/centro-de-custo.ts em @praxis/core pra fórmula.
+  const [centroCustoTipo, setCentroCustoTipo] = useState<CentroCustoTipo>("GERAL");
+  const [centroCustoEmpreendimentoId, setCentroCustoEmpreendimentoId] = useState("");
+  const [centroCustoUnidadeId, setCentroCustoUnidadeId] = useState("");
+  const [empreendimentos, setEmpreendimentos] = useState<Empreendimento[]>([]);
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+
+  useEffect(() => {
+    apiFetch("/api/empreendimentos")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setEmpreendimentos)
+      .catch(() => {});
+    apiFetch("/api/unidades")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setUnidades)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     apiFetch("/api/categorias")
       .then((res) => (res.ok ? res.json() : []))
@@ -207,16 +232,27 @@ export function DreView() {
 
   useEffect(() => {
     setLoading(true);
+    // Só aplica o filtro de Empreendimento/Unidade quando um alvo específico
+    // já foi escolhido — enquanto isso, cai de volta pro Geral (evita erro
+    // 400 no meio da troca de aba, antes do <select> ser preenchido).
+    const params = new URLSearchParams();
+    if (centroCustoTipo === "EMPREENDIMENTO" && centroCustoEmpreendimentoId) {
+      params.set("centroCusto", "EMPREENDIMENTO");
+      params.set("empreendimentoId", centroCustoEmpreendimentoId);
+    } else if (centroCustoTipo === "UNIDADE" && centroCustoUnidadeId) {
+      params.set("centroCusto", "UNIDADE");
+      params.set("unidadeId", centroCustoUnidadeId);
+    }
     Promise.all(
       periodos.map((mes) =>
-        apiFetch(`/api/dre?mes=${mes}`)
+        apiFetch(`/api/dre?mes=${mes}&${params.toString()}`)
           .then((res) => (res.ok ? res.json() : null))
           .then((data) => [mes, data] as const)
       )
     )
       .then((entradas) => setDados(Object.fromEntries(entradas)))
       .finally(() => setLoading(false));
-  }, [periodos]);
+  }, [periodos, centroCustoTipo, centroCustoEmpreendimentoId, centroCustoUnidadeId]);
 
   function mudarPeriodo(idx: number, novoMes: string) {
     setPeriodos((prev) => prev.map((m, i) => (i === idx ? novoMes : m)));
@@ -282,6 +318,51 @@ export function DreView() {
         <button onClick={adicionarPeriodo} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 border border-dashed border-gray-300 rounded-lg px-2 py-1.5 flex-shrink-0">
           <Plus className="w-3.5 h-3.5" /> Comparar
         </button>
+      </div>
+
+      {/* Geral / Empreendimento / Unidade (pedido do Felipe, 05/08/2026) —
+          aplica o MESMO filtro a todas as colunas de comparação abertas
+          acima. Ver lib/finance/centro-de-custo.ts pra fórmula do rateio. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+          {(
+            [
+              ["GERAL", "Geral"],
+              ["EMPREENDIMENTO", "Empreendimento"],
+              ["UNIDADE", "Unidade"],
+            ] as const
+          ).map(([v, rotulo]) => (
+            <button
+              key={v}
+              onClick={() => setCentroCustoTipo(v)}
+              className={`text-xs font-medium px-2.5 py-1.5 rounded-md ${centroCustoTipo === v ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
+
+        {centroCustoTipo === "EMPREENDIMENTO" && (
+          <select className="input text-xs py-1.5 w-48" value={centroCustoEmpreendimentoId} onChange={(e) => setCentroCustoEmpreendimentoId(e.target.value)}>
+            <option value="">Selecione o empreendimento...</option>
+            {empreendimentos.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {centroCustoTipo === "UNIDADE" && (
+          <select className="input text-xs py-1.5 w-48" value={centroCustoUnidadeId} onChange={(e) => setCentroCustoUnidadeId(e.target.value)}>
+            <option value="">Selecione a unidade...</option>
+            {unidades.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.empreendimento} — {u.nome}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {loading ? (

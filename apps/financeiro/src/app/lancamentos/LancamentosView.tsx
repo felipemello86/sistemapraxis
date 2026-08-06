@@ -19,6 +19,8 @@ import { CategorizacaoEmLoteView } from "./CategorizacaoEmLoteView";
 type Categoria = { id: string; nome: string; tipo: string; bloco: string };
 type ContaBancaria = { id: string; nome: string; tipo: "BANK" | "CREDIT"; saldoAtual: string | null };
 type ContaConectada = { id: string; instituicao: string; contas: ContaBancaria[] };
+type Empreendimento = { id: string; nome: string };
+type Unidade = { id: string; nome: string; empreendimentoId: string; empreendimento: string };
 
 type StatusLancamento = "VENCIDO" | "A_VENCER" | "QUITADO";
 
@@ -42,7 +44,11 @@ type Lancamento = {
   recorrente: boolean;
   recorrenciaFimData: string | null;
   origem: string;
-  centroCusto: string | null;
+  centroCustoTipo: string;
+  empreendimentoId: string | null;
+  empreendimento: string | null;
+  unidadeId: string | null;
+  unidade: string | null;
   observacoes: string | null;
 };
 
@@ -95,9 +101,80 @@ const emptyForm = {
   modo: "normal" as "normal" | "parcelado" | "recorrente",
   parcelas: "2",
   recorrenciaFimData: "",
-  centroCusto: "",
+  centroCustoTipo: "ADMINISTRACAO" as "ADMINISTRACAO" | "EMPREENDIMENTO" | "UNIDADE",
+  centroCustoEmpreendimentoId: "",
+  centroCustoUnidadeId: "",
   observacoes: "",
 };
+
+// Seletor de Centro de Custo (Administração -> Empreendimento -> Unidade,
+// pedido do Felipe, 05/08/2026) — reaproveitado pelos modais "Novo" e
+// "Editar". Administração e Empreendimento ratearam o custo na DRE (ver
+// lib/finance/centro-de-custo.ts em @praxis/core); Unidade não rateia, vai
+// 100% pra ela.
+function SeletorCentroCusto({
+  tipo,
+  empreendimentoId,
+  unidadeId,
+  empreendimentos,
+  unidades,
+  onChange,
+}: {
+  tipo: string;
+  empreendimentoId: string | null;
+  unidadeId: string | null;
+  empreendimentos: Empreendimento[];
+  unidades: Unidade[];
+  onChange: (v: { centroCustoTipo: "ADMINISTRACAO" | "EMPREENDIMENTO" | "UNIDADE"; empreendimentoId: string | null; unidadeId: string | null }) => void;
+}) {
+  return (
+    <div>
+      <label className="label">Centro de custo</label>
+      <div className="flex gap-2 mb-2">
+        {(
+          [
+            ["ADMINISTRACAO", "Administração"],
+            ["EMPREENDIMENTO", "Empreendimento"],
+            ["UNIDADE", "Unidade"],
+          ] as const
+        ).map(([v, rotulo]) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onChange({ centroCustoTipo: v, empreendimentoId: null, unidadeId: null })}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${tipo === v ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 text-gray-600"}`}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+      {tipo === "EMPREENDIMENTO" && (
+        <select
+          className="input text-sm"
+          value={empreendimentoId || ""}
+          onChange={(e) => onChange({ centroCustoTipo: "EMPREENDIMENTO", empreendimentoId: e.target.value || null, unidadeId: null })}
+        >
+          <option value="">Selecione o empreendimento...</option>
+          {empreendimentos.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.nome}
+            </option>
+          ))}
+        </select>
+      )}
+      {tipo === "UNIDADE" && (
+        <select className="input text-sm" value={unidadeId || ""} onChange={(e) => onChange({ centroCustoTipo: "UNIDADE", empreendimentoId: null, unidadeId: e.target.value || null })}>
+          <option value="">Selecione a unidade...</option>
+          {unidades.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.empreendimento} — {u.nome}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
 
 type PeriodoModo = "mensal" | "especifico";
 type PeriodoEspecificoTipo = "ano" | "dia" | "range";
@@ -110,6 +187,8 @@ export function LancamentosView() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [contasConectadas, setContasConectadas] = useState<ContaConectada[]>([]);
+  const [empreendimentos, setEmpreendimentos] = useState<Empreendimento[]>([]);
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [contaSelecionada, setContaSelecionada] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -176,14 +255,18 @@ export function LancamentosView() {
     if (contaSelecionada) params.set("contaBancariaId", contaSelecionada);
     params.set("dataInicio", inicio);
     params.set("dataFim", fim);
-    const [resL, resC, resCt] = await Promise.all([
+    const [resL, resC, resCt, resE, resU] = await Promise.all([
       apiFetch(`/api/lancamentos?${params.toString()}`),
       apiFetch("/api/categorias"),
       apiFetch("/api/contas"),
+      apiFetch("/api/empreendimentos"),
+      apiFetch("/api/unidades"),
     ]);
     if (resL.ok) setLancamentos(await resL.json());
     if (resC.ok) setCategorias(await resC.json());
     if (resCt.ok) setContasConectadas((await resCt.json()).contasConectadas || []);
+    if (resE.ok) setEmpreendimentos(await resE.json());
+    if (resU.ok) setUnidades(await resU.json());
     setLoading(false);
   }
 
@@ -234,7 +317,9 @@ export function LancamentosView() {
           parcelas: form.modo === "parcelado" ? Number(form.parcelas) : undefined,
           recorrente: form.modo === "recorrente",
           recorrenciaFimData: form.modo === "recorrente" ? form.recorrenciaFimData || null : undefined,
-          centroCusto: form.centroCusto || undefined,
+          centroCustoTipo: form.centroCustoTipo,
+          empreendimentoId: form.centroCustoTipo === "EMPREENDIMENTO" ? form.centroCustoEmpreendimentoId || null : null,
+          unidadeId: form.centroCustoTipo === "UNIDADE" ? form.centroCustoUnidadeId || null : null,
           observacoes: form.observacoes || undefined,
         }),
       });
@@ -264,6 +349,9 @@ export function LancamentosView() {
           dataCompetencia: editando.dataCompetencia || null,
           recorrente: editando.recorrente,
           pago: editando.pago,
+          centroCustoTipo: editando.centroCustoTipo,
+          empreendimentoId: editando.centroCustoTipo === "EMPREENDIMENTO" ? editando.empreendimentoId : null,
+          unidadeId: editando.centroCustoTipo === "UNIDADE" ? editando.unidadeId : null,
         }),
       });
       setEditando(null);
@@ -785,10 +873,16 @@ export function LancamentosView() {
               </div>
             )}
 
-            <div>
-              <label className="label">Centro de custo (opcional)</label>
-              <input className="input" value={form.centroCusto} onChange={(e) => setForm((f) => ({ ...f, centroCusto: e.target.value }))} placeholder="ex.: 203 VI" />
-            </div>
+            <SeletorCentroCusto
+              tipo={form.centroCustoTipo}
+              empreendimentoId={form.centroCustoEmpreendimentoId || null}
+              unidadeId={form.centroCustoUnidadeId || null}
+              empreendimentos={empreendimentos}
+              unidades={unidades}
+              onChange={(v) =>
+                setForm((f) => ({ ...f, centroCustoTipo: v.centroCustoTipo, centroCustoEmpreendimentoId: v.empreendimentoId || "", centroCustoUnidadeId: v.unidadeId || "" }))
+              }
+            />
 
             <button onClick={salvar} disabled={salvando} className="btn-primary w-full">
               {salvando ? "Salvando..." : "Salvar"}
@@ -861,6 +955,17 @@ export function LancamentosView() {
               Recorrente
               {editando.parcelaGrupoId && <span className="text-xs text-gray-400">(parcelado não pode ser recorrente)</span>}
             </label>
+
+            <SeletorCentroCusto
+              tipo={editando.centroCustoTipo}
+              empreendimentoId={editando.empreendimentoId}
+              unidadeId={editando.unidadeId}
+              empreendimentos={empreendimentos}
+              unidades={unidades}
+              onChange={(v) =>
+                setEditando((ed) => (ed ? { ...ed, centroCustoTipo: v.centroCustoTipo, empreendimentoId: v.empreendimentoId, unidadeId: v.unidadeId } : ed))
+              }
+            />
 
             {editando.contaBancaria?.tipo === "CREDIT" ? (
               <p className="text-xs text-gray-400">

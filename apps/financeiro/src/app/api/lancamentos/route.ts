@@ -76,6 +76,8 @@ export async function GET(req: NextRequest) {
     include: {
       categoria: { select: { nome: true, tipo: true, bloco: { select: { nome: true } } } },
       contaBancaria: { select: { id: true, nome: true, tipo: true } },
+      empreendimento: { select: { nome: true } },
+      unidade: { select: { nome: true } },
     },
     orderBy: { dataVencimento: "desc" },
     take: 5000,
@@ -110,9 +112,12 @@ export async function GET(req: NextRequest) {
 
   // Achata categoria.bloco.nome -> categoria.bloco (string), mesma
   // convenção de /api/categorias — mantém o shape que as telas já esperam.
+  // Idem pra empreendimento/unidade -> nome (string), evita include aninhado do lado do cliente.
   let resposta = lancamentos.map((l) => ({
     ...l,
     categoria: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo, bloco: l.categoria.bloco.nome } : null,
+    empreendimento: l.empreendimento?.nome ?? null,
+    unidade: l.unidade?.nome ?? null,
     status: calcularStatusLancamento({ contaTipo: l.contaBancaria?.tipo, pago: l.pago, dataVencimento: l.dataVencimento, hoje }),
     saldo: saldoPorId.get(l.id) ?? null,
   }));
@@ -140,9 +145,45 @@ type NovoLancamentoBody = {
   recorrente?: boolean;
   recorrenciaFimData?: string | null;
   contaBancariaId?: string | null;
-  centroCusto?: string;
+  centroCustoTipo?: "ADMINISTRACAO" | "EMPREENDIMENTO" | "UNIDADE";
+  empreendimentoId?: string | null;
+  unidadeId?: string | null;
   observacoes?: string;
 };
+
+// Valida e normaliza o Centro de Custo (Administração -> Empreendimento ->
+// Unidade, pedido do Felipe, 05/08/2026) a partir do body — usado tanto na
+// criação quanto na edição. ADMINISTRACAO é o default (nenhuma FK setada);
+// EMPREENDIMENTO exige empreendimentoId (de um empreendimento do próprio
+// tenant); UNIDADE exige unidadeId (de uma unidade do próprio tenant) — em
+// ambos os casos a outra FK fica sempre null (nunca as duas setadas juntas).
+async function resolverCentroCusto(
+  tenantId: string,
+  centroCustoTipo: string | undefined,
+  empreendimentoId: string | null | undefined,
+  unidadeId: string | null | undefined
+): Promise<{ ok: true; data: { centroCustoTipo: string; empreendimentoId: string | null; unidadeId: string | null } } | { ok: false; error: string }> {
+  const tipo = centroCustoTipo ?? "ADMINISTRACAO";
+  if (!["ADMINISTRACAO", "EMPREENDIMENTO", "UNIDADE"].includes(tipo)) {
+    return { ok: false, error: "centroCustoTipo deve ser ADMINISTRACAO, EMPREENDIMENTO ou UNIDADE" };
+  }
+
+  if (tipo === "EMPREENDIMENTO") {
+    if (!empreendimentoId) return { ok: false, error: "empreendimentoId é obrigatório quando centroCustoTipo=EMPREENDIMENTO" };
+    const empreendimento = await prisma.financeEmpreendimento.findUnique({ where: { id: empreendimentoId } });
+    if (!empreendimento || empreendimento.tenantId !== tenantId) return { ok: false, error: "Empreendimento não encontrado" };
+    return { ok: true, data: { centroCustoTipo: tipo, empreendimentoId, unidadeId: null } };
+  }
+
+  if (tipo === "UNIDADE") {
+    if (!unidadeId) return { ok: false, error: "unidadeId é obrigatório quando centroCustoTipo=UNIDADE" };
+    const unidade = await prisma.financeUnidade.findUnique({ where: { id: unidadeId } });
+    if (!unidade || unidade.tenantId !== tenantId) return { ok: false, error: "Unidade não encontrada" };
+    return { ok: true, data: { centroCustoTipo: tipo, empreendimentoId: null, unidadeId } };
+  }
+
+  return { ok: true, data: { centroCustoTipo: "ADMINISTRACAO", empreendimentoId: null, unidadeId: null } };
+}
 
 // POST /api/lancamentos — cria um lançamento normal, parcelado ou recorrente
 export async function POST(req: NextRequest) {
@@ -153,7 +194,8 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json()) as NovoLancamentoBody;
-  const { descricao, fornecedor, categoriaId, tipo, valor, dataVencimento, dataCompetencia, parcelas, recorrente, recorrenciaFimData, contaBancariaId, centroCusto, observacoes } = body;
+  const { descricao, fornecedor, categoriaId, tipo, valor, dataVencimento, dataCompetencia, parcelas, recorrente, recorrenciaFimData, contaBancariaId, centroCustoTipo, empreendimentoId, unidadeId, observacoes } =
+    body;
 
   if (!descricao?.trim()) return NextResponse.json({ error: "descricao é obrigatória" }, { status: 400 });
   if (tipo !== "RECEITA" && tipo !== "DESPESA") return NextResponse.json({ error: "tipo deve ser RECEITA ou DESPESA" }, { status: 400 });
@@ -165,6 +207,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "um lançamento não pode ser parcelado E recorrente ao mesmo tempo" }, { status: 400 });
   }
 
+  const centroCusto = await resolverCentroCusto(session.tenantId, centroCustoTipo, empreendimentoId, unidadeId);
+  if (!centroCusto.ok) return NextResponse.json({ error: centroCusto.error }, { status: centroCusto.error.includes("não encontrad") ? 404 : 400 });
+
   const sinal = tipo === "DESPESA" ? -1 : 1;
   const dadosBase = {
     tenantId: session.tenantId,
@@ -174,7 +219,7 @@ export async function POST(req: NextRequest) {
     dataCompetencia: dataCompetencia || null,
     contaBancariaId: contaBancariaId || null,
     origem: "MANUAL" as const,
-    centroCusto: centroCusto?.trim() || null,
+    ...centroCusto.data,
     observacoes: observacoes?.trim() || null,
     criadoPorNome: session.nome,
   };
@@ -232,7 +277,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
   }
 
-  const { id, categoriaId, descricao, fornecedor, valor, tipo, dataVencimento, dataCompetencia, recorrente, recorrenciaFimData, contaBancariaId, pago, centroCusto, observacoes } =
+  const { id, categoriaId, descricao, fornecedor, valor, tipo, dataVencimento, dataCompetencia, recorrente, recorrenciaFimData, contaBancariaId, pago, centroCustoTipo, empreendimentoId, unidadeId, observacoes } =
     await req.json();
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
@@ -243,6 +288,15 @@ export async function PATCH(req: NextRequest) {
 
   if (recorrente === true && existente.parcelaGrupoId) {
     return NextResponse.json({ error: "um lançamento parcelado não pode virar recorrente" }, { status: 400 });
+  }
+
+  // Centro de custo só é revalidado/atualizado quando algum dos 3 campos
+  // vem no body — evita reprocessar em todo PATCH (ex.: só marcar "pago").
+  let centroCustoData: { centroCustoTipo: string; empreendimentoId: string | null; unidadeId: string | null } | undefined;
+  if (centroCustoTipo !== undefined || empreendimentoId !== undefined || unidadeId !== undefined) {
+    const resolvido = await resolverCentroCusto(session.tenantId, centroCustoTipo ?? existente.centroCustoTipo, empreendimentoId, unidadeId);
+    if (!resolvido.ok) return NextResponse.json({ error: resolvido.error }, { status: resolvido.error.includes("não encontrad") ? 404 : 400 });
+    centroCustoData = resolvido.data;
   }
 
   // Se valor OU tipo mudou, recalcula o sinal a partir do tipo informado
@@ -268,7 +322,7 @@ export async function PATCH(req: NextRequest) {
         ...(recorrenciaFimData !== undefined ? { recorrenciaFimData: recorrenciaFimData || null } : {}),
         ...(contaBancariaId !== undefined ? { contaBancariaId: contaBancariaId || null } : {}),
         ...(pago !== undefined ? { pago: Boolean(pago) } : {}),
-        ...(centroCusto !== undefined ? { centroCusto: centroCusto?.trim() || null } : {}),
+        ...(centroCustoData ?? {}),
         ...(observacoes !== undefined ? { observacoes: observacoes?.trim() || null } : {}),
       },
     });

@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
-import { getSession, hasModuleAccess, calcularDre, dataAtualSP, mesAdjacente } from "@praxis/core";
+import { getSession, hasModuleAccess, calcularDre, dataAtualSP, mesAdjacente, type FiltroCentroCusto } from "@praxis/core";
 
 // Calcula a DRE de um mês (?mes=YYYY-MM, default: mês atual) — passado,
 // atual ou futuro, mesma função pras três situações (requisito 2 do
 // Felipe). Ver lib/finance/dre.ts em @praxis/core pra fórmula e regras de
 // projeção de recorrência.
+//
+// Centro de Custo (pedido do Felipe, 05/08/2026): ?centroCusto=GERAL
+// (default) | EMPREENDIMENTO&empreendimentoId=xxx | UNIDADE&unidadeId=xxx —
+// filtra e rateia os lançamentos conforme lib/finance/centro-de-custo.ts.
 export async function GET(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,7 +23,21 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: `Mês inválido: "${mes}" (esperado YYYY-MM)` }, { status: 400 });
   }
 
-  const dre = await calcularDre(session.tenantId, mes);
+  const centroCustoTipo = searchParams.get("centroCusto") ?? "GERAL";
+  let filtroCentroCusto: FiltroCentroCusto;
+  if (centroCustoTipo === "EMPREENDIMENTO") {
+    const empreendimentoId = searchParams.get("empreendimentoId");
+    if (!empreendimentoId) return NextResponse.json({ error: "empreendimentoId é obrigatório quando centroCusto=EMPREENDIMENTO" }, { status: 400 });
+    filtroCentroCusto = { tipo: "EMPREENDIMENTO", empreendimentoId };
+  } else if (centroCustoTipo === "UNIDADE") {
+    const unidadeId = searchParams.get("unidadeId");
+    if (!unidadeId) return NextResponse.json({ error: "unidadeId é obrigatório quando centroCusto=UNIDADE" }, { status: 400 });
+    filtroCentroCusto = { tipo: "UNIDADE", unidadeId };
+  } else {
+    filtroCentroCusto = { tipo: "GERAL" };
+  }
+
+  const dre = await calcularDre(session.tenantId, mes, filtroCentroCusto);
 
   return NextResponse.json({
     ...dre,

@@ -21,7 +21,8 @@
     "add:arrumacao-simples": "tsx scripts/add-arrumacao-simples.ts",
     "enable:housekeeping-module": "tsx scripts/enable-housekeeping-module.ts",
     "enable:finance-module": "tsx scripts/enable-finance-module.ts",
-    "seed:finance-categorias": "tsx scripts/seed-finance-categorias.ts"
+    "seed:finance-categorias": "tsx scripts/seed-finance-categorias.ts",
+    "importar:categorizacao-conta-azul": "tsx scripts/importar-categorizacao-conta-azul.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -30,7 +31,8 @@
     "date-fns": "^3.6.0",
     "pg": "^8.13.0",
     "firebase-admin": "^13.10.0",
-    "stripe": "^14.25.0"
+    "stripe": "^14.25.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "next": "14.2.35",

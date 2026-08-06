@@ -1,4 +1,5 @@
 export * from "./categoria-defaults";
+export * from "./centro-de-custo";
 export * from "./dre";
 export * from "./alertas";
 export * from "./pluggy";

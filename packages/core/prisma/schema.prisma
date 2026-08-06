@@ -127,6 +127,8 @@ model Tenant {
   financeOrcamentos       FinanceOrcamento[]
   financeContasConectadas FinanceContaConectada[]
   financeContasBancarias  FinanceContaBancaria[]
+  financeEmpreendimentos  FinanceEmpreendimento[]
+  financeUnidades         FinanceUnidade[]
 }
 
 enum SuiteModule {
@@ -3073,10 +3075,21 @@ model FinanceLancamento {
   pago                        Boolean @default(false)
   pagoReferenciaLancamentoId  String? // id do lançamento da conta corrente que disparou a detecção (rastreabilidade/undo) — sem FK de propósito, é só uma referência informativa
 
-  // Referência livre por unidade/flat ou sócio (ex.: "203 VI", "1406 DO") —
-  // dimensão que o Felipe já usa hoje via "Centro de Custo" no Conta Azul,
-  // preservada aqui como campo simples (sem catálogo próprio nesta v1).
-  centroCusto String?
+  // Centro de Custo — hierarquia Administração -> Empreendimento -> Unidade
+  // (pedido do Felipe, 05/08/2026, substituindo o campo livre de texto que
+  // existia antes). ADMINISTRACAO (default, nenhuma FK setada) = custo
+  // rateado igualmente entre TODAS as Unidades ativas do tenant quando a
+  // DRE é vista por Unidade ou por Empreendimento. EMPREENDIMENTO = rateado
+  // só entre as Unidades daquele Empreendimento. UNIDADE = vai 100% pra
+  // aquela Unidade, sem rateio. Ver lib/finance/centro-de-custo.ts pra
+  // fórmula do rateio.
+  centroCustoTipo String @default("ADMINISTRACAO") // ADMINISTRACAO | EMPREENDIMENTO | UNIDADE
+
+  empreendimentoId String?
+  empreendimento   FinanceEmpreendimento? @relation("LancamentoEmpreendimento", fields: [empreendimentoId], references: [id])
+
+  unidadeId String?
+  unidade   FinanceUnidade? @relation("LancamentoUnidade", fields: [unidadeId], references: [id])
 
   observacoes   String?
   criadoPorNome String?
@@ -3088,6 +3101,8 @@ model FinanceLancamento {
   @@index([tenantId, categoriaId])
   @@index([tenantId, recorrente])
   @@index([parcelaGrupoId])
+  @@index([tenantId, empreendimentoId])
+  @@index([tenantId, unidadeId])
 }
 
 // Orçamento (linha de base) configurável tanto por categoria individual
@@ -3121,4 +3136,58 @@ model FinanceOrcamento {
   updatedAt DateTime @updatedAt
 
   @@unique([tenantId, alvoTipo, alvoChave, mes])
+}
+
+// Centro de Custo (pedido do Felipe, 05/08/2026): hierarquia Administração
+// -> Empreendimento -> Unidade. "Administração" não é uma linha no banco —
+// é só a AUSÊNCIA de empreendimentoId/unidadeId num FinanceLancamento
+// (centroCustoTipo=ADMINISTRACAO). Empreendimento = "Administração Local"
+// (ex.: prédio "Vicentina"); Unidade = flat/apto individual, sempre
+// pertencente a um Empreendimento (ex.: unidades 101, 201, 203 dentro de
+// Vicentina). O rateio dos custos de Administração/Empreendimento entre as
+// Unidades acontece em tempo de consulta na DRE (ver
+// lib/finance/centro-de-custo.ts), nunca é gravado no banco — se uma
+// Unidade for criada ou desativada, o rateio de TODOS os meses (passados e
+// futuros) muda automaticamente na próxima consulta.
+model FinanceEmpreendimento {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome  String
+  ativo Boolean @default(true) // inativo = some dos seletores de novo lançamento, mantém o histórico
+
+  unidades    FinanceUnidade[]
+  lancamentos FinanceLancamento[] @relation("LancamentoEmpreendimento")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, nome])
+  @@index([tenantId])
+}
+
+model FinanceUnidade {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome String // ex.: "101", "203" — só o identificador da unidade, o prédio já vem do Empreendimento
+
+  empreendimentoId String
+  empreendimento   FinanceEmpreendimento @relation(fields: [empreendimentoId], references: [id], onDelete: Restrict) // Restrict: empreendimento só se apaga sem unidades
+
+  // Inativo = some dos seletores de novo lançamento E do denominador do
+  // rateio (não dilui mais o custo de Administração/Empreendimento), mas
+  // mantém o histórico de lançamentos já ligados a ela.
+  ativo Boolean @default(true)
+
+  lancamentos FinanceLancamento[] @relation("LancamentoUnidade")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empreendimentoId, nome])
+  @@index([tenantId])
+  @@index([empreendimentoId])
 }

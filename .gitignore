@@ -9,3 +9,13 @@ generated/
 _tmp_*
 .vercel
 .env*
+
+# exports financeiros sensíveis (ex.: extrato do Conta Azul p/ script de
+# importação de categorização) — nunca commitar
+packages/core/scripts/data/
+
+# artefatos de verificação local (gerados durante o desenvolvimento pra
+# conferir o Prisma Client contra o schema novo sem mexer em generated/) —
+# se você ver isso no repo, pode apagar à vontade (ou rodar `git clean`)
+packages/core/generated_verify/
+packages/core/prisma/schema.verify.prisma
