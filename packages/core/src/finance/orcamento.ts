@@ -10,7 +10,7 @@
 
 import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
-import { calcularDre } from "./dre";
+import { calcularDre, type DreLinhaLancamento } from "./dre";
 import { limitesDoMes, projetarDataNoMes } from "./mes";
 import { carregarConciliacoesDoMes } from "./conciliacao";
 import { carregarContextoRateio, fatorRateio, type FiltroCentroCusto, type ContextoRateio } from "./centro-de-custo";
@@ -46,6 +46,10 @@ export interface OrcamentoCategoriaResumo {
   tipo: string; // RECEITA | DESPESA
   blocoId: string;
   realizadoRS: Prisma.Decimal; // igual ao total que a DRE já calcula (deduplicado)
+  // Lançamentos REAIS já conciliados/realizados nessa categoria/mês (mesma
+  // lista que a DRE mostra) — pedido do Felipe, 06/08/2026: o 2º nível de
+  // expand do Orçamento mostra isso junto com previstos e provisão.
+  lancamentos: DreLinhaLancamento[];
   previstos: OrcamentoPrevistoItem[];
   totalPrevistosRS: Prisma.Decimal; // soma de todos os previstos (cumpridos ou não)
   provisaoRS: Prisma.Decimal | null; // valor orçado pra "gastos não definidos" — null = nunca configurado
@@ -54,6 +58,13 @@ export interface OrcamentoCategoriaResumo {
   // subtrair direto da provisaoRS (que também é positiva).
   provisaoConsumidaRS: Prisma.Decimal;
   provisaoRestanteRS: Prisma.Decimal | null; // provisaoRS - provisaoConsumidaRS (pode ficar negativo se estourou)
+  // Projeção de fechamento do mês (pedido do Felipe, 06/08/2026: a provisão
+  // deve "sensibilizar os valores exibidos em Orçamento") = realizado +
+  // previstos AINDA pendentes (os já cumpridos já estão dentro de
+  // realizado, não conta 2x) + provisão restante (o que ainda "sobra" pra
+  // imprevistos, pode ser negativo se já estourou). Só exibição, nunca
+  // gravado.
+  projetadoRS: Prisma.Decimal;
 }
 
 export interface OrcamentoBlocoResumo {
@@ -62,6 +73,7 @@ export interface OrcamentoBlocoResumo {
   ordem: number;
   totalizador: string;
   realizadoRS: Prisma.Decimal;
+  projetadoRS: Prisma.Decimal;
   categorias: OrcamentoCategoriaResumo[];
 }
 
@@ -76,6 +88,12 @@ export interface OrcamentoMensal {
   despesasRS: Prisma.Decimal;
   geracaoDeCaixaRS: Prisma.Decimal;
   lucroPrejuizoRS: Prisma.Decimal;
+  // Mesmos 4 totais, porém PROJETADOS (ver OrcamentoCategoriaResumo.projetadoRS).
+  margemBrutaProjetadoRS: Prisma.Decimal;
+  margemBrutaProjetadoPercent: Prisma.Decimal | null;
+  despesasProjetadoRS: Prisma.Decimal;
+  geracaoDeCaixaProjetadoRS: Prisma.Decimal;
+  lucroPrejuizoProjetadoRS: Prisma.Decimal;
 }
 
 export async function calcularOrcamento(tenantId: string, mes: string, filtroCentroCusto?: FiltroCentroCusto): Promise<OrcamentoMensal> {
@@ -106,6 +124,14 @@ export async function calcularOrcamento(tenantId: string, mes: string, filtroCen
   ]);
 
   const categoriaPorId = new Map(categorias.map((c) => [c.id, c]));
+
+  // "Realizado" da DRE inclui TODO lançamento MANUAL do mês, pago ou não —
+  // é assim que a projeção de recorrência sempre funcionou (aparece na DRE
+  // desde a criação, não só depois de pago). Mas a seção "Realizado" do
+  // Orçamento (pedido do Felipe, 06/08/2026) deve mostrar só o que já foi
+  // DE FATO conciliado — um previsto MANUAL ainda pendente já aparece na
+  // seção "Previstos" logo abaixo, não deveria aparecer duplicado aqui.
+  const previstosNaoConciliadosIds = new Set([...pontuais, ...recorrentes].filter((l) => !fulfilled.has(l.id)).map((l) => l.id));
 
   // Provisão não tem Empreendimento/Unidade própria — rateada como um custo
   // de Administração (ver comentário de CENTRO_CUSTO_ADMINISTRACAO acima).
@@ -167,28 +193,55 @@ export async function calcularOrcamento(tenantId: string, mes: string, filtroCen
     consumidoPorCategoria.set(l.categoriaId, (consumidoPorCategoria.get(l.categoriaId) ?? ZERO).add(valorRateado));
   }
 
-  function montarCategoria(categoriaId: string, nome: string, tipo: string, blocoId: string, realizadoRS: Prisma.Decimal): OrcamentoCategoriaResumo {
+  function montarCategoria(
+    categoriaId: string,
+    nome: string,
+    tipo: string,
+    blocoId: string,
+    realizadoRS: Prisma.Decimal,
+    lancamentos: DreLinhaLancamento[]
+  ): OrcamentoCategoriaResumo {
     const previstos = (previstosPorCategoria.get(categoriaId) ?? []).sort((a, b) => a.dataEfetiva.localeCompare(b.dataEfetiva));
     const totalPrevistosRS = previstos.reduce((acc, p) => acc.add(p.valor), ZERO);
     const provisaoRS = provisaoPorCategoria.get(categoriaId) ?? null;
     const provisaoConsumidaRS = consumidoPorCategoria.get(categoriaId) ?? ZERO;
+    const provisaoRestanteRS = provisaoRS != null ? provisaoRS.sub(provisaoConsumidaRS) : null;
+    // Projeção de fechamento (ver comentário na interface): IMPORTANTE —
+    // `realizadoRS` (vindo da DRE) JÁ inclui todo previsto MANUAL ainda não
+    // pago (é assim que a "DRE viva" sempre funcionou: um lançamento
+    // recorrente ou pontual futuro já aparece projetado na DRE do mês desde
+    // a criação do módulo, não só depois de pago — só é excluído quando
+    // CONCILIADO com um real, pra não contar 2x). Por isso o projetado NÃO
+    // soma os previstos de novo aqui (isso duplicaria); só soma o que ainda
+    // não tem representação nenhuma na DRE: a folga da provisão de gastos
+    // não definidos.
+    const projetadoRS = realizadoRS.add(provisaoRestanteRS ?? ZERO);
     return {
       categoriaId,
       nome,
       tipo,
       blocoId,
       realizadoRS,
+      lancamentos,
       previstos,
       totalPrevistosRS,
       provisaoRS,
       provisaoConsumidaRS,
-      provisaoRestanteRS: provisaoRS != null ? provisaoRS.sub(provisaoConsumidaRS) : null,
+      provisaoRestanteRS,
+      projetadoRS,
     };
   }
 
   const blocos: OrcamentoBlocoResumo[] = dre.blocos.map((blocoDre) => {
     const categoriasDoBloco: OrcamentoCategoriaResumo[] = blocoDre.categorias.map((catDre) =>
-      montarCategoria(catDre.categoriaId, catDre.nome, catDre.tipo, blocoDre.blocoId, catDre.total)
+      montarCategoria(
+        catDre.categoriaId,
+        catDre.nome,
+        catDre.tipo,
+        blocoDre.blocoId,
+        catDre.total,
+        catDre.lancamentos.filter((l) => !previstosNaoConciliadosIds.has(l.id))
+      )
     );
 
     // A DRE só lista categorias com lançamento REALIZADO no mês — mas uma
@@ -202,10 +255,16 @@ export async function calcularOrcamento(tenantId: string, mes: string, filtroCen
       const temPrevisto = (previstosPorCategoria.get(categoria.id) ?? []).length > 0;
       const temProvisao = provisaoPorCategoria.has(categoria.id);
       if (!temPrevisto && !temProvisao) continue; // nada pra mostrar, não polui a árvore
-      categoriasDoBloco.push(montarCategoria(categoria.id, categoria.nome, categoria.tipo, blocoDre.blocoId, ZERO));
+      categoriasDoBloco.push(montarCategoria(categoria.id, categoria.nome, categoria.tipo, blocoDre.blocoId, ZERO, []));
     }
 
     categoriasDoBloco.sort((a, b) => (categoriaPorId.get(a.categoriaId)?.ordem ?? 0) - (categoriaPorId.get(b.categoriaId)?.ordem ?? 0));
+
+    // bloco.total (realizado) já vem multiplicado pelo `sinal` do bloco (ver
+    // dre.ts, categoria.total é bruto/sem sinal) — o projetado precisa da
+    // MESMA multiplicação, em cima da soma bruta (pré-sinal) das categorias,
+    // pra ficar na mesma unidade/convenção do realizado.
+    const somaProjetadaBruta = categoriasDoBloco.reduce((acc, c) => acc.add(c.projetadoRS), ZERO);
 
     return {
       blocoId: blocoDre.blocoId,
@@ -213,9 +272,25 @@ export async function calcularOrcamento(tenantId: string, mes: string, filtroCen
       ordem: blocoDre.ordem,
       totalizador: blocoDre.totalizador,
       realizadoRS: blocoDre.total,
+      projetadoRS: somaProjetadaBruta.mul(blocoDre.sinal),
       categorias: categoriasDoBloco,
     };
   });
+
+  const somarProjetadoPorTotalizador = (totalizador: string) =>
+    blocos.filter((b) => b.totalizador === totalizador).reduce((acc, b) => acc.add(b.projetadoRS), ZERO);
+
+  const margemBrutaProjetadoRS = somarProjetadoPorTotalizador("MARGEM_BRUTA");
+  const despesasProjetadoRS = somarProjetadoPorTotalizador("DESPESAS");
+  const geracaoDeCaixaProjetadoRS = margemBrutaProjetadoRS.add(despesasProjetadoRS);
+  const lucroPrejuizoProjetadoRS = geracaoDeCaixaProjetadoRS.add(somarProjetadoPorTotalizador("LUCRO_PREJUIZO_EXTRA"));
+
+  const receitaBrutaProjetadaRS = blocos
+    .filter((b) => b.totalizador === "MARGEM_BRUTA")
+    .flatMap((b) => b.categorias)
+    .filter((c) => c.tipo === "RECEITA")
+    .reduce((acc, c) => acc.add(c.projetadoRS), ZERO);
+  const margemBrutaProjetadoPercent = receitaBrutaProjetadaRS.isZero() ? null : margemBrutaProjetadoRS.dividedBy(receitaBrutaProjetadaRS).mul(100);
 
   return {
     mes,
@@ -225,5 +300,10 @@ export async function calcularOrcamento(tenantId: string, mes: string, filtroCen
     despesasRS: dre.despesasRS,
     geracaoDeCaixaRS: dre.geracaoDeCaixaRS,
     lucroPrejuizoRS: dre.lucroPrejuizoRS,
+    margemBrutaProjetadoRS,
+    margemBrutaProjetadoPercent,
+    despesasProjetadoRS,
+    geracaoDeCaixaProjetadoRS,
+    lucroPrejuizoProjetadoRS,
   };
 }

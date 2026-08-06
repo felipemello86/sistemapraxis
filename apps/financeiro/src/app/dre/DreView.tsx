@@ -113,6 +113,11 @@ function labelMesCurto(mes: string): string {
   return `${MESES_PT_CURTO[mesNum - 1]}/${String(ano).slice(2)}`;
 }
 
+function formatDataCurta(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}/${m}`;
+}
+
 // Largura fixa de cada coluna de valor — mesma pras linhas e pro cabeçalho,
 // pra tudo alinhar como tabela de verdade.
 const COL_VALOR = "w-24 flex-shrink-0 text-right";
@@ -141,13 +146,56 @@ function LinhaTotal({ rotulo, valoresPorPeriodo, percentPorPeriodo }: { rotulo: 
   );
 }
 
+// Nível 2 (pedido do Felipe, 06/08/2026): categoria também expande, e
+// revela os lançamentos individuais daquele mês. Só faz sentido pro
+// período PRIMÁRIO (periodos[0]) — com colunas de comparação abertas, cada
+// categoria é UMA linha com N valores lado a lado, não N linhas.
+function LinhaCategoriaDre({ nome, valoresPorPeriodo, lancamentos }: { nome: string; valoresPorPeriodo: (string | null)[]; lancamentos: DreLinha[] }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <div>
+      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center gap-2 px-1.5 py-1 rounded text-left hover:bg-gray-50">
+        {aberto ? <ChevronUp className="w-3 h-3 text-gray-300 flex-shrink-0" /> : <ChevronDown className="w-3 h-3 text-gray-300 flex-shrink-0" />}
+        <p className="flex-1 min-w-0 truncate text-xs text-gray-500">{nome}</p>
+        {valoresPorPeriodo.map((v, i) => (
+          <Celula key={i} valor={v} />
+        ))}
+      </button>
+
+      {aberto && (
+        <div className="ml-5 border-l border-gray-100 pl-2">
+          {lancamentos.length === 0 ? (
+            <p className="text-[11px] text-gray-400 py-1">Nenhum lançamento neste mês.</p>
+          ) : (
+            lancamentos.map((l) => (
+              <div key={l.id} className="flex items-center gap-2 px-1.5 py-1">
+                <p className="flex-1 min-w-0 truncate text-[11px] text-gray-600">
+                  {l.descricao}
+                  {l.projetadaDeRecorrencia && (
+                    <span className="ml-1 text-gray-300" title="Ocorrência projetada de lançamento recorrente">
+                      ↻
+                    </span>
+                  )}
+                </p>
+                <p className="text-[10px] text-gray-400 w-8 flex-shrink-0 text-right">{formatDataCurta(l.dataEfetiva)}</p>
+                <Celula valor={l.valor} />
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LinhaBloco({
-  bloco, valoresPorPeriodo, categoriasCanonicas, valoresCategoriaPorPeriodo, destaque,
+  bloco, valoresPorPeriodo, categoriasCanonicas, valoresCategoriaPorPeriodo, lancamentosPorCategoria, destaque,
 }: {
   bloco: { nome: string };
   valoresPorPeriodo: (string | null)[];
   categoriasCanonicas: { categoriaId: string; nome: string }[];
   valoresCategoriaPorPeriodo: (categoriaId: string) => (string | null)[];
+  lancamentosPorCategoria: (categoriaId: string) => DreLinha[];
   destaque?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
@@ -170,12 +218,7 @@ function LinhaBloco({
             <p className="text-xs text-gray-400 py-1">Nenhum lançamento categorizado.</p>
           ) : (
             categoriasCanonicas.map((c) => (
-              <div key={c.categoriaId} className="flex items-center gap-2 px-1.5 py-1">
-                <p className="flex-1 min-w-0 truncate text-xs text-gray-500">{c.nome}</p>
-                {valoresCategoriaPorPeriodo(c.categoriaId).map((v, i) => (
-                  <Celula key={i} valor={v} />
-                ))}
-              </div>
+              <LinhaCategoriaDre key={c.categoriaId} nome={c.nome} valoresPorPeriodo={valoresCategoriaPorPeriodo(c.categoriaId)} lancamentos={lancamentosPorCategoria(c.categoriaId)} />
             ))
           )}
         </div>
@@ -276,17 +319,39 @@ export function DreView() {
     return dados[mes]?.blocos.find((b) => b.blocoId === blocoId)?.total ?? null;
   }
 
-  function categoriasCanonicasDoBloco(blocoId: string): { categoriaId: string; nome: string }[] {
+  // Nível 1 de agrupamento (pedido do Felipe, 06/08/2026): Margem Bruta
+  // continua com 1 linha por bloco configurado (Receita Bruta, Custos
+  // Variáveis...). Despesas e Resultados Extras (LUCRO_PREJUIZO_EXTRA) viram
+  // UMA linha só cada, mesclando as categorias de TODOS os blocos daquele
+  // totalizador — "estrutura mínima": Receita Bruta, Custos Variáveis,
+  // Margem Bruta, Despesas, Resultados Extras, Geração de Caixa,
+  // Lucro/Prejuízo. As funções abaixo recebem uma LISTA de blocoIds (1 pra
+  // Margem Bruta, N pra Despesas/Extras) e mesclam.
+  function categoriasCanonicasDoGrupo(blocoIds: string[]): { categoriaId: string; nome: string }[] {
     const vistos = new Map<string, string>();
     for (const mes of periodos) {
-      const bloco = dados[mes]?.blocos.find((b) => b.blocoId === blocoId);
-      bloco?.categorias.forEach((c) => vistos.set(c.categoriaId, c.nome));
+      for (const blocoId of blocoIds) {
+        const bloco = dados[mes]?.blocos.find((b) => b.blocoId === blocoId);
+        bloco?.categorias.forEach((c) => vistos.set(c.categoriaId, c.nome));
+      }
     }
     return Array.from(vistos, ([categoriaId, nome]) => ({ categoriaId, nome }));
   }
 
-  function valoresCategoria(blocoId: string, categoriaId: string): (string | null)[] {
-    return periodos.map((mes) => dados[mes]?.blocos.find((b) => b.blocoId === blocoId)?.categorias.find((c) => c.categoriaId === categoriaId)?.total ?? null);
+  function categoriaNoGrupo(blocoIds: string[], categoriaId: string, mes: string): DreCategoria | undefined {
+    for (const blocoId of blocoIds) {
+      const c = dados[mes]?.blocos.find((b) => b.blocoId === blocoId)?.categorias.find((c) => c.categoriaId === categoriaId);
+      if (c) return c;
+    }
+    return undefined;
+  }
+
+  function valoresCategoriaDoGrupo(blocoIds: string[], categoriaId: string): (string | null)[] {
+    return periodos.map((mes) => categoriaNoGrupo(blocoIds, categoriaId, mes)?.total ?? null);
+  }
+
+  function lancamentosCategoriaDoGrupo(blocoIds: string[], categoriaId: string): DreLinha[] {
+    return categoriaNoGrupo(blocoIds, categoriaId, periodos[0])?.lancamentos ?? [];
   }
 
   const blocosDe = (t: Totalizador) => blocosCanonicos.filter((b) => b.totalizador === t);
@@ -395,8 +460,9 @@ export function DreView() {
                   key={b.blocoId}
                   bloco={b}
                   valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
-                  categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
-                  valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
+                  categoriasCanonicas={categoriasCanonicasDoGrupo([b.blocoId])}
+                  valoresCategoriaPorPeriodo={(catId) => valoresCategoriaDoGrupo([b.blocoId], catId)}
+                  lancamentosPorCategoria={(catId) => lancamentosCategoriaDoGrupo([b.blocoId], catId)}
                   destaque={blocosReceita.has(b.blocoId)}
                 />
               ))}
@@ -406,29 +472,37 @@ export function DreView() {
                 percentPorPeriodo={periodos.map((mes) => dados[mes]?.margemBrutaPercent ?? null)}
               />
 
-              <LinhaTotal rotulo="Despesas" valoresPorPeriodo={periodos.map((mes) => dados[mes]?.despesasRS ?? null)} />
-              {blocosDe("DESPESAS").map((b) => (
-                <LinhaBloco
-                  key={b.blocoId}
-                  bloco={b}
-                  valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
-                  categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
-                  valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
-                  destaque={blocosReceita.has(b.blocoId)}
-                />
-              ))}
+              {(() => {
+                const idsDespesas = blocosDe("DESPESAS").map((b) => b.blocoId);
+                return (
+                  <LinhaBloco
+                    bloco={{ nome: "Despesas" }}
+                    valoresPorPeriodo={periodos.map((mes) => dados[mes]?.despesasRS ?? null)}
+                    categoriasCanonicas={categoriasCanonicasDoGrupo(idsDespesas)}
+                    valoresCategoriaPorPeriodo={(catId) => valoresCategoriaDoGrupo(idsDespesas, catId)}
+                    lancamentosPorCategoria={(catId) => lancamentosCategoriaDoGrupo(idsDespesas, catId)}
+                  />
+                );
+              })()}
 
               <LinhaTotal rotulo="Geração de Caixa (Lucro Operacional)" valoresPorPeriodo={periodos.map((mes) => dados[mes]?.geracaoDeCaixaRS ?? null)} />
-              {blocosDe("LUCRO_PREJUIZO_EXTRA").map((b) => (
-                <LinhaBloco
-                  key={b.blocoId}
-                  bloco={b}
-                  valoresPorPeriodo={periodos.map((mes) => valorBloco(b.blocoId, mes))}
-                  categoriasCanonicas={categoriasCanonicasDoBloco(b.blocoId)}
-                  valoresCategoriaPorPeriodo={(catId) => valoresCategoria(b.blocoId, catId)}
-                  destaque={blocosReceita.has(b.blocoId)}
-                />
-              ))}
+
+              {(() => {
+                const idsExtras = blocosDe("LUCRO_PREJUIZO_EXTRA").map((b) => b.blocoId);
+                const valoresExtras = periodos.map((mes) => {
+                  const soma = (dados[mes]?.blocos ?? []).filter((b) => idsExtras.includes(b.blocoId)).reduce((acc, b) => acc + Number(b.total), 0);
+                  return dados[mes] ? String(soma) : null;
+                });
+                return (
+                  <LinhaBloco
+                    bloco={{ nome: "Resultados Extras" }}
+                    valoresPorPeriodo={valoresExtras}
+                    categoriasCanonicas={categoriasCanonicasDoGrupo(idsExtras)}
+                    valoresCategoriaPorPeriodo={(catId) => valoresCategoriaDoGrupo(idsExtras, catId)}
+                    lancamentosPorCategoria={(catId) => lancamentosCategoriaDoGrupo(idsExtras, catId)}
+                  />
+                );
+              })()}
 
               <LinhaTotal rotulo="Lucro / Prejuízo" valoresPorPeriodo={periodos.map((mes) => dados[mes]?.lucroPrejuizoRS ?? null)} />
             </div>
