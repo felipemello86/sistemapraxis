@@ -6,3 +6,5 @@ export * from "./pluggy";
 export * from "./status";
 export * from "./conciliacao";
 export * from "./orcamento";
+export * from "./texto";
+export * from "./sugestao-categoria";

@@ -48,11 +48,31 @@ type LancamentoPendente = {
   categoriaId: string | null;
 };
 
+// Sugestão automática de categoria a partir do histórico já categorizado do
+// tenant (pedido do Felipe, 06/08/2026: "o sistema tem que ir aprendendo o
+// que cada descrição normalmente é em termos de categoria") — ver
+// sugerirCategoriasEmLote em conciliacao.ts. Só vem preenchida quando o
+// lançamento ainda não tem categoriaId próprio.
+type CategoriaSugerida = { categoriaId: string; confianca: number } | null;
+
 export type ItemPendente = {
   lancamento: LancamentoPendente;
   sugestoes: Previsto[];
   melhorSugestao: Previsto | null;
+  categoriaSugerida: CategoriaSugerida;
 };
+
+// Confiança mínima pra pré-preencher a Categoria sozinha sem o usuário
+// pedir nada — abaixo disso o sinal do histórico é fraco demais (poucas
+// palavras em comum, ou palavras muito genéricas) e mais atrapalha do que
+// ajuda.
+const CONFIANCA_MINIMA_CATEGORIA = 55;
+
+function categoriaInicial(item: ItemPendente): string {
+  if (item.lancamento.categoriaId) return item.lancamento.categoriaId;
+  if (item.categoriaSugerida && item.categoriaSugerida.confianca >= CONFIANCA_MINIMA_CATEGORIA) return item.categoriaSugerida.categoriaId;
+  return "";
+}
 
 const NOMES_DIA = ["Domingo", "Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira", "Sábado"];
 
@@ -93,7 +113,7 @@ export function ConciliacaoDetalhe({
   const [repetirAberto, setRepetirAberto] = useState(false);
 
   const [descricao, setDescricao] = useState(item.lancamento.descricao);
-  const [categoriaId, setCategoriaId] = useState(item.lancamento.categoriaId ?? "");
+  const [categoriaId, setCategoriaId] = useState(categoriaInicial(item));
   const [centroCustoTipo, setCentroCustoTipo] = useState<"ADMINISTRACAO" | "EMPREENDIMENTO" | "UNIDADE">("ADMINISTRACAO");
   const [propertyId, setPropertyId] = useState<string | null>(null);
   const [uhId, setUhId] = useState<string | null>(null);
@@ -114,7 +134,7 @@ export function ConciliacaoDetalhe({
     setPrevistoEscolhidoId(item.melhorSugestao?.id ?? "");
     setPrevistoManual(null);
     setDescricao(item.lancamento.descricao);
-    setCategoriaId(item.lancamento.categoriaId ?? "");
+    setCategoriaId(categoriaInicial(item));
     setCentroCustoTipo("ADMINISTRACAO");
     setPropertyId(null);
     setUhId(null);
@@ -143,6 +163,15 @@ export function ConciliacaoDetalhe({
   function removerAnexo(url: string) {
     setAnexos((prev) => prev.filter((a) => a.url !== url));
   }
+
+  // Só mostra o aviso "sugerido automaticamente" enquanto o valor no campo
+  // ainda é exatamente o que veio da sugestão (o usuário pode trocar
+  // livremente — nesse caso o aviso some sozinho).
+  const sugestaoAtiva =
+    !item.lancamento.categoriaId &&
+    item.categoriaSugerida != null &&
+    item.categoriaSugerida.confianca >= CONFIANCA_MINIMA_CATEGORIA &&
+    categoriaId === item.categoriaSugerida.categoriaId;
 
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
@@ -332,7 +361,12 @@ export function ConciliacaoDetalhe({
                 <label className="label">Descrição</label>
                 <input className="input text-sm" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
               </div>
-              <SeletorCategoria categoriaId={categoriaId} categorias={categoriasFiltradas} onChange={setCategoriaId} />
+              <div>
+                <SeletorCategoria categoriaId={categoriaId} categorias={categoriasFiltradas} onChange={setCategoriaId} />
+                {sugestaoAtiva && (
+                  <p className="text-xs text-blue-600 mt-1">Sugerido automaticamente com base no histórico — confira antes de confirmar.</p>
+                )}
+              </div>
               <SeletorCentroCusto
                 tipo={centroCustoTipo}
                 empreendimentoId={propertyId}
