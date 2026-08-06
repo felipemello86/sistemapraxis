@@ -6,7 +6,7 @@ import { SeletorMes } from "@/components/SeletorMes";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
 import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
 import type { NovoLancamentoConciliacao } from "@praxis/core";
-import { type ItemPendente } from "./ConciliacaoDetalhe";
+import { type ItemPendente, pareceParcelado } from "./ConciliacaoDetalhe";
 import { ConciliacaoCardCompacto } from "./ConciliacaoCardCompacto";
 
 // Tela de Conciliações — 2º redesign (pedido do Felipe, 06/08/2026):
@@ -51,6 +51,25 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       uhId: null,
     };
   }
+  // Compra parcelada (pedido do Felipe, 06/08/2026): sem um previsto já
+  // esperando por ela (checado acima), não dá pra criar sozinho um "novo
+  // lançamento" em lote — o número de parcelas não tem como o sistema
+  // adivinhar (a descrição não traz essa informação), e sem ele o valor
+  // certo (total ÷ parcelas) também não dá pra calcular. Fica sempre
+  // desmarcado, mesmo que a categoria tenha sido aprendida com confiança —
+  // o card mostra um aviso pra abrir o detalhe e configurar (ver
+  // ConciliacaoCardCompacto.tsx).
+  if (pareceParcelado(item.lancamento.descricao)) {
+    return {
+      checked: false,
+      modo: "novo",
+      previstoId: "",
+      categoriaId: item.categoriaSugerida?.categoriaId ?? "",
+      centroCustoTipo: "ADMINISTRACAO",
+      propertyId: null,
+      uhId: null,
+    };
+  }
   if (item.categoriaSugerida && item.categoriaSugerida.confianca >= CONFIANCA_MINIMA_CATEGORIA) {
     return {
       checked: true,
@@ -65,8 +84,9 @@ function propostaInicial(item: ItemPendente): PropostaLote {
   return { checked: false, modo: "novo", previstoId: "", categoriaId: "", centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null };
 }
 
-function propostaPronta(p: PropostaLote): boolean {
+function propostaPronta(item: ItemPendente, p: PropostaLote): boolean {
   if (p.modo === "previsto") return Boolean(p.previstoId);
+  if (pareceParcelado(item.lancamento.descricao)) return false; // sempre exige abrir o detalhe pra informar o nº de parcelas
   if (!p.categoriaId) return false;
   if (p.centroCustoTipo === "EMPREENDIMENTO") return Boolean(p.propertyId);
   if (p.centroCustoTipo === "UNIDADE") return Boolean(p.uhId);
@@ -127,7 +147,7 @@ export function ConciliacoesView() {
   const selecionados = useMemo(
     () => pendentes.filter((item) => {
       const p = propostas.get(item.lancamento.id);
-      return p && p.checked && propostaPronta(p);
+      return p && p.checked && propostaPronta(item, p);
     }),
     [pendentes, propostas]
   );
@@ -171,7 +191,7 @@ export function ConciliacoesView() {
 
   const prontosParaLote = pendentes.filter((item) => {
     const p = propostas.get(item.lancamento.id);
-    return p && propostaPronta(p);
+    return p && propostaPronta(item, p);
   }).length;
 
   return (
@@ -220,7 +240,7 @@ export function ConciliacoesView() {
                 unidades={unidades}
                 contas={contas}
                 proposta={proposta}
-                pronta={propostaPronta(proposta)}
+                pronta={propostaPronta(item, proposta)}
                 onChangeProposta={(updates) => atualizarProposta(item.lancamento.id, updates)}
                 onConciliado={carregar}
               />

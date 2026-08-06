@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Link2, Search, Repeat, Landmark, FileText, Paperclip, X, Loader2 } from "lucide-react";
+import { Link2, Search, Repeat, Landmark, FileText, Paperclip, X, Loader2, Layers } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { uploadAnexo, type AnexoUpload } from "@/lib/uploadAnexo";
 import { SeletorCentroCusto, type Empreendimento, type Unidade } from "@/components/SeletorCentroCusto";
@@ -74,6 +74,24 @@ function categoriaInicial(item: ItemPendente): string {
   return "";
 }
 
+// Compra parcelada (pedido do Felipe, 06/08/2026): a Pluggy manda a
+// descrição de uma compra parcelada começando com "Parcelado..." (ex.:
+// "Parcelado Lojista - Visa - CORP LAW ADVOGAD NATAL BR") e, pelo menos
+// nesse caso observado, o VALOR TOTAL da compra, não só a fatia deste mês
+// — comparado com o extrato do banco (ver anexo da conversa), uma compra
+// de R$1.978,20 em 6x aparece com R$1.978,20 na Pluggy quando só R$329,70
+// deveriam contar neste mês. Exportado porque tanto o card compacto do
+// modo em lote (ConciliacaoCardCompacto.tsx) quanto a lista
+// (ConciliacoesView.tsx) precisam saber "isso aqui não pode virar um novo
+// lançamento sozinho sem alguém informar o número de parcelas".
+export function pareceParcelado(descricao: string): boolean {
+  return descricao.trim().toLowerCase().startsWith("parcelado");
+}
+
+function arredondarCentavos(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
 const NOMES_DIA = ["Domingo", "Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira", "Sábado"];
 
 function formatBRL(v: string | number): string {
@@ -118,6 +136,9 @@ export function ConciliacaoDetalhe({
   const [propertyId, setPropertyId] = useState<string | null>(null);
   const [uhId, setUhId] = useState<string | null>(null);
   const [repetir, setRepetir] = useState<RepetirConfig>(repetirConfigPadrao(item.lancamento.dataVencimento));
+  const [parcelado, setParcelado] = useState(pareceParcelado(item.lancamento.descricao));
+  const [totalParcelas, setTotalParcelas] = useState(2);
+  const [parcelaAtual, setParcelaAtual] = useState(1);
   const [anexos, setAnexos] = useState<AnexoUpload[]>([]);
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [erroAnexo, setErroAnexo] = useState("");
@@ -139,6 +160,9 @@ export function ConciliacaoDetalhe({
     setPropertyId(null);
     setUhId(null);
     setRepetir(repetirConfigPadrao(item.lancamento.dataVencimento));
+    setParcelado(pareceParcelado(item.lancamento.descricao));
+    setTotalParcelas(2);
+    setParcelaAtual(1);
     setAnexos([]);
     setErroAnexo("");
     setErro("");
@@ -175,6 +199,8 @@ export function ConciliacaoDetalhe({
 
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
+  const valorParcelaCalculado = parcelado ? arredondarCentavos(valorNum / totalParcelas) : null;
+  const parcelasRestantes = parcelado ? totalParcelas - parcelaAtual + 1 : null;
   const candidatos: Previsto[] = previstoManual ? [previstoManual, ...item.sugestoes.filter((s) => s.id !== previstoManual.id)] : item.sugestoes;
   const previstoAtivo = candidatos.find((c) => c.id === previstoEscolhidoId) ?? null;
 
@@ -230,6 +256,10 @@ export function ConciliacaoDetalhe({
       setErro("Escolha a unidade.");
       return;
     }
+    if (parcelado && (totalParcelas < 2 || parcelaAtual < 1 || parcelaAtual > totalParcelas)) {
+      setErro("Confira o número de parcelas.");
+      return;
+    }
     setSalvando(true);
     try {
       const res = await apiFetch("/api/conciliacao", {
@@ -243,14 +273,15 @@ export function ConciliacaoDetalhe({
             centroCustoTipo,
             propertyId: centroCustoTipo === "EMPREENDIMENTO" ? propertyId : null,
             uhId: centroCustoTipo === "UNIDADE" ? uhId : null,
-            dataVencimento: repetir.habilitado ? repetir.primeiroVencimento : item.lancamento.dataVencimento,
-            recorrente: repetir.habilitado,
-            recorrenciaFrequencia: repetir.frequencia,
-            recorrenciaQtde: repetir.habilitado && repetir.qtdeTipo === "numero" ? repetir.qtdeNumero : null,
-            contaBancariaId: repetir.contaBancariaId || null,
-            formaPagamento: repetir.formaPagamento || null,
-            observacoes: repetir.observacoes || null,
+            dataVencimento: parcelado ? item.lancamento.dataVencimento : repetir.habilitado ? repetir.primeiroVencimento : item.lancamento.dataVencimento,
+            recorrente: parcelado ? (parcelasRestantes ?? 1) > 1 : repetir.habilitado,
+            recorrenciaFrequencia: parcelado ? "MENSAL" : repetir.frequencia,
+            recorrenciaQtde: parcelado ? parcelasRestantes : repetir.habilitado && repetir.qtdeTipo === "numero" ? repetir.qtdeNumero : null,
+            contaBancariaId: parcelado ? null : repetir.contaBancariaId || null,
+            formaPagamento: parcelado ? null : repetir.formaPagamento || null,
+            observacoes: parcelado ? null : repetir.observacoes || null,
             anexos,
+            valorParcela: parcelado ? valorParcelaCalculado : undefined,
           },
         }),
       });
@@ -379,16 +410,64 @@ export function ConciliacaoDetalhe({
                   setUhId(v.unidadeId);
                 }}
               />
-              <button
-                type="button"
-                onClick={() => setRepetirAberto(true)}
-                className={`w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg border ${
-                  repetir.habilitado ? "border-blue-700 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-600"
-                }`}
-              >
-                <Repeat className="w-3.5 h-3.5" />
-                {resumoRepeticao(repetir)}
-              </button>
+              <div className={`rounded-lg border p-3 space-y-2 ${parcelado ? "border-blue-200 bg-blue-50/40" : "border-gray-200"}`}>
+                <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-gray-400" /> Compra parcelada
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setParcelado((v) => !v)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${parcelado ? "bg-blue-700" : "bg-gray-200"}`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${parcelado ? "translate-x-4.5" : "translate-x-1"}`} />
+                  </button>
+                </label>
+                {parcelado && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="label">Nº de parcelas</label>
+                        <input
+                          type="number"
+                          min={2}
+                          className="input text-sm"
+                          value={totalParcelas}
+                          onChange={(e) => setTotalParcelas(Math.max(2, Number(e.target.value) || 2))}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Esta é a parcela nº</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalParcelas}
+                          className="input text-sm"
+                          value={parcelaAtual}
+                          onChange={(e) => setParcelaAtual(Math.min(totalParcelas, Math.max(1, Number(e.target.value) || 1)))}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Valor da parcela: <span className="font-medium text-gray-700">{formatBRL(valorParcelaCalculado ?? 0)}</span> — lança essa parcela agora e prevê{" "}
+                      {(parcelasRestantes ?? 1) - 1 > 0 ? `as ${(parcelasRestantes ?? 1) - 1} restantes nos próximos meses` : "que é a última parcela"}.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {!parcelado && (
+                <button
+                  type="button"
+                  onClick={() => setRepetirAberto(true)}
+                  className={`w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg border ${
+                    repetir.habilitado ? "border-blue-700 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-600"
+                  }`}
+                >
+                  <Repeat className="w-3.5 h-3.5" />
+                  {resumoRepeticao(repetir)}
+                </button>
+              )}
 
               <div>
                 <div className="flex items-center justify-between">

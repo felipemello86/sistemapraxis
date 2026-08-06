@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronUp, ArrowRight, Layers } from "lucide-react";
 import { SeletorCategoriaPopup } from "@/components/SeletorCategoriaPopup";
 import { SeletorCentroCustoPopup } from "@/components/SeletorCentroCustoPopup";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
 import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
-import { ConciliacaoDetalhe, type ItemPendente } from "./ConciliacaoDetalhe";
+import { ConciliacaoDetalhe, type ItemPendente, pareceParcelado } from "./ConciliacaoDetalhe";
 import type { PropostaLote } from "./ConciliacoesView";
 
 // Card compacto de UM lançamento pendente, pra tela de Conciliações em
@@ -60,6 +60,10 @@ export function ConciliacaoCardCompacto({
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
   const categoriaEscolhida = categorias.find((c) => c.id === proposta.categoriaId) ?? null;
+  // Sem previsto já esperando por ela, uma compra parcelada não pode ser
+  // resolvida no card compacto — falta o nº de parcelas, que só dá pra
+  // informar no editor completo (ver pareceParcelado em ConciliacaoDetalhe.tsx).
+  const precisaAbrirParaParcelar = proposta.modo === "novo" && pareceParcelado(item.lancamento.descricao);
 
   const resumoCentroCusto =
     proposta.centroCustoTipo === "ADMINISTRACAO"
@@ -114,20 +118,26 @@ export function ConciliacaoCardCompacto({
                 </select>
               ) : null}
 
-              {proposta.modo === "novo" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setPopupCategoria(true)}
-                    className={`truncate font-medium hover:underline ${categoriaEscolhida ? "text-blue-700" : "text-amber-600"}`}
-                  >
-                    {categoriaEscolhida?.nome || "Escolher categoria"}
-                  </button>
-                  <span className="text-gray-300">·</span>
-                  <button type="button" onClick={() => setPopupCentroCusto(true)} className="text-gray-500 hover:underline truncate">
-                    {resumoCentroCusto}
-                  </button>
-                </>
+              {precisaAbrirParaParcelar ? (
+                <button type="button" onClick={() => setExpandido(true)} className="flex items-center gap-1 text-amber-600 font-medium hover:underline">
+                  <Layers className="w-3 h-3" /> Compra parcelada — abrir detalhe pra configurar
+                </button>
+              ) : (
+                proposta.modo === "novo" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setPopupCategoria(true)}
+                      className={`truncate font-medium hover:underline ${categoriaEscolhida ? "text-blue-700" : "text-amber-600"}`}
+                    >
+                      {categoriaEscolhida?.nome || "Escolher categoria"}
+                    </button>
+                    <span className="text-gray-300">·</span>
+                    <button type="button" onClick={() => setPopupCentroCusto(true)} className="text-gray-500 hover:underline truncate">
+                      {resumoCentroCusto}
+                    </button>
+                  </>
+                )
               )}
             </div>
           </div>

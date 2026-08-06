@@ -264,15 +264,27 @@ export interface NovoLancamentoConciliacao {
   // serializa em JSON pro campo `anexos` (mesmo padrão de
   // ComplaintOcorrencia.anexos).
   anexos?: { url: string; fileName: string; fileSize: number }[];
+  // Compra parcelada (pedido do Felipe, 06/08/2026): algumas compras no
+  // cartão chegam da Pluggy com a descrição começando em "Parcelado..." e
+  // o VALOR TOTAL da compra (ex.: R$1.978,20 numa compra em 6x), quando só
+  // a fatia deste mês (R$329,70) deveria contar nas contas — o resto são
+  // as próximas 5 parcelas, que ainda vão chegar em faturas futuras. Se
+  // informado, `valorParcela` substitui `real.valor` tanto no previsto
+  // criado quanto no PRÓPRIO lançamento real importado (ver abaixo) — a
+  // recorrência (MENSAL, `recorrenciaQtde` parcelas restantes) continua
+  // sendo configurada do jeito normal pelos campos acima.
+  valorParcela?: number;
 }
 
 /** Cria um FinanceLancamento MANUAL novo (o "previsto") e já concilia o
  * lançamento importado (`lancamentoRealId`) com ele — pedido do Felipe,
  * 06/08/2026, card "Novo lançamento" da tela de Conciliações. O valor é
- * sempre copiado do lançamento real (a proposta é sempre "isto que já
+ * normalmente copiado do lançamento real (a proposta é sempre "isto que já
  * aconteceu passa a ser esperado também nos próximos meses", nunca um
  * valor arbitrário digitado à parte) — só descrição/fornecedor podem ser
- * ajustados em relação ao texto bruto importado do banco. */
+ * ajustados em relação ao texto bruto importado do banco. A EXCEÇÃO é
+ * compra parcelada (`dados.valorParcela`, ver comentário no tipo acima):
+ * aí o valor vem de uma conta (total ÷ parcelas), não do texto bruto. */
 export async function criarEConciliar(tenantId: string, lancamentoRealId: string, dados: NovoLancamentoConciliacao) {
   const real = await prisma.financeLancamento.findUnique({ where: { id: lancamentoRealId } });
   if (!real || real.tenantId !== tenantId) throw new Error("Lançamento não encontrado");
@@ -311,13 +323,26 @@ export async function criarEConciliar(tenantId: string, lancamentoRealId: string
   }
   const recorrenciaFimData = recorrente ? calcularFimRecorrencia(dados.dataVencimento, recorrenciaFrequencia, dados.recorrenciaQtde ?? null) : null;
 
+  // Compra parcelada: valida e substitui o valor (ver comentário no tipo
+  // NovoLancamentoConciliacao). O sinal tem que bater com o do lançamento
+  // real (uma despesa parcelada continua despesa em cada parcela) —
+  // proteção contra bug no cálculo do front (total ÷ parcelas já devia vir
+  // com o sinal certo, mas não custa checar antes de gravar).
+  let valorFinal = real.valor;
+  if (dados.valorParcela != null) {
+    if (!Number.isFinite(dados.valorParcela) || dados.valorParcela === 0) throw new Error("valorParcela inválido");
+    const mesmoSinal = Math.sign(dados.valorParcela) === Math.sign(Number(real.valor));
+    if (!mesmoSinal) throw new Error("valorParcela precisa ter o mesmo sinal do lançamento real (despesa continua negativa, receita continua positiva)");
+    valorFinal = new Prisma.Decimal(dados.valorParcela);
+  }
+
   const previsto = await prisma.financeLancamento.create({
     data: {
       tenantId,
       categoriaId: dados.categoriaId,
       descricao: dados.descricao.trim(),
       fornecedor: dados.fornecedor?.trim() || real.fornecedor,
-      valor: real.valor,
+      valor: valorFinal,
       dataVencimento: dados.dataVencimento,
       recorrente,
       recorrenciaFrequencia,
@@ -332,6 +357,15 @@ export async function criarEConciliar(tenantId: string, lancamentoRealId: string
       anexos: JSON.stringify(dados.anexos ?? []),
     },
   });
+
+  // Corrige o valor do PRÓPRIO lançamento real importado pra fatia deste
+  // mês (não a compra inteira) — sem isso o mês da compra ficaria com a
+  // despesa total (ex.: R$1.978,20) e os meses seguintes, cobertos só pelo
+  // previsto recorrente criado acima, não fechariam com o que a Pluggy vai
+  // reportar em cada fatura futura (ex.: R$329,70 cada).
+  if (dados.valorParcela != null) {
+    await prisma.financeLancamento.update({ where: { id: lancamentoRealId }, data: { valor: valorFinal } });
+  }
 
   const mesReferencia = (real.dataCompetencia || real.dataVencimento).slice(0, 7);
   await confirmarConciliacao(tenantId, lancamentoRealId, previsto.id, mesReferencia);
