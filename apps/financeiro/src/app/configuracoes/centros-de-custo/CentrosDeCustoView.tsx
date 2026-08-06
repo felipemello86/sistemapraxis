@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Building2, ChevronDown, ChevronRight, Check, Plus, EyeOff, Eye } from "lucide-react";
+import { ArrowLeft, Building2, ChevronDown, ChevronRight, Check, Plus, EyeOff, Eye, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Cadastro de Empreendimentos e Unidades — pedido do Felipe, 05/08/2026:
@@ -14,7 +14,16 @@ import { apiFetch } from "@/lib/apiFetch";
 // de toda a DRE na hora.
 
 type Empreendimento = { id: string; nome: string; ativo: boolean; totalUnidades: number; totalUnidadesAtivas: number };
-type Unidade = { id: string; nome: string; ativo: boolean; empreendimentoId: string; empreendimento: string };
+type Unidade = { id: string; nome: string; ativo: boolean; desativadaEm: string | null; empreendimentoId: string; empreendimento: string };
+
+function mesAtualLocal(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+}
+
+function labelMesAno(mes: string): string {
+  const [ano, m] = mes.split("-");
+  return `${m}/${ano}`;
+}
 
 function NomeEditavel({ valorInicial, onSalvar, className }: { valorInicial: string; onSalvar: (v: string) => void; className?: string }) {
   const [valor, setValor] = useState(valorInicial);
@@ -50,6 +59,11 @@ export function CentrosDeCustoView() {
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
   const [novoEmpreendimento, setNovoEmpreendimento] = useState("");
   const [novaUnidadePorEmpreendimento, setNovaUnidadePorEmpreendimento] = useState<Record<string, string>>({});
+  // Desativar uma Unidade exige escolher o mês/ano de corte (pedido do
+  // Felipe, 05/08/2026, 2ª rodada) — o rateio continua contando ela até
+  // esse mês (inclusive), só some do denominador a partir do mês seguinte.
+  const [desativando, setDesativando] = useState<Unidade | null>(null);
+  const [mesDesativacao, setMesDesativacao] = useState(mesAtualLocal());
 
   async function carregar() {
     setLoading(true);
@@ -119,8 +133,31 @@ export function CentrosDeCustoView() {
   }
 
   async function toggleAtivoUnidade(u: Unidade) {
-    await apiFetch("/api/unidades", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, ativo: !u.ativo }) });
+    if (u.ativo) {
+      // Desativar exige mês/ano de corte — abre o modal em vez de desativar direto.
+      setMesDesativacao(mesAtualLocal());
+      setDesativando(u);
+      return;
+    }
+    // Reativar não precisa de mês: volta a contar em todos os meses.
+    await apiFetch("/api/unidades", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, ativo: true }) });
     carregar();
+  }
+
+  async function confirmarDesativacao() {
+    if (!desativando) return;
+    const res = await apiFetch("/api/unidades", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: desativando.id, ativo: false, desativadaEm: mesDesativacao }),
+    });
+    if (res.ok) {
+      setDesativando(null);
+      carregar();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Erro ao desativar unidade.");
+    }
   }
 
   const totalUnidadesAtivas = empreendimentos.reduce((acc, e) => acc + e.totalUnidadesAtivas, 0);
@@ -188,6 +225,9 @@ export function CentrosDeCustoView() {
                       unidadesDoEmpreendimento.map((u) => (
                         <div key={u.id} className={`flex items-center gap-2 pl-6 py-1 ${!u.ativo ? "opacity-50" : ""}`}>
                           <NomeEditavel valorInicial={u.nome} onSalvar={(nome) => renomearUnidade(u.id, nome)} className="text-sm text-gray-700 bg-transparent border-0 focus:outline-none focus:bg-white rounded px-1 -mx-1 w-full" />
+                          {!u.ativo && u.desativadaEm && (
+                            <span className="text-[11px] text-gray-400 flex-shrink-0 whitespace-nowrap">rateio até {labelMesAno(u.desativadaEm)}</span>
+                          )}
                           <button onClick={() => toggleAtivoUnidade(u)} className="text-gray-300 hover:text-gray-700 flex-shrink-0" title={u.ativo ? "Desativar" : "Reativar"}>
                             {u.ativo ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                           </button>
@@ -211,6 +251,30 @@ export function CentrosDeCustoView() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {desativando && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm p-0 md:p-4">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">Desativar "{desativando.nome}"</h2>
+              <button onClick={() => setDesativando(null)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">
+              A partir de qual mês o rateio deve PARAR de contar essa unidade? O próprio mês escolhido ainda conta — só o mês seguinte já exclui.
+              Meses anteriores continuam contando ela normalmente na DRE.
+            </p>
+            <div>
+              <label className="label">Mês de desativação</label>
+              <input type="month" className="input" value={mesDesativacao} onChange={(e) => setMesDesativacao(e.target.value)} />
+            </div>
+            <button onClick={confirmarDesativacao} className="btn-danger w-full">
+              Desativar a partir de {labelMesAno(mesDesativacao)}
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -211,7 +211,7 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
 
   // Só busca a contagem de Unidades ativas quando o filtro precisa dela
   // (GERAL não rateia nada — economiza uma consulta no caso comum).
-  const ctxRateio = filtro.tipo === "GERAL" ? null : await carregarContextoRateio(tenantId);
+  const ctxRateio = filtro.tipo === "GERAL" ? null : await carregarContextoRateio(tenantId, mes);
 
   const linhas: DreLinhaLancamento[] = [];
 

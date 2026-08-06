@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       id: u.id,
       nome: u.nome,
       ativo: u.ativo,
+      desativadaEm: u.desativadaEm,
       empreendimentoId: u.empreendimentoId,
       empreendimento: u.empreendimento.nome,
     }))
@@ -79,7 +80,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
   }
 
-  const { id, nome, empreendimentoId, ativo } = await req.json();
+  const { id, nome, empreendimentoId, ativo, desativadaEm } = await req.json();
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
   const existente = await prisma.financeUnidade.findUnique({ where: { id } });
@@ -94,6 +95,21 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  // Desativar exige mês/ano (pedido do Felipe, 05/08/2026, 2ª rodada): o
+  // rateio continua contando a Unidade até esse mês (inclusive), só some do
+  // denominador a partir do mês seguinte — ver lib/finance/centro-de-custo.ts.
+  // Reativar sempre limpa desativadaEm (volta a contar em todo mês, sem
+  // buraco — não suportamos múltiplos períodos de ativação/desativação).
+  let desativadaEmData: { desativadaEm: string | null } | undefined;
+  if (ativo === false) {
+    if (!desativadaEm || !/^\d{4}-(0[1-9]|1[0-2])$/.test(desativadaEm)) {
+      return NextResponse.json({ error: "desativadaEm é obrigatório e deve ser YYYY-MM ao desativar uma unidade" }, { status: 400 });
+    }
+    desativadaEmData = { desativadaEm };
+  } else if (ativo === true) {
+    desativadaEmData = { desativadaEm: null };
+  }
+
   try {
     const unidade = await prisma.financeUnidade.update({
       where: { id },
@@ -101,6 +117,7 @@ export async function PATCH(req: NextRequest) {
         ...(nome !== undefined ? { nome: nome.trim() } : {}),
         ...(empreendimentoId !== undefined ? { empreendimentoId } : {}),
         ...(ativo !== undefined ? { ativo: Boolean(ativo) } : {}),
+        ...(desativadaEmData ?? {}),
       },
     });
     return NextResponse.json(unidade);

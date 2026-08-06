@@ -3177,10 +3177,21 @@ model FinanceUnidade {
   empreendimentoId String
   empreendimento   FinanceEmpreendimento @relation(fields: [empreendimentoId], references: [id], onDelete: Restrict) // Restrict: empreendimento só se apaga sem unidades
 
-  // Inativo = some dos seletores de novo lançamento E do denominador do
-  // rateio (não dilui mais o custo de Administração/Empreendimento), mas
+  // Inativo = some IMEDIATAMENTE dos seletores de novo lançamento, mas
   // mantém o histórico de lançamentos já ligados a ela.
   ativo Boolean @default(true)
+
+  // Mês/ano (YYYY-MM) a partir do qual essa Unidade DEIXA de entrar no
+  // denominador do rateio — pedido do Felipe, 05/08/2026: "a desativação de
+  // uma Unidade deve ter um mês/ano definido... os rateios deixam de
+  // contemplar aquela Unidade a partir do mês SUBSEQUENTE à sua
+  // desativação". Ou seja: o próprio mês registrado aqui AINDA conta no
+  // rateio (é o último mês em que a unidade esteve ativa); a partir do mês
+  // seguinte, ela some do denominador — mas meses ANTERIORES a este
+  // continuam contando ela normalmente, preservando a DRE histórica. Null =
+  // nunca foi desativada (sempre conta). Limpo (volta a null) ao reativar —
+  // ver lib/finance/centro-de-custo.ts pra onde isso é lido.
+  desativadaEm String?
 
   lancamentos FinanceLancamento[] @relation("LancamentoUnidade")
 

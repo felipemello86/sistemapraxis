@@ -18,4 +18,6 @@ packages/core/scripts/data/
 # conferir o Prisma Client contra o schema novo sem mexer em generated/) —
 # se você ver isso no repo, pode apagar à vontade (ou rodar `git clean`)
 packages/core/generated_verify/
+packages/core/generated_verify2/
 packages/core/prisma/schema.verify.prisma
+packages/core/prisma/schema.verify2.prisma

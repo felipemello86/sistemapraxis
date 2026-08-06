@@ -27,12 +27,17 @@ export interface ContextoRateio {
   empreendimentoDaUnidade: Map<string, string>; // unidadeId -> empreendimentoId
 }
 
-/** Carrega as contagens de Unidades ativas necessárias pro rateio — uma
- * consulta só, reaproveitada por toda a DRE de um tenant/período. Unidade
- * inativa não entra no denominador (sai do rateio, mas mantém histórico). */
-export async function carregarContextoRateio(tenantId: string): Promise<ContextoRateio> {
+/** Carrega as contagens de Unidades que contam no rateio PARA O MÊS `mes`
+ * (YYYY-MM) — uma consulta só, reaproveitada por toda a DRE daquele
+ * tenant/mês. Uma Unidade entra no denominador se nunca foi desativada
+ * (desativadaEm null) OU se `mes` ainda é igual ou anterior ao mês em que
+ * foi desativada (o próprio mês de desativação ainda conta — só o mês
+ * SEGUINTE já exclui, pedido do Felipe, 05/08/2026). Isso faz o rateio de
+ * meses passados continuar correto mesmo depois que uma Unidade é
+ * desativada hoje. */
+export async function carregarContextoRateio(tenantId: string, mes: string): Promise<ContextoRateio> {
   const unidades = await prisma.financeUnidade.findMany({
-    where: { tenantId, ativo: true },
+    where: { tenantId, OR: [{ desativadaEm: null }, { desativadaEm: { gte: mes } }] },
     select: { id: true, empreendimentoId: true },
   });
 
