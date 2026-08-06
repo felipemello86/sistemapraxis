@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, calcularOrcamento } from "@praxis/core";
 
-// Orçamento (linha de base) configurável linha a linha — por categoria
-// individual OU por bloco inteiro (requisito 5 do Felipe, "os dois,
-// configurável linha a linha"). Um valor por [tenant, alvoTipo, alvoChave,
-// mes] (ver @@unique no schema); não existe orçamento "padrão" que se
-// repete sozinho mês a mês — cada mês tem sua própria linha de base,
-// definida explicitamente (copiar do mês anterior é uma ação da UI, não um
-// comportamento automático do backend).
+// Orçamento — pedido do Felipe, 05 e 06/08/2026: mesma estrutura em árvore
+// da DRE (Bloco -> Categoria), com um 3º nível por categoria: os
+// lançamentos PREVISTOS daquele mês (recorrentes ou pontuais) e a provisão
+// de gastos não definidos (o antigo valor de linha de base por categoria,
+// ver POST abaixo — nada mudou nele, só ganhou um novo significado na UI).
+// Toda a árvore é calculada em lib/finance/orcamento.ts.
 
-// GET /api/orcamento?mes=YYYY-MM
+// GET /api/orcamento?mes=YYYY-MM — árvore completa (blocos > categorias >
+// previstos + provisão), pronta pra tela desenhar igual à DRE.
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -23,12 +23,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Mês inválido: "${mes}" (esperado YYYY-MM)` }, { status: 400 });
   }
 
-  const orcamentos = await prisma.financeOrcamento.findMany({
-    where: { tenantId: session.tenantId, mes },
-    include: { categoria: { select: { nome: true, blocoId: true } } },
-  });
-
-  return NextResponse.json(orcamentos);
+  const orcamento = await calcularOrcamento(session.tenantId, mes);
+  return NextResponse.json(orcamento);
 }
 
 // POST /api/orcamento — cria ou atualiza (upsert) uma linha de orçamento

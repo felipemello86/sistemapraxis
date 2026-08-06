@@ -38,6 +38,8 @@ import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
 import type { DreTotalizador } from "./categoria-defaults";
 import { carregarContextoRateio, fatorRateio, type FiltroCentroCusto } from "./centro-de-custo";
+import { limitesDoMes, projetarDataNoMes } from "./mes";
+import { carregarConciliacoesDoMes } from "./conciliacao";
 
 const ZERO = new Prisma.Decimal(0);
 
@@ -101,81 +103,12 @@ export interface DreMensal {
   pendentesCategorizacao: DreLinhaLancamento[];
 }
 
-function validarMes(mes: string) {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
-    throw new Error(`Mês inválido: "${mes}" (esperado YYYY-MM)`);
-  }
-}
-
-/** Primeiro e último dia (YYYY-MM-DD) do mês, como strings — nunca via Date
- * pra evitar o bug clássico de fuso (ver timezone.ts). */
-export function limitesDoMes(mes: string): { inicio: string; fim: string; ultimoDia: number } {
-  validarMes(mes);
-  const [anoStr, mesStr] = mes.split("-");
-  const ano = Number(anoStr);
-  const mesNum = Number(mesStr);
-  // dia 0 do mês seguinte = último dia do mês atual (truque padrão de Date,
-  // só usado aqui pra aritmética de calendário, nunca pra "hoje")
-  const ultimoDia = new Date(ano, mesNum, 0).getDate();
-  return {
-    inicio: `${mes}-01`,
-    fim: `${mes}-${String(ultimoDia).padStart(2, "0")}`,
-    ultimoDia,
-  };
-}
-
-/** Mês seguinte/anterior em formato YYYY-MM — usado pra navegação
- * passado/futuro da tela de DRE (requisito 2). */
-export function mesAdjacente(mes: string, delta: number): string {
-  validarMes(mes);
-  const [anoStr, mesStr] = mes.split("-");
-  let ano = Number(anoStr);
-  let mesNum = Number(mesStr) + delta;
-  while (mesNum > 12) {
-    mesNum -= 12;
-    ano += 1;
-  }
-  while (mesNum < 1) {
-    mesNum += 12;
-    ano -= 1;
-  }
-  return `${ano}-${String(mesNum).padStart(2, "0")}`;
-}
-
-/** Soma (ou subtrai) N meses a uma data YYYY-MM-DD, preservando o
- * dia-do-mês e clampando pro último dia válido quando necessário — usado
- * pra gerar as N parcelas de uma compra parcelada (requisito 3: cada
- * parcela é uma linha própria, uma por mês, a partir da Data de
- * Vencimento da 1ª parcela). */
-export function somarMeses(dataISO: string, meses: number): string {
-  const [anoStr, mesStr, diaStr] = dataISO.split("-");
-  let ano = Number(anoStr);
-  let mesNum = Number(mesStr) + meses;
-  const dia = Number(diaStr);
-  while (mesNum > 12) {
-    mesNum -= 12;
-    ano += 1;
-  }
-  while (mesNum < 1) {
-    mesNum += 12;
-    ano -= 1;
-  }
-  const mesAlvo = `${ano}-${String(mesNum).padStart(2, "0")}`;
-  const { ultimoDia } = limitesDoMes(mesAlvo);
-  const diaFinal = Math.min(dia, ultimoDia);
-  return `${mesAlvo}-${String(diaFinal).padStart(2, "0")}`;
-}
-
-/** Projeta a data efetiva de uma ocorrência recorrente dentro do mês
- * consultado, preservando o dia-do-mês do lançamento raiz e "clampando"
- * pro último dia válido quando o mês consultado for mais curto (ex.: raiz
- * no dia 31, mês consultado é fevereiro -> vira 28 ou 29). */
-function projetarDataNoMes(dataVencimentoRaiz: string, mesAlvo: string): string {
-  const diaRaiz = Number(dataVencimentoRaiz.slice(8, 10));
-  const { ultimoDia } = limitesDoMes(mesAlvo);
-  const dia = Math.min(diaRaiz, ultimoDia);
-  return `${mesAlvo}-${String(dia).padStart(2, "0")}`;
-}
+// Aritmética de mês (limitesDoMes/mesAdjacente/somarMeses/projetarDataNoMes)
+// mora em ./mes.ts desde 06/08/2026 — extraída pra lib/finance/conciliacao.ts
+// poder reaproveitar sem criar import circular (ver comentário em ./mes.ts).
+// Reexportada aqui pra ninguém que já importa daqui (ou de @praxis/core)
+// precisar mudar.
+export * from "./mes";
 
 /** Calcula a DRE de um tenant para um mês específico (passado, atual ou
  * futuro — mesma função pras três situações, requisito 2).
@@ -213,9 +146,18 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
   // (GERAL não rateia nada — economiza uma consulta no caso comum).
   const ctxRateio = filtro.tipo === "GERAL" ? null : await carregarContextoRateio(tenantId, mes);
 
+  // Conciliação (pedido do Felipe, 06/08/2026): um lançamento PREVISTO
+  // (manual, recorrente ou pontual) que já foi CUMPRIDO por um lançamento
+  // real nesse mês específico não pode contar sozinho na DRE — senão o
+  // gasto aparece 2x (a previsão E a execução). Só o real conta; a previsão
+  // some da soma "realizado" (mas continua aparecendo na tela de Orçamento,
+  // marcada como cumprida — ver lib/finance/orcamento.ts).
+  const fulfilled = await carregarConciliacoesDoMes(tenantId, mes);
+
   const linhas: DreLinhaLancamento[] = [];
 
   for (const l of lancamentosDoMes) {
+    if (l.origem === "MANUAL" && fulfilled.has(l.id)) continue; // previsto pontual já cumprido por um real neste mês
     const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
     if (fator === 0) continue; // fora do Empreendimento/Unidade filtrado
     linhas.push({
@@ -230,6 +172,7 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
   }
 
   for (const l of candidatosRecorrentes) {
+    if (l.origem === "MANUAL" && fulfilled.has(l.id)) continue; // ocorrência recorrente deste mês já cumprida por um real
     const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
     if (fator === 0) continue;
     const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;

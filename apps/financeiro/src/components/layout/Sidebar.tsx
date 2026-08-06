@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { LineChart, Receipt, Target, Landmark, Settings, Menu, X, LayoutGrid, BedDouble, Wrench, Star, Package, UtensilsCrossed, Sparkles } from "lucide-react";
+import { LineChart, Receipt, Target, Landmark, Settings, Menu, X, LayoutGrid, BedDouble, Wrench, Star, Package, UtensilsCrossed, Sparkles, Link2 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Mesmo padrão do Sidebar dos demais módulos (ver
@@ -16,6 +16,7 @@ const MARK_SRC = "/financeiro/praxis-mark.png";
 const navItems = [
   { href: "/dre",         icon: LineChart, label: "DRE" },
   { href: "/lancamentos", icon: Receipt,   label: "Lançamentos" },
+  { href: "/conciliacoes", icon: Link2,    label: "Conciliações" },
   { href: "/orcamento",   icon: Target,    label: "Orçamento" },
   { href: "/contas",      icon: Landmark,  label: "Contas conectadas" },
   { href: "/configuracoes", icon: Settings, label: "Configurações" },

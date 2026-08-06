@@ -19,5 +19,7 @@ packages/core/scripts/data/
 # se você ver isso no repo, pode apagar à vontade (ou rodar `git clean`)
 packages/core/generated_verify/
 packages/core/generated_verify2/
+packages/core/generated_verify3/
 packages/core/prisma/schema.verify.prisma
 packages/core/prisma/schema.verify2.prisma
+packages/core/prisma/schema.verify3.prisma

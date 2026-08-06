@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, X, Trash2, Repeat, Layers, ListChecks, Wallet, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Search } from "lucide-react";
+import { Plus, X, Trash2, Repeat, Layers, ListChecks, Wallet, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Search, Link2, Link2Off } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { CategorizacaoEmLoteView } from "./CategorizacaoEmLoteView";
 
@@ -50,6 +50,25 @@ type Lancamento = {
   unidadeId: string | null;
   unidade: string | null;
   observacoes: string | null;
+  conciliadoComId: string | null;
+  conciliadoMesReferencia: string | null;
+  conciliadoDiverso: boolean;
+};
+
+// Conciliação (pedido do Felipe, 06/08/2026): pareia um lançamento
+// importado (PLUGGY) com o lançamento previsto que ele cumpre — ver
+// lib/finance/conciliacao.ts em @praxis/core. Só lançamentos PLUGGY passam
+// por esse processo (previstos são sempre MANUAL, não fazem sentido
+// "conciliar consigo mesmos").
+type SugestaoConciliacao = {
+  id: string;
+  descricao: string;
+  fornecedor: string | null;
+  valor: string;
+  dataEfetiva: string;
+  recorrente: boolean;
+  categoriaId: string | null;
+  confianca: number;
 };
 
 const STATUS_INFO: Record<StatusLancamento, { rotulo: string; cls: string }> = {
@@ -197,6 +216,14 @@ export function LancamentosView() {
   const [erro, setErro] = useState("");
   const [modoLote, setModoLote] = useState(false);
   const [editando, setEditando] = useState<Lancamento | null>(null);
+
+  // Conciliação (pedido do Felipe, 06/08/2026)
+  const [conciliando, setConciliando] = useState<Lancamento | null>(null);
+  const [sugestoesConciliacao, setSugestoesConciliacao] = useState<SugestaoConciliacao[]>([]);
+  const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
+  const [selecionadoConciliacao, setSelecionadoConciliacao] = useState<string | null>(null);
+  const [salvandoConciliacao, setSalvandoConciliacao] = useState(false);
+  const [erroConciliacao, setErroConciliacao] = useState("");
 
   // Período — o usuário escolhe explicitamente o modo (Mensal ou Período
   // específico) numa aba; dentro de "específico" escolhe entre Ano, Dia
@@ -358,6 +385,64 @@ export function LancamentosView() {
       carregar();
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function abrirConciliacao(l: Lancamento) {
+    setConciliando(l);
+    setErroConciliacao("");
+    setSelecionadoConciliacao(l.conciliadoComId || (l.conciliadoDiverso ? "DIVERSO" : null));
+    setCarregandoSugestoes(true);
+    try {
+      const res = await apiFetch(`/api/conciliacao?lancamentoId=${l.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        const sugestoes: SugestaoConciliacao[] = data.sugestoes || [];
+        setSugestoesConciliacao(sugestoes);
+        // pré-seleciona a melhor sugestão só se ainda não foi revisado
+        if (!l.conciliadoComId && !l.conciliadoDiverso && sugestoes[0]) setSelecionadoConciliacao(sugestoes[0].id);
+      }
+    } finally {
+      setCarregandoSugestoes(false);
+    }
+  }
+
+  async function confirmarConciliacaoModal() {
+    if (!conciliando || !selecionadoConciliacao) return;
+    setSalvandoConciliacao(true);
+    setErroConciliacao("");
+    try {
+      const body =
+        selecionadoConciliacao === "DIVERSO"
+          ? { lancamentoId: conciliando.id, diverso: true }
+          : { lancamentoId: conciliando.id, previstoId: selecionadoConciliacao, mesReferencia: (conciliando.dataCompetencia || conciliando.dataVencimento).slice(0, 7) };
+      const res = await apiFetch("/api/conciliacao", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErroConciliacao(data.error || "Erro ao conciliar.");
+        return;
+      }
+      setConciliando(null);
+      carregar();
+    } finally {
+      setSalvandoConciliacao(false);
+    }
+  }
+
+  async function desfazerConciliacaoModal() {
+    if (!conciliando) return;
+    setSalvandoConciliacao(true);
+    setErroConciliacao("");
+    try {
+      await apiFetch("/api/conciliacao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lancamentoId: conciliando.id, desfazer: true }),
+      });
+      setConciliando(null);
+      carregar();
+    } finally {
+      setSalvandoConciliacao(false);
     }
   }
 
@@ -691,6 +776,9 @@ export function LancamentosView() {
                   </span>
                 </th>
                 <th className="sticky top-0 z-10 bg-white border-b border-gray-100 font-medium px-2 py-2 w-28 text-right">Saldo</th>
+                <th className="sticky top-0 z-10 bg-white border-b border-gray-100 font-medium px-2 py-2 w-10 text-center" title="Conciliação: pareamento do lançamento importado com a previsão que ele cumpre">
+                  Concil.
+                </th>
                 <th className="sticky top-0 z-10 bg-white border-b border-gray-100 w-8"></th>
               </tr>
             </thead>
@@ -758,6 +846,19 @@ export function LancamentosView() {
                     </td>
                     <td className={`px-2 py-2 text-right font-semibold whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(l.valor)}</td>
                     <td className="px-2 py-2 text-right text-gray-500 whitespace-nowrap">{l.saldo != null ? formatBRL(l.saldo) : "—"}</td>
+                    <td className="px-2 py-2 text-center">
+                      {l.origem === "PLUGGY" ? (
+                        <button
+                          onClick={() => abrirConciliacao(l)}
+                          className={l.conciliadoComId || l.conciliadoDiverso ? "text-green-600 hover:text-green-700" : "text-gray-300 hover:text-gray-500"}
+                          title={l.conciliadoComId || l.conciliadoDiverso ? "Conciliado — clique para revisar" : "Não conciliado — clique para conciliar"}
+                        >
+                          {l.conciliadoComId || l.conciliadoDiverso ? <Link2 className="w-4 h-4" /> : <Link2Off className="w-4 h-4" />}
+                        </button>
+                      ) : (
+                        <span className="text-gray-200">—</span>
+                      )}
+                    </td>
                     <td className="px-2 py-2">
                       <button onClick={() => excluir(l)} className="text-gray-300 hover:text-red-600" title="Excluir">
                         <Trash2 className="w-3.5 h-3.5" />
@@ -981,6 +1082,85 @@ export function LancamentosView() {
             <button onClick={salvarEdicao} disabled={salvando} className="btn-primary w-full">
               {salvando ? "Salvando..." : "Salvar"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {conciliando && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm p-0 md:p-4">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">Conciliação</h2>
+              <button onClick={() => setConciliando(null)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="rounded-lg bg-gray-50 px-3 py-2">
+              <p className="text-sm font-medium text-gray-900 truncate">{conciliando.descricao}</p>
+              <p className="text-xs text-gray-400">
+                {formatDataBR(conciliando.dataVencimento)} · {formatBRL(conciliando.valor)}
+              </p>
+            </div>
+
+            {erroConciliacao && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{erroConciliacao}</p>}
+
+            {carregandoSugestoes ? (
+              <p className="text-sm text-gray-400">Buscando sugestões...</p>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="label">Conciliar com o lançamento previsto</label>
+                {sugestoesConciliacao.length === 0 && (
+                  <p className="text-xs text-gray-400">Nenhuma sugestão encontrada — escolha "Lançamento Diverso" abaixo se não houver previsão específica pra este lançamento.</p>
+                )}
+                {sugestoesConciliacao.map((s) => (
+                  <label
+                    key={s.id}
+                    className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer ${
+                      selecionadoConciliacao === s.id ? "border-gray-900 bg-gray-50" : "border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    <input type="radio" name="conciliacao" checked={selecionadoConciliacao === s.id} onChange={() => setSelecionadoConciliacao(s.id)} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-800 truncate flex items-center gap-1">
+                        {s.descricao}
+                        {s.recorrente && <Repeat className="w-3 h-3 text-blue-500 flex-shrink-0" />}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {formatDataBR(s.dataEfetiva)} · {formatBRL(s.valor)}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-[11px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
+                        s.confianca >= 70 ? "bg-green-50 text-green-700" : s.confianca >= 40 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {s.confianca}%
+                    </span>
+                  </label>
+                ))}
+
+                <label
+                  className={`flex items-center gap-2 border rounded-lg px-3 py-2 cursor-pointer ${
+                    selecionadoConciliacao === "DIVERSO" ? "border-gray-900 bg-gray-50" : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <input type="radio" name="conciliacao" checked={selecionadoConciliacao === "DIVERSO"} onChange={() => setSelecionadoConciliacao("DIVERSO")} />
+                  <span className="text-sm text-gray-800">Lançamento Diverso (sem previsão específica)</span>
+                </label>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {(conciliando.conciliadoComId || conciliando.conciliadoDiverso) && (
+                <button onClick={desfazerConciliacaoModal} disabled={salvandoConciliacao} className="btn-secondary flex-1 text-sm">
+                  Desfazer conciliação
+                </button>
+              )}
+              <button onClick={confirmarConciliacaoModal} disabled={salvandoConciliacao || !selecionadoConciliacao} className="btn-primary flex-1 text-sm">
+                {salvandoConciliacao ? "Salvando..." : "Confirmar"}
+              </button>
+            </div>
           </div>
         </div>
       )}

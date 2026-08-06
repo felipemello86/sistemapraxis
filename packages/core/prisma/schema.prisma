@@ -3091,6 +3091,35 @@ model FinanceLancamento {
   unidadeId String?
   unidade   FinanceUnidade? @relation("LancamentoUnidade", fields: [unidadeId], references: [id])
 
+  // Conciliação (pedido do Felipe, 05/08/2026): todo lançamento importado
+  // (PLUGGY) precisa ser pareado com um lançamento PREVISTO (um
+  // FinanceLancamento MANUAL recorrente ou pontual pra aquele mês — não
+  // existe tabela separada de "previsão", um previsto é só um lançamento
+  // manual futuro ainda não realizado, igual já funciona hoje). Os 3 campos
+  // abaixo vivem no lançamento REAL (o que chegou do extrato), nunca no
+  // previsto:
+  //   - conciliadoComId: aponta pro FinanceLancamento previsto que este
+  //     lançamento real cumpre. Auto-relação, SetNull se o previsto for
+  //     apagado (o real fica órfão do link, mas continua existindo).
+  //   - conciliadoMesReferencia (YYYY-MM): necessário pra desambiguar QUAL
+  //     ocorrência de um previsto RECORRENTE foi cumprida (a raiz é uma
+  //     linha só, projetada em N meses — ver dre.ts). Pra previsto pontual
+  //     é redundante com a própria dataVencimento do previsto, mas mantém a
+  //     regra uniforme.
+  //   - conciliadoDiverso: true quando o usuário revisou o lançamento e
+  //     decidiu que ele NÃO corresponde a nenhuma previsão específica
+  //     ("Lançamento Diverso") — nesse caso ele consome a provisão de
+  //     gastos não definidos da categoria (ver lib/finance/orcamento.ts),
+  //     em vez de abater um previsto específico.
+  // Um lançamento "passou pela conciliação" quando conciliadoComId != null
+  // OU conciliadoDiverso = true — é isso que a coluna Conciliação em
+  // Lançamentos exibe (ver lib/finance/conciliacao.ts).
+  conciliadoComId         String?
+  conciliadoCom           FinanceLancamento?  @relation("Conciliacao", fields: [conciliadoComId], references: [id])
+  conciliacoes            FinanceLancamento[] @relation("Conciliacao")
+  conciliadoMesReferencia String? // YYYY-MM
+  conciliadoDiverso       Boolean             @default(false)
+
   observacoes   String?
   criadoPorNome String?
 
@@ -3103,6 +3132,8 @@ model FinanceLancamento {
   @@index([parcelaGrupoId])
   @@index([tenantId, empreendimentoId])
   @@index([tenantId, unidadeId])
+  @@index([tenantId, conciliadoComId])
+  @@index([tenantId, conciliadoMesReferencia])
 }
 
 // Orçamento (linha de base) configurável tanto por categoria individual
