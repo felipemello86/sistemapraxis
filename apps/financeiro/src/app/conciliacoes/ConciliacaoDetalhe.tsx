@@ -4,6 +4,7 @@ import { Link2, Search, Repeat, Landmark, FileText, Paperclip, X, Loader2 } from
 import { apiFetch } from "@/lib/apiFetch";
 import { uploadAnexo, type AnexoUpload } from "@/lib/uploadAnexo";
 import { SeletorCentroCusto, type Empreendimento, type Unidade } from "@/components/SeletorCentroCusto";
+import { SeletorCategoria } from "@/components/SeletorCategoria";
 import { BuscarLancamentoModal, type LancamentoEscolhido } from "@/components/BuscarLancamentoModal";
 import { RepetirLancamentoModal, repetirConfigPadrao, resumoRepeticao, type RepetirConfig, type ContaParaSelect } from "@/components/RepetirLancamentoModal";
 
@@ -24,7 +25,7 @@ import { RepetirLancamentoModal, repetirConfigPadrao, resumoRepeticao, type Repe
 // certo pra cada aba (ver conciliacao.ts#confirmarConciliacao /
 // #criarEConciliar).
 
-type Categoria = { id: string; nome: string; tipo: string };
+type Categoria = { id: string; nome: string; tipo: string; bloco: string };
 
 type Previsto = {
   id: string;
@@ -331,17 +332,7 @@ export function ConciliacaoDetalhe({
                 <label className="label">Descrição</label>
                 <input className="input text-sm" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
               </div>
-              <div>
-                <label className="label">Categoria</label>
-                <select className="input text-sm" value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-                  <option value="">Selecione...</option>
-                  {categoriasFiltradas.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <SeletorCategoria categoriaId={categoriaId} categorias={categoriasFiltradas} onChange={setCategoriaId} />
               <SeletorCentroCusto
                 tipo={centroCustoTipo}
                 empreendimentoId={propertyId}

@@ -15,7 +15,7 @@ import { ConciliacaoDetalhe, type ItemPendente } from "./ConciliacaoDetalhe";
 // lote) continua disponível como atalho rápido no topo — "confirmar as com
 // sugestão forte de uma vez" — pra quem só quer bater o olho e aprovar.
 
-type Categoria = { id: string; nome: string; tipo: string };
+type Categoria = { id: string; nome: string; tipo: string; bloco: string };
 
 export function ConciliacoesView() {
   const [mes, setMes] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7));
