@@ -46,14 +46,23 @@ export async function GET(req: NextRequest) {
 }
 
 type ConfirmacaoBody = { lancamentoId: string; previstoId: string; mesReferencia: string };
+type LoteItemBody =
+  | { lancamentoId: string; previstoId: string; mesReferencia: string; novo?: undefined }
+  | { lancamentoId: string; novo: NovoLancamentoConciliacao; previstoId?: undefined; mesReferencia?: undefined };
 
-// POST /api/conciliacao — 5 formatos de body, conforme a ação:
+// POST /api/conciliacao — 6 formatos de body, conforme a ação:
 //   { lancamentoId, previstoId, mesReferencia } — confirma match com um previsto específico
 //   { lancamentoId, diverso: true }             — marca "Lançamento Diverso"
 //   { lancamentoId, desfazer: true }             — desfaz (volta a pendente)
 //   { confirmacoes: [{ lancamentoId, previstoId, mesReferencia }, ...] }  — confirma vários de uma vez (tela /conciliacoes)
 //   { lancamentoId, novo: {...} }                — cria um previsto novo e já concilia (card
 //                                                   "Novo lançamento" do redesign de 06/08/2026, ver criarEConciliar)
+//   { lote: [{ lancamentoId, previstoId, mesReferencia } | { lancamentoId, novo: {...} }, ...] } —
+//                                                   conciliação em lote MISTA (pedido do Felipe, 06/08/2026: tela
+//                                                   de Conciliações com card compacto + checkbox por lançamento,
+//                                                   "Conciliar selecionados" processa previstos E novos lançamentos
+//                                                   numa chamada só). Igual a `confirmacoes`, mas aceita os dois
+//                                                   formatos misturados no mesmo array.
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -77,6 +86,25 @@ export async function POST(req: NextRequest) {
         }
       }
       return NextResponse.json({ ok, total: confirmacoes.length, erros });
+    }
+
+    if (Array.isArray(body.lote)) {
+      const lote = body.lote as LoteItemBody[];
+      let ok = 0;
+      const erros: { lancamentoId: string; error: string }[] = [];
+      for (const item of lote) {
+        try {
+          if (item.novo) {
+            await criarEConciliar(session.tenantId, item.lancamentoId, item.novo);
+          } else {
+            await confirmarConciliacao(session.tenantId, item.lancamentoId, item.previstoId, item.mesReferencia);
+          }
+          ok++;
+        } catch (e: any) {
+          erros.push({ lancamentoId: item.lancamentoId, error: e.message });
+        }
+      }
+      return NextResponse.json({ ok, total: lote.length, erros });
     }
 
     const { lancamentoId, previstoId, mesReferencia, diverso, desfazer, novo } = body;
