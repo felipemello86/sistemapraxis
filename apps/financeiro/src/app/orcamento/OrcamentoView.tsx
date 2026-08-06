@@ -62,6 +62,11 @@ type OrcamentoBlocoComCategorias = OrcamentoBloco & { categorias: OrcamentoCateg
 type OrcamentoResponse = {
   mes: string;
   blocos: OrcamentoBlocoComCategorias[];
+  margemBrutaRS: string;
+  margemBrutaPercent: string | null;
+  despesasRS: string;
+  geracaoDeCaixaRS: string;
+  lucroPrejuizoRS: string;
 };
 
 function mesAtualSP(): string {
@@ -107,6 +112,18 @@ function Celula({ valor, destaque }: { valor: string | null; destaque?: boolean 
   return (
     <div className={`${COL_VALOR} ${destaque ? "font-bold" : "font-medium"} text-xs ${n == null ? "text-gray-300" : positivo ? "text-green-700" : "text-red-600"}`}>
       {n == null ? "—" : formatBRL(valor)}
+    </div>
+  );
+}
+
+function LinhaTotal({ rotulo, valor, percent }: { rotulo: string; valor: string | null; percent?: string | null }) {
+  return (
+    <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-2.5 py-1.5">
+      <p className="flex-1 min-w-0 truncate font-bold text-xs text-gray-900">{rotulo}</p>
+      <div className={COL_VALOR}>
+        <Celula valor={valor} destaque />
+        {percent != null && <p className="text-[10px] text-gray-500">{Number(percent).toFixed(1)}%</p>}
+      </div>
     </div>
   );
 }
@@ -278,12 +295,19 @@ export function OrcamentoView() {
           {blocosDe("MARGEM_BRUTA").map((b) => (
             <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao }} />
           ))}
+          <LinhaTotal rotulo="Margem Bruta" valor={dados.margemBrutaRS} percent={dados.margemBrutaPercent} />
+
+          <LinhaTotal rotulo="Despesas" valor={dados.despesasRS} />
           {blocosDe("DESPESAS").map((b) => (
             <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao }} />
           ))}
+
+          <LinhaTotal rotulo="Geração de Caixa (Lucro Operacional)" valor={dados.geracaoDeCaixaRS} />
           {blocosDe("LUCRO_PREJUIZO_EXTRA").map((b) => (
             <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao }} />
           ))}
+
+          <LinhaTotal rotulo="Lucro / Prejuízo" valor={dados.lucroPrejuizoRS} />
         </div>
       )}
     </div>

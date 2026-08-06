@@ -58,6 +58,14 @@ export interface OrcamentoBlocoResumo {
 export interface OrcamentoMensal {
   mes: string;
   blocos: OrcamentoBlocoResumo[];
+  // Mesmos 4 totais + margem % da DRE (pedido do Felipe, 06/08/2026: a tela
+  // de Orçamento também deve mostrar Lucro/Prejuízo, Margem etc, não só os
+  // blocos) — vêm direto do cálculo da DRE deste mês, nada recalculado aqui.
+  margemBrutaRS: Prisma.Decimal;
+  margemBrutaPercent: Prisma.Decimal | null;
+  despesasRS: Prisma.Decimal;
+  geracaoDeCaixaRS: Prisma.Decimal;
+  lucroPrejuizoRS: Prisma.Decimal;
 }
 
 export async function calcularOrcamento(tenantId: string, mes: string): Promise<OrcamentoMensal> {
@@ -180,5 +188,13 @@ export async function calcularOrcamento(tenantId: string, mes: string): Promise<
     };
   });
 
-  return { mes, blocos };
+  return {
+    mes,
+    blocos,
+    margemBrutaRS: dre.margemBrutaRS,
+    margemBrutaPercent: dre.margemBrutaPercent,
+    despesasRS: dre.despesasRS,
+    geracaoDeCaixaRS: dre.geracaoDeCaixaRS,
+    lucroPrejuizoRS: dre.lucroPrejuizoRS,
+  };
 }
