@@ -487,9 +487,9 @@ export function LancamentosView() {
         <div className="card !p-0 overflow-x-auto">
           <table className="w-full text-sm table-fixed">
             <thead>
-              <tr className="border-b border-gray-100 text-left text-xs text-gray-400">
+              <tr className="text-left text-xs text-gray-400">
                 <th
-                  className="font-medium pl-3 pr-4 py-2 w-[104px] cursor-pointer select-none whitespace-nowrap"
+                  className="sticky top-0 z-10 bg-white border-b border-gray-100 font-medium pl-3 pr-4 py-2 w-[104px] cursor-pointer select-none whitespace-nowrap"
                   onClick={() => alternarSort("data")}
                   title="Exibe e ordena pela Data de Competência (o filtro de período/mês continua pela Data de Vencimento)"
                 >
@@ -497,7 +497,10 @@ export function LancamentosView() {
                     Data {sortField === "data" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                   </span>
                 </th>
-                <th className="relative font-medium pl-3 pr-2 py-2 cursor-pointer select-none" onClick={() => setDescPopoverAberto((v) => !v)}>
+                <th
+                  className="sticky top-0 z-10 bg-white border-b border-gray-100 relative font-medium pl-3 pr-2 py-2 cursor-pointer select-none"
+                  onClick={() => setDescPopoverAberto((v) => !v)}
+                >
                   <span className={filtroDescricao ? "text-blue-700" : ""}>Descrição</span>
                   {filtroDescricao && <Search className="inline w-3 h-3 ml-1 text-blue-600" />}
                   {descPopoverAberto && (
@@ -521,7 +524,10 @@ export function LancamentosView() {
                     </>
                   )}
                 </th>
-                <th className="relative font-medium px-2 py-2 w-40 cursor-pointer select-none" onClick={() => setCatPopoverAberto((v) => !v)}>
+                <th
+                  className="sticky top-0 z-10 bg-white border-b border-gray-100 relative font-medium px-2 py-2 w-40 cursor-pointer select-none"
+                  onClick={() => setCatPopoverAberto((v) => !v)}
+                >
                   <span className={filtroCategorias.size > 0 ? "text-blue-700" : ""}>Categoria{filtroCategorias.size > 0 ? ` (${filtroCategorias.size})` : ""}</span>
                   {catPopoverAberto && (
                     <>
@@ -551,7 +557,10 @@ export function LancamentosView() {
                     </>
                   )}
                 </th>
-                <th className="relative font-medium px-2 py-2 w-[92px] cursor-pointer select-none" onClick={() => setStatusPopoverAberto((v) => !v)}>
+                <th
+                  className="sticky top-0 z-10 bg-white border-b border-gray-100 relative font-medium px-2 py-2 w-[92px] cursor-pointer select-none"
+                  onClick={() => setStatusPopoverAberto((v) => !v)}
+                >
                   <span className={filtroStatus.size > 0 ? "text-blue-700" : ""}>Status</span>
                   {statusPopoverAberto && (
                     <>
@@ -578,13 +587,16 @@ export function LancamentosView() {
                     </>
                   )}
                 </th>
-                <th className="font-medium px-2 py-2 w-28 text-right cursor-pointer select-none whitespace-nowrap" onClick={() => alternarSort("valor")}>
+                <th
+                  className="sticky top-0 z-10 bg-white border-b border-gray-100 font-medium px-2 py-2 w-28 text-right cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => alternarSort("valor")}
+                >
                   <span className="inline-flex items-center gap-0.5">
                     Valor {sortField === "valor" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                   </span>
                 </th>
-                <th className="font-medium px-2 py-2 w-28 text-right">Saldo</th>
-                <th className="w-8"></th>
+                <th className="sticky top-0 z-10 bg-white border-b border-gray-100 font-medium px-2 py-2 w-28 text-right">Saldo</th>
+                <th className="sticky top-0 z-10 bg-white border-b border-gray-100 w-8"></th>
               </tr>
             </thead>
             <tbody>
