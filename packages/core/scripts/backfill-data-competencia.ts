@@ -13,10 +13,20 @@
 // Uso:
 //   cd packages/core && npx tsx scripts/backfill-data-competencia.ts
 //
-// Idempotente: só toca lançamentos com dataCompetencia ainda nula.
+// Idempotente e retomável: só toca lançamentos com dataCompetencia ainda
+// nula, então dá pra interromper (Ctrl+C) e rodar de novo — continua de
+// onde parou. Uma pequena pausa entre cada chamada evita estourar o rate
+// limit da Pluggy (429); mesmo assim, se acontecer, pluggyFetch já
+// re-tenta sozinho com backoff (ver pluggy.ts).
 
 import { prisma } from "../src/prisma";
 import { buscarTransacao } from "../src/finance/pluggy";
+
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const PAUSA_ENTRE_CHAMADAS_MS = 150;
 
 async function main() {
   const pendentes = await prisma.financeLancamento.findMany({
@@ -28,11 +38,12 @@ async function main() {
     return;
   }
 
-  console.log(`${pendentes.length} lançamento(s) sem Data de Competência — buscando a data real na Pluggy...`);
+  console.log(`${pendentes.length} lançamento(s) sem Data de Competência — buscando a data real na Pluggy (uma por vez, com pausa pra não estourar o limite da API)...`);
 
   let ok = 0;
   let falhou = 0;
-  for (const l of pendentes) {
+  for (let i = 0; i < pendentes.length; i++) {
+    const l = pendentes[i];
     try {
       const transacao = await buscarTransacao(l.pluggyTransactionId!);
       await prisma.financeLancamento.update({
@@ -44,6 +55,12 @@ async function main() {
       falhou++;
       console.error(`  falhou "${l.descricao}" (${l.id}, pluggyTransactionId=${l.pluggyTransactionId}): ${e.message}`);
     }
+
+    if ((i + 1) % 100 === 0 || i === pendentes.length - 1) {
+      console.log(`  ${i + 1}/${pendentes.length} processado(s) — ${ok} ok, ${falhou} falharam até agora.`);
+    }
+
+    await esperar(PAUSA_ENTRE_CHAMADAS_MS);
   }
 
   console.log(`\n${ok} lançamento(s) corrigido(s). ${falhou} falharam (provavelmente transação antiga demais e já saiu do histórico da Pluggy — ajuste na mão se precisar).`);

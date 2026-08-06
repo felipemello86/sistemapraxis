@@ -480,7 +480,11 @@ export function LancamentosView() {
           <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="border-b border-gray-100 text-left text-xs text-gray-400">
-                <th className="font-medium pl-3 pr-4 py-2 w-[104px] cursor-pointer select-none whitespace-nowrap" onClick={() => alternarSort("data")}>
+                <th
+                  className="font-medium pl-3 pr-4 py-2 w-[104px] cursor-pointer select-none whitespace-nowrap"
+                  onClick={() => alternarSort("data")}
+                  title="Exibe a Data de Competência (ordenação e filtro de período continuam pela Data de Vencimento)"
+                >
                   <span className="inline-flex items-center gap-0.5">
                     Data {sortField === "data" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                   </span>
@@ -581,8 +585,12 @@ export function LancamentosView() {
                 const status = STATUS_INFO[l.status];
                 return (
                   <tr key={l.id} className="border-b border-gray-50 hover:bg-gray-50/70 last:border-0">
-                    <td className="pl-3 pr-4 py-2 text-gray-500 whitespace-nowrap cursor-pointer" onClick={() => setEditando(l)}>
-                      {formatDataBR(l.dataVencimento)}
+                    <td
+                      className="pl-3 pr-4 py-2 text-gray-500 whitespace-nowrap cursor-pointer"
+                      onClick={() => setEditando(l)}
+                      title={`Vencimento: ${formatDataBR(l.dataVencimento)}`}
+                    >
+                      {formatDataBR(l.dataCompetencia || l.dataVencimento)}
                     </td>
                     <td className="pl-3 pr-2 py-2 cursor-pointer" onClick={() => setEditando(l)} title={l.descricao}>
                       <div className="flex items-center gap-1.5 min-w-0">

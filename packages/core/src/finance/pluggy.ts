@@ -81,7 +81,11 @@ async function getApiKey(): Promise<string> {
   return data.apiKey;
 }
 
-async function pluggyFetch<T>(path: string, init?: RequestInit, tentouReautenticar = false): Promise<T> {
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pluggyFetch<T>(path: string, init?: RequestInit, tentouReautenticar = false, tentativaRateLimit = 0): Promise<T> {
   const apiKey = await getApiKey();
   const res = await fetch(`${PLUGGY_BASE_URL}${path}`, {
     ...init,
@@ -93,7 +97,17 @@ async function pluggyFetch<T>(path: string, init?: RequestInit, tentouReautentic
   });
   if (res.status === 401 && !tentouReautenticar) {
     apiKeyCache = null; // força nova autenticação
-    return pluggyFetch<T>(path, init, true);
+    return pluggyFetch<T>(path, init, true, tentativaRateLimit);
+  }
+  // 429 (Too Many Requests) — comum quando o script de backfill dispara
+  // muitas chamadas em sequência (uma por transação). Respeita o
+  // Retry-After da própria Pluggy quando vem; senão usa backoff exponencial
+  // (2s, 4s, 8s...). Até 6 tentativas antes de desistir de verdade.
+  if (res.status === 429 && tentativaRateLimit < 6) {
+    const retryAfterHeader = res.headers.get("Retry-After");
+    const esperaMs = retryAfterHeader ? Number(retryAfterHeader) * 1000 : 2000 * 2 ** tentativaRateLimit;
+    await esperar(esperaMs);
+    return pluggyFetch<T>(path, init, tentouReautenticar, tentativaRateLimit + 1);
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
