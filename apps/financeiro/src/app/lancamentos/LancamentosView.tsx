@@ -307,7 +307,15 @@ export function LancamentosView() {
     if (filtroStatus.size > 0) arr = arr.filter((l) => filtroStatus.has(l.status));
 
     return [...arr].sort((a, b) => {
-      const cmp = sortField === "data" ? a.dataVencimento.localeCompare(b.dataVencimento) : Number(a.valor) - Number(b.valor);
+      // Ordena pela mesma data que a coluna mostra (Competência, com
+      // fallback pra Vencimento) — senão a ordem visual fica embaralhada
+      // quando várias linhas compartilham o mesmo Vencimento (ex.: todas as
+      // compras de uma fatura de cartão). O filtro de período/mês continua
+      // por Vencimento, só a ordenação da lista já filtrada muda aqui.
+      const cmp =
+        sortField === "data"
+          ? (a.dataCompetencia || a.dataVencimento).localeCompare(b.dataCompetencia || b.dataVencimento)
+          : Number(a.valor) - Number(b.valor);
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [lancamentos, filtroDescricao, filtroCategorias, filtroStatus, sortField, sortDir]);
@@ -483,7 +491,7 @@ export function LancamentosView() {
                 <th
                   className="font-medium pl-3 pr-4 py-2 w-[104px] cursor-pointer select-none whitespace-nowrap"
                   onClick={() => alternarSort("data")}
-                  title="Exibe a Data de Competência (ordenação e filtro de período continuam pela Data de Vencimento)"
+                  title="Exibe e ordena pela Data de Competência (o filtro de período/mês continua pela Data de Vencimento)"
                 >
                   <span className="inline-flex items-center gap-0.5">
                     Data {sortField === "data" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
