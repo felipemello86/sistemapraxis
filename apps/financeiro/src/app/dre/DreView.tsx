@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, AlertCircle, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { SeletorMes } from "@/components/SeletorMes";
 
 // Tela principal do módulo (requisito 1 do Felipe: "DRE viva") — mostra o
 // mês atual por padrão, com navegação livre pra qualquer mês passado ou
@@ -293,13 +294,7 @@ export function DreView() {
   return (
     <div className="max-w-2xl mx-auto space-y-3">
       <div className="flex items-center gap-1.5 flex-wrap">
-        <button onClick={() => mudarPeriodo(0, mesAdjacenteLocal(periodos[0], -1))} className="btn-secondary px-1.5 py-1.5 flex-shrink-0" aria-label="Mês anterior">
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
-        <h1 className="text-sm font-bold text-gray-900 px-1 flex-shrink-0">{labelMes(periodos[0])}</h1>
-        <button onClick={() => mudarPeriodo(0, mesAdjacenteLocal(periodos[0], 1))} className="btn-secondary px-1.5 py-1.5 flex-shrink-0" aria-label="Próximo mês">
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
+        <SeletorMes mes={periodos[0]} onChange={(m) => mudarPeriodo(0, m)} className="flex-shrink-0" />
         {periodos[0] !== mesAtualSP() && (
           <button onClick={() => mudarPeriodo(0, mesAtualSP())} className="text-xs text-blue-700 font-medium hover:underline flex-shrink-0">
             hoje

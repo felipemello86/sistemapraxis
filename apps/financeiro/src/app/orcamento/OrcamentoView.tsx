@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Check, CheckCircle2, Circle, Repeat } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, CheckCircle2, Circle, Repeat } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { SeletorMes } from "@/components/SeletorMes";
 
 // Orçamento — redesenho de 06/08/2026 (pedido do Felipe): mesma estrutura
 // colapsável em árvore da tela DRE (Bloco -> Categoria), com um 3º nível
@@ -18,12 +19,10 @@ import { apiFetch } from "@/lib/apiFetch";
 // explicitamente: "provisionamento de gastos esperados para aquela
 // categoria naquele mês".)
 
-const MESES_PT = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];
-
 type Totalizador = "MARGEM_BRUTA" | "DESPESAS" | "LUCRO_PREJUIZO_EXTRA";
+type Empreendimento = { id: string; nome: string };
+type Unidade = { id: string; nome: string; empreendimentoId: string; empreendimento: string };
+type CentroCustoTipo = "GERAL" | "EMPREENDIMENTO" | "UNIDADE";
 
 type Previsto = {
   id: string;
@@ -73,21 +72,6 @@ function mesAtualSP(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
 }
 
-function mesAdjacenteLocal(mes: string, delta: number): string {
-  const [anoStr, mesStr] = mes.split("-");
-  let ano = Number(anoStr);
-  let mesNum = Number(mesStr) + delta;
-  while (mesNum > 12) {
-    mesNum -= 12;
-    ano += 1;
-  }
-  while (mesNum < 1) {
-    mesNum += 12;
-    ano -= 1;
-  }
-  return `${ano}-${String(mesNum).padStart(2, "0")}`;
-}
-
 function formatBRL(v: string | number | null | undefined): string {
   if (v == null) return "—";
   const n = typeof v === "string" ? Number(v) : v;
@@ -97,11 +81,6 @@ function formatBRL(v: string | number | null | undefined): string {
 function formatData(iso: string): string {
   const [, m, d] = iso.split("-");
   return `${d}/${m}`;
-}
-
-function labelMes(mes: string): string {
-  const [ano, mesNum] = mes.split("-").map(Number);
-  return `${MESES_PT[mesNum - 1]} de ${ano}`;
 }
 
 const COL_VALOR = "w-28 flex-shrink-0 text-right";
@@ -176,7 +155,15 @@ function LinhaPrevisto({ previsto }: { previsto: Previsto }) {
   );
 }
 
-function LinhaCategoria({ categoria, onSalvarProvisao }: { categoria: OrcamentoCategoria; onSalvarProvisao: (categoriaId: string, valor: number) => void }) {
+function LinhaCategoria({
+  categoria,
+  onSalvarProvisao,
+  editavelProvisao,
+}: {
+  categoria: OrcamentoCategoria;
+  onSalvarProvisao: (categoriaId: string, valor: number) => void;
+  editavelProvisao: boolean;
+}) {
   const [aberto, setAberto] = useState(false);
   const temAlgo = categoria.previstos.length > 0 || categoria.provisaoRS != null;
 
@@ -192,14 +179,18 @@ function LinhaCategoria({ categoria, onSalvarProvisao }: { categoria: OrcamentoC
       {aberto && (
         <div className="ml-5 border-l border-gray-100 pl-2 pb-1 space-y-1.5">
           <div className="flex items-center gap-2 px-1.5 py-1 bg-gray-50 rounded-lg">
-            <p className="flex-1 min-w-0 text-xs text-gray-600">Provisão (gastos não definidos)</p>
+            <p className="flex-1 min-w-0 text-xs text-gray-600">Provisão (gastos não definidos){!editavelProvisao && " — fatia rateada"}</p>
             {categoria.provisaoRS != null && (
               <div className="text-[10px] text-gray-400 flex-shrink-0 text-right">
                 <p>consumido {formatBRL(categoria.provisaoConsumidaRS)}</p>
                 <p className={Number(categoria.provisaoRestanteRS) < 0 ? "text-red-600 font-medium" : ""}>restante {formatBRL(categoria.provisaoRestanteRS)}</p>
               </div>
             )}
-            <ValorInput valorInicial={categoria.provisaoRS ?? ""} onSalvar={(v) => onSalvarProvisao(categoria.categoriaId, v)} />
+            {editavelProvisao ? (
+              <ValorInput valorInicial={categoria.provisaoRS ?? ""} onSalvar={(v) => onSalvarProvisao(categoria.categoriaId, v)} />
+            ) : (
+              <Celula valor={categoria.provisaoRS} />
+            )}
           </div>
 
           {categoria.previstos.length === 0 ? (
@@ -213,7 +204,11 @@ function LinhaCategoria({ categoria, onSalvarProvisao }: { categoria: OrcamentoC
   );
 }
 
-function LinhaBloco({ bloco }: { bloco: OrcamentoBlocoComCategorias & { onSalvarProvisao: (categoriaId: string, valor: number) => void } }) {
+function LinhaBloco({
+  bloco,
+}: {
+  bloco: OrcamentoBlocoComCategorias & { onSalvarProvisao: (categoriaId: string, valor: number) => void; editavelProvisao: boolean };
+}) {
   const [aberto, setAberto] = useState(false);
   return (
     <div>
@@ -228,7 +223,9 @@ function LinhaBloco({ bloco }: { bloco: OrcamentoBlocoComCategorias & { onSalvar
           {bloco.categorias.length === 0 ? (
             <p className="text-xs text-gray-400 py-1">Nenhuma categoria com movimento, previsão ou provisão neste mês.</p>
           ) : (
-            bloco.categorias.map((c) => <LinhaCategoria key={c.categoriaId} categoria={c} onSalvarProvisao={bloco.onSalvarProvisao} />)
+            bloco.categorias.map((c) => (
+              <LinhaCategoria key={c.categoriaId} categoria={c} onSalvarProvisao={bloco.onSalvarProvisao} editavelProvisao={bloco.editavelProvisao} />
+            ))
           )}
         </div>
       )}
@@ -241,9 +238,36 @@ export function OrcamentoView() {
   const [dados, setDados] = useState<OrcamentoResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Geral / Empreendimento / Unidade (pedido do Felipe, 06/08/2026) — mesmo
+  // filtro e mesmo componente da DreView. Ver lib/finance/centro-de-custo.ts.
+  const [centroCustoTipo, setCentroCustoTipo] = useState<CentroCustoTipo>("GERAL");
+  const [centroCustoEmpreendimentoId, setCentroCustoEmpreendimentoId] = useState("");
+  const [centroCustoUnidadeId, setCentroCustoUnidadeId] = useState("");
+  const [empreendimentos, setEmpreendimentos] = useState<Empreendimento[]>([]);
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+
+  useEffect(() => {
+    apiFetch("/api/empreendimentos")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setEmpreendimentos)
+      .catch(() => {});
+    apiFetch("/api/unidades")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setUnidades)
+      .catch(() => {});
+  }, []);
+
   async function carregar() {
     setLoading(true);
-    const res = await apiFetch(`/api/orcamento?mes=${mes}`);
+    const params = new URLSearchParams({ mes });
+    if (centroCustoTipo === "EMPREENDIMENTO" && centroCustoEmpreendimentoId) {
+      params.set("centroCusto", "EMPREENDIMENTO");
+      params.set("empreendimentoId", centroCustoEmpreendimentoId);
+    } else if (centroCustoTipo === "UNIDADE" && centroCustoUnidadeId) {
+      params.set("centroCusto", "UNIDADE");
+      params.set("unidadeId", centroCustoUnidadeId);
+    }
+    const res = await apiFetch(`/api/orcamento?${params.toString()}`);
     setDados(res.ok ? await res.json() : null);
     setLoading(false);
   }
@@ -251,7 +275,7 @@ export function OrcamentoView() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mes]);
+  }, [mes, centroCustoTipo, centroCustoEmpreendimentoId, centroCustoUnidadeId]);
 
   async function salvarProvisao(categoriaId: string, valor: number) {
     await apiFetch("/api/orcamento", {
@@ -267,17 +291,54 @@ export function OrcamentoView() {
   return (
     <div className="max-w-2xl mx-auto space-y-3">
       <div className="flex items-center gap-1.5">
-        <button onClick={() => setMes(mesAdjacenteLocal(mes, -1))} className="btn-secondary px-1.5 py-1.5" aria-label="Mês anterior">
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
-        <h1 className="text-sm font-bold text-gray-900 px-1">{labelMes(mes)}</h1>
-        <button onClick={() => setMes(mesAdjacenteLocal(mes, 1))} className="btn-secondary px-1.5 py-1.5" aria-label="Próximo mês">
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
+        <SeletorMes mes={mes} onChange={setMes} />
         {mes !== mesAtualSP() && (
           <button onClick={() => setMes(mesAtualSP())} className="text-xs text-blue-700 font-medium hover:underline">
             hoje
           </button>
+        )}
+      </div>
+
+      {/* Geral / Empreendimento / Unidade (mesmo padrão da tela DRE) */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+          {(
+            [
+              ["GERAL", "Geral"],
+              ["EMPREENDIMENTO", "Empreendimento"],
+              ["UNIDADE", "Unidade"],
+            ] as const
+          ).map(([v, rotulo]) => (
+            <button
+              key={v}
+              onClick={() => setCentroCustoTipo(v)}
+              className={`text-xs font-medium px-2.5 py-1.5 rounded-md ${centroCustoTipo === v ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              {rotulo}
+            </button>
+          ))}
+        </div>
+
+        {centroCustoTipo === "EMPREENDIMENTO" && (
+          <select className="input text-xs py-1.5 w-48" value={centroCustoEmpreendimentoId} onChange={(e) => setCentroCustoEmpreendimentoId(e.target.value)}>
+            <option value="">Selecione o empreendimento...</option>
+            {empreendimentos.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {centroCustoTipo === "UNIDADE" && (
+          <select className="input text-xs py-1.5 w-48" value={centroCustoUnidadeId} onChange={(e) => setCentroCustoUnidadeId(e.target.value)}>
+            <option value="">Selecione a unidade...</option>
+            {unidades.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.empreendimento} — {u.nome}
+              </option>
+            ))}
+          </select>
         )}
       </div>
 
@@ -293,18 +354,18 @@ export function OrcamentoView() {
       ) : (
         <div className="space-y-0.5">
           {blocosDe("MARGEM_BRUTA").map((b) => (
-            <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao }} />
+            <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao, editavelProvisao: centroCustoTipo === "GERAL" }} />
           ))}
           <LinhaTotal rotulo="Margem Bruta" valor={dados.margemBrutaRS} percent={dados.margemBrutaPercent} />
 
           <LinhaTotal rotulo="Despesas" valor={dados.despesasRS} />
           {blocosDe("DESPESAS").map((b) => (
-            <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao }} />
+            <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao, editavelProvisao: centroCustoTipo === "GERAL" }} />
           ))}
 
           <LinhaTotal rotulo="Geração de Caixa (Lucro Operacional)" valor={dados.geracaoDeCaixaRS} />
           {blocosDe("LUCRO_PREJUIZO_EXTRA").map((b) => (
-            <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao }} />
+            <LinhaBloco key={b.blocoId} bloco={{ ...b, onSalvarProvisao: salvarProvisao, editavelProvisao: centroCustoTipo === "GERAL" }} />
           ))}
 
           <LinhaTotal rotulo="Lucro / Prejuízo" valor={dados.lucroPrejuizoRS} />

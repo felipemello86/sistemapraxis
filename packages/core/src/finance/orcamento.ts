@@ -13,6 +13,16 @@ import { Prisma } from "../../generated";
 import { calcularDre } from "./dre";
 import { limitesDoMes, projetarDataNoMes } from "./mes";
 import { carregarConciliacoesDoMes } from "./conciliacao";
+import { carregarContextoRateio, fatorRateio, type FiltroCentroCusto, type ContextoRateio } from "./centro-de-custo";
+
+// Objeto sintético só pra reaproveitar fatorRateio() na provisão de gastos
+// não definidos (pedido do Felipe, 06/08/2026: Orçamento também deve ter
+// Geral/Empreendimento/Unidade, igual a DRE). A provisão não tem centro de
+// custo próprio no schema — é tratada como um custo de "Administração"
+// (rateado igualmente entre as Unidades, ou entre as do Empreendimento
+// selecionado), a mesma regra já usada pra qualquer lançamento sem
+// Empreendimento/Unidade marcado.
+const CENTRO_CUSTO_ADMINISTRACAO = { centroCustoTipo: "ADMINISTRACAO", empreendimentoId: null, unidadeId: null };
 
 const ZERO = new Prisma.Decimal(0);
 
@@ -68,11 +78,12 @@ export interface OrcamentoMensal {
   lucroPrejuizoRS: Prisma.Decimal;
 }
 
-export async function calcularOrcamento(tenantId: string, mes: string): Promise<OrcamentoMensal> {
+export async function calcularOrcamento(tenantId: string, mes: string, filtroCentroCusto?: FiltroCentroCusto): Promise<OrcamentoMensal> {
+  const filtro: FiltroCentroCusto = filtroCentroCusto ?? { tipo: "GERAL" };
   const { inicio, fim } = limitesDoMes(mes);
 
-  const [dre, categorias, provisoes, pontuais, recorrentes, fulfilled, diversosDoMes] = await Promise.all([
-    calcularDre(tenantId, mes),
+  const [dre, categorias, provisoes, pontuais, recorrentes, fulfilled, diversosDoMes, ctxRateio] = await Promise.all([
+    calcularDre(tenantId, mes, filtro),
     prisma.financeCategoria.findMany({ where: { tenantId } }),
     prisma.financeOrcamento.findMany({ where: { tenantId, mes, alvoTipo: "CATEGORIA" } }),
     prisma.financeLancamento.findMany({
@@ -91,10 +102,19 @@ export async function calcularOrcamento(tenantId: string, mes: string): Promise<
     prisma.financeLancamento.findMany({
       where: { tenantId, origem: "PLUGGY", conciliadoDiverso: true, dataVencimento: { gte: inicio, lte: fim } },
     }),
+    filtro.tipo === "GERAL" ? Promise.resolve(null as ContextoRateio | null) : carregarContextoRateio(tenantId, mes),
   ]);
 
   const categoriaPorId = new Map(categorias.map((c) => [c.id, c]));
-  const provisaoPorCategoria = new Map(provisoes.filter((o) => o.categoriaId).map((o) => [o.categoriaId as string, o.valor]));
+
+  // Provisão não tem Empreendimento/Unidade própria — rateada como um custo
+  // de Administração (ver comentário de CENTRO_CUSTO_ADMINISTRACAO acima).
+  const fatorProvisao = ctxRateio ? fatorRateio(CENTRO_CUSTO_ADMINISTRACAO, filtro, ctxRateio) : 1;
+  const provisaoPorCategoria = new Map(
+    provisoes
+      .filter((o) => o.categoriaId)
+      .map((o) => [o.categoriaId as string, fatorProvisao === 1 ? o.valor : o.valor.mul(fatorProvisao)] as const)
+  );
 
   const previstosPorCategoria = new Map<string, OrcamentoPrevistoItem[]>();
   function addPrevisto(categoriaId: string | null, item: OrcamentoPrevistoItem) {
@@ -105,11 +125,13 @@ export async function calcularOrcamento(tenantId: string, mes: string): Promise<
   }
 
   for (const l of pontuais) {
+    const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
+    if (fator === 0) continue; // fora do Empreendimento/Unidade filtrado
     addPrevisto(l.categoriaId, {
       id: l.id,
       descricao: l.descricao,
       fornecedor: l.fornecedor,
-      valor: l.valor,
+      valor: fator === 1 ? l.valor : l.valor.mul(fator),
       dataEfetiva: l.dataVencimento,
       recorrente: false,
       cumprido: fulfilled.has(l.id),
@@ -117,12 +139,14 @@ export async function calcularOrcamento(tenantId: string, mes: string): Promise<
     });
   }
   for (const l of recorrentes) {
+    const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
+    if (fator === 0) continue;
     const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;
     addPrevisto(l.categoriaId, {
       id: l.id,
       descricao: l.descricao,
       fornecedor: l.fornecedor,
-      valor: l.valor,
+      valor: fator === 1 ? l.valor : l.valor.mul(fator),
       dataEfetiva: raizEstaNesteMes ? l.dataVencimento : projetarDataNoMes(l.dataVencimento, mes),
       recorrente: true,
       cumprido: fulfilled.has(l.id),
@@ -131,11 +155,16 @@ export async function calcularOrcamento(tenantId: string, mes: string): Promise<
   }
 
   // Consumo da provisão "não definida" — só cálculo/exibição, nada é
-  // gravado (mesmo espírito da DRE e do rateio: tudo somado ao vivo).
+  // gravado (mesmo espírito da DRE e do rateio: tudo somado ao vivo). Cada
+  // lançamento "diverso" já tem seu próprio centro de custo (definido na
+  // hora que foi categorizado em Lançamentos) — mesmo fatorRateio da DRE.
   const consumidoPorCategoria = new Map<string, Prisma.Decimal>();
   for (const l of diversosDoMes) {
     if (!l.categoriaId) continue;
-    consumidoPorCategoria.set(l.categoriaId, (consumidoPorCategoria.get(l.categoriaId) ?? ZERO).add(l.valor.abs()));
+    const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
+    if (fator === 0) continue;
+    const valorRateado = fator === 1 ? l.valor.abs() : l.valor.abs().mul(fator);
+    consumidoPorCategoria.set(l.categoriaId, (consumidoPorCategoria.get(l.categoriaId) ?? ZERO).add(valorRateado));
   }
 
   function montarCategoria(categoriaId: string, nome: string, tipo: string, blocoId: string, realizadoRS: Prisma.Decimal): OrcamentoCategoriaResumo {

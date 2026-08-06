@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma, calcularOrcamento } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, calcularOrcamento, type FiltroCentroCusto } from "@praxis/core";
 
 // Orçamento — pedido do Felipe, 05 e 06/08/2026: mesma estrutura em árvore
 // da DRE (Bloco -> Categoria), com um 3º nível por categoria: os
@@ -23,7 +23,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: `Mês inválido: "${mes}" (esperado YYYY-MM)` }, { status: 400 });
   }
 
-  const orcamento = await calcularOrcamento(session.tenantId, mes);
+  // Geral/Empreendimento/Unidade (pedido do Felipe, 06/08/2026) — mesmo
+  // filtro que a DRE já usa, ver lib/finance/centro-de-custo.ts.
+  const centroCusto = searchParams.get("centroCusto");
+  const empreendimentoId = searchParams.get("empreendimentoId");
+  const unidadeId = searchParams.get("unidadeId");
+  let filtro: FiltroCentroCusto = { tipo: "GERAL" };
+  if (centroCusto === "EMPREENDIMENTO" && empreendimentoId) {
+    filtro = { tipo: "EMPREENDIMENTO", empreendimentoId };
+  } else if (centroCusto === "UNIDADE" && unidadeId) {
+    filtro = { tipo: "UNIDADE", unidadeId };
+  }
+
+  const orcamento = await calcularOrcamento(session.tenantId, mes, filtro);
   return NextResponse.json(orcamento);
 }
 
