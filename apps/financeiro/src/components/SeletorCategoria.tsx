@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 // Seletor de Categoria por navegação da estrutura da DRE (pedido do
@@ -22,6 +22,7 @@ export function SeletorCategoria({
   onChange: (id: string) => void;
 }) {
   const [blocosAbertos, setBlocosAbertos] = useState<Set<string>>(new Set());
+  const itemSelecionadoRef = useRef<HTMLButtonElement>(null);
 
   const categoriaSelecionada = categorias.find((c) => c.id === categoriaId) ?? null;
 
@@ -41,12 +42,24 @@ export function SeletorCategoria({
   }, [categorias]);
 
   // Abre automaticamente o bloco da categoria já selecionada (ex.: editando
-  // algo que já veio com categoria) — só na troca de categoria, não
-  // atrapalha o usuário que já abriu/fechou blocos manualmente depois.
+  // algo que já veio com categoria, ou sugestão automática — ver
+  // sugestao-categoria.ts) — só na troca de categoria, não atrapalha o
+  // usuário que já abriu/fechou blocos manualmente depois.
   useEffect(() => {
     if (categoriaSelecionada) setBlocosAbertos((prev) => new Set(prev).add(categoriaSelecionada.bloco));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoriaId]);
+
+  // Rola a lista até o item selecionado ficar visível (pedido do Felipe,
+  // 06/08/2026: com a sugestão automática, o item selecionado às vezes cai
+  // fora da área visível — o usuário via só o bloco aberto, sem entender
+  // que já tinha algo escolhido lá embaixo). Depende também de
+  // `blocosAbertos` porque, no primeiro render após trocar de item, o
+  // bloco ainda não estava aberto (o ref só existe depois que o efeito
+  // acima abre o bloco e o botão é renderizado).
+  useEffect(() => {
+    itemSelecionadoRef.current?.scrollIntoView({ block: "nearest" });
+  }, [categoriaId, blocosAbertos]);
 
   function toggleBloco(bloco: string) {
     setBlocosAbertos((prev) => {
@@ -76,6 +89,7 @@ export function SeletorCategoria({
                 cats.map((c) => (
                   <button
                     key={c.id}
+                    ref={c.id === categoriaId ? itemSelecionadoRef : undefined}
                     type="button"
                     onClick={() => onChange(c.id)}
                     className={`w-full text-left pl-7 pr-2 py-1.5 text-sm ${
