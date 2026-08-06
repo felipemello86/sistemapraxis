@@ -131,7 +131,7 @@ export function ConciliacoesView() {
                   <button
                     key={item.lancamento.id}
                     onClick={() => setSelecionadoId(item.lancamento.id)}
-                    className={`w-full text-left px-3 py-2.5 ${ativo ? "bg-gray-900 text-white" : "hover:bg-gray-50"}`}
+                    className={`w-full text-left px-3 py-2.5 ${ativo ? "bg-blue-700 text-white" : "hover:bg-gray-50"}`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className={`text-xs truncate ${ativo ? "text-gray-300" : "text-gray-400"}`}>{formatDataBR(item.lancamento.dataVencimento)}</p>

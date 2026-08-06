@@ -3330,6 +3330,14 @@ model FinanceLancamento {
   observacoes   String?
   criadoPorNome String?
 
+  // JSON array de { url, fileName, fileSize } (Cloudinary, resource_type
+  // "auto" — aceita foto, PDF etc.) — pedido do Felipe, 06/08/2026, card
+  // "Novo lançamento" da tela de Conciliações (comprovante/nota fiscal do
+  // gasto). Mesmo padrão de ComplaintOcorrencia.anexos (Governança/
+  // Queixas) — string JSON em vez de String[] nativo ou tabela própria,
+  // pra não precisar de mais uma entidade só pra isso.
+  anexos String @default("[]")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -80,7 +80,7 @@ export function RepetirLancamentoModal({
           <button
             type="button"
             onClick={() => set("habilitado", !value.habilitado)}
-            className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${value.habilitado ? "bg-gray-900" : "bg-gray-200"}`}
+            className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${value.habilitado ? "bg-blue-700" : "bg-gray-200"}`}
           >
             <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${value.habilitado ? "translate-x-4.5" : "translate-x-1"}`} />
           </button>
@@ -96,7 +96,7 @@ export function RepetirLancamentoModal({
                     key={f}
                     type="button"
                     onClick={() => set("frequencia", f)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${value.frequencia === f ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 text-gray-600"}`}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${value.frequencia === f ? "bg-blue-700 text-white border-blue-700" : "border-gray-300 text-gray-600"}`}
                   >
                     {f === "MENSAL" ? "Mensal" : "Anual"}
                   </button>
@@ -118,7 +118,7 @@ export function RepetirLancamentoModal({
                       key={v}
                       type="button"
                       onClick={() => set("qtdeTipo", v)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${value.qtdeTipo === v ? "bg-gray-900 text-white border-gray-900" : "border-gray-300 text-gray-600"}`}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${value.qtdeTipo === v ? "bg-blue-700 text-white border-blue-700" : "border-gray-300 text-gray-600"}`}
                     >
                       {rotulo}
                     </button>

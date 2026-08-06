@@ -165,7 +165,7 @@ export type PluggyTransaction = {
   id: string;
   accountId: string;
   description: string;
-  amount: number; // negativo = saída, positivo = entrada (mesma convenção que já usamos em FinanceLancamento.valor)
+  amount: number; // conta corrente (BANK): negativo = saída, positivo = entrada (mesma convenção do nosso FinanceLancamento.valor). Cartão (CREDIT): INVERTIDO — positivo = compra (despesa), negativo = pagamento/estorno (ver sincronizarContasDoTenant, que já corrige isso na hora de gravar)
   date: string; // ISO — a data REAL da transação. Vira dataCompetencia sempre (pedido do Felipe, 05/08/2026, 3ª rodada: "o sistema deve manter a data que vem da Pluggy como data de competência"); vira dataVencimento também, exceto em cartão de crédito com diaVencimentoFatura configurado, onde dataVencimento passa a ser a data da FATURA (ver calcularVencimentoFatura).
   category?: string; // categorização automática da própria Pluggy — usada só como sugestão, nunca grava direto (categorização final é sempre humana, ver requisito 6)
   merchant?: { name?: string };
@@ -360,6 +360,18 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
       // depende da detecção de pagamento de fatura abaixo.
       const pago = conta.tipo === "BANK";
 
+      // Correção de sinal pra cartão de crédito (bug encontrado em produção,
+      // 06/08/2026 — pedido do Felipe: "as despesas estão surgindo como
+      // receitas"): a convenção documentada em PluggyTransaction.amount
+      // ("negativo = saída, positivo = entrada") só vale pra conta corrente.
+      // Pra CREDIT a Pluggy manda o sinal do ponto de vista do EXTRATO DA
+      // FATURA, não do nosso saldo: uma compra normal (despesa de verdade)
+      // vem POSITIVA (aumenta o quanto se deve), e um pagamento/estorno vem
+      // NEGATIVO (reduz o quanto se deve) — o oposto da nossa convenção
+      // interna (negativo=despesa, positivo=receita). Sem essa inversão,
+      // toda compra de cartão entrava na DRE como se fosse receita.
+      const valor = conta.tipo === "CREDIT" ? -t.amount : t.amount;
+
       try {
         const criado = await prisma.financeLancamento.create({
           data: {
@@ -367,7 +379,7 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
             categoriaId: null, // sempre pendente — categorização é sempre humana (requisito 6)
             descricao: t.description,
             fornecedor: t.merchant?.name ?? null,
-            valor: t.amount,
+            valor,
             dataVencimento,
             // Data de Competência sempre a data real da transação, vinda da
             // Pluggy — pedido do Felipe, 05/08/2026, 3ª rodada. Pra cartão

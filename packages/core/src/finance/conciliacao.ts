@@ -263,6 +263,11 @@ export interface NovoLancamentoConciliacao {
   contaBancariaId?: string | null;
   formaPagamento?: string | null;
   observacoes?: string | null;
+  // Comprovante/nota fiscal (pedido do Felipe, 06/08/2026) — já vem pronto
+  // do upload direto pro Cloudinary (ver uploadAnexo.ts no app), aqui só
+  // serializa em JSON pro campo `anexos` (mesmo padrão de
+  // ComplaintOcorrencia.anexos).
+  anexos?: { url: string; fileName: string; fileSize: number }[];
 }
 
 /** Cria um FinanceLancamento MANUAL novo (o "previsto") e já concilia o
@@ -328,6 +333,7 @@ export async function criarEConciliar(tenantId: string, lancamentoRealId: string
       contaBancariaId: dados.contaBancariaId || null,
       formaPagamento: dados.formaPagamento?.trim() || null,
       observacoes: dados.observacoes?.trim() || null,
+      anexos: JSON.stringify(dados.anexos ?? []),
     },
   });
 

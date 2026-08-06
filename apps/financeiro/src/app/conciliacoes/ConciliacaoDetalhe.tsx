@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Link2, Search, Repeat, Landmark, FileText } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link2, Search, Repeat, Landmark, FileText, Paperclip, X, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { uploadAnexo, type AnexoUpload } from "@/lib/uploadAnexo";
 import { SeletorCentroCusto, type Empreendimento, type Unidade } from "@/components/SeletorCentroCusto";
 import { BuscarLancamentoModal, type LancamentoEscolhido } from "@/components/BuscarLancamentoModal";
 import { RepetirLancamentoModal, repetirConfigPadrao, resumoRepeticao, type RepetirConfig, type ContaParaSelect } from "@/components/RepetirLancamentoModal";
@@ -96,6 +97,10 @@ export function ConciliacaoDetalhe({
   const [propertyId, setPropertyId] = useState<string | null>(null);
   const [uhId, setUhId] = useState<string | null>(null);
   const [repetir, setRepetir] = useState<RepetirConfig>(repetirConfigPadrao(item.lancamento.dataVencimento));
+  const [anexos, setAnexos] = useState<AnexoUpload[]>([]);
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
+  const [erroAnexo, setErroAnexo] = useState("");
+  const inputAnexoRef = useRef<HTMLInputElement>(null);
 
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -113,9 +118,30 @@ export function ConciliacaoDetalhe({
     setPropertyId(null);
     setUhId(null);
     setRepetir(repetirConfigPadrao(item.lancamento.dataVencimento));
+    setAnexos([]);
+    setErroAnexo("");
     setErro("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.lancamento.id]);
+
+  async function anexarArquivos(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setErroAnexo("");
+    setEnviandoAnexo(true);
+    try {
+      const novos = await Promise.all(Array.from(files).map((f) => uploadAnexo(f)));
+      setAnexos((prev) => [...prev, ...novos]);
+    } catch (e: any) {
+      setErroAnexo(e.message || "Erro ao enviar anexo.");
+    } finally {
+      setEnviandoAnexo(false);
+      if (inputAnexoRef.current) inputAnexoRef.current.value = "";
+    }
+  }
+
+  function removerAnexo(url: string) {
+    setAnexos((prev) => prev.filter((a) => a.url !== url));
+  }
 
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
@@ -194,6 +220,7 @@ export function ConciliacaoDetalhe({
             contaBancariaId: repetir.contaBancariaId || null,
             formaPagamento: repetir.formaPagamento || null,
             observacoes: repetir.observacoes || null,
+            anexos,
           },
         }),
       });
@@ -236,7 +263,7 @@ export function ConciliacaoDetalhe({
           <button
             onClick={conciliar}
             disabled={salvando}
-            className="w-11 h-11 rounded-full bg-gray-900 hover:bg-gray-800 text-white flex items-center justify-center shadow-md disabled:opacity-50 flex-shrink-0"
+            className="w-11 h-11 rounded-full bg-blue-700 hover:bg-blue-800 text-white flex items-center justify-center shadow-md disabled:opacity-50 flex-shrink-0"
             title="Conciliar"
           >
             <Link2 className="w-5 h-5" />
@@ -331,12 +358,43 @@ export function ConciliacaoDetalhe({
                 type="button"
                 onClick={() => setRepetirAberto(true)}
                 className={`w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 rounded-lg border ${
-                  repetir.habilitado ? "border-gray-900 bg-gray-50 text-gray-900" : "border-gray-300 text-gray-600"
+                  repetir.habilitado ? "border-blue-700 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-600"
                 }`}
               >
                 <Repeat className="w-3.5 h-3.5" />
                 {resumoRepeticao(repetir)}
               </button>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="label mb-0">Anexos (opcional)</label>
+                  <button
+                    type="button"
+                    onClick={() => inputAnexoRef.current?.click()}
+                    disabled={enviandoAnexo}
+                    className="flex items-center gap-1 text-xs text-blue-700 font-medium hover:underline disabled:opacity-50"
+                  >
+                    {enviandoAnexo ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+                    {enviandoAnexo ? "Enviando..." : "Anexar arquivo"}
+                  </button>
+                  <input ref={inputAnexoRef} type="file" multiple className="hidden" onChange={(e) => anexarArquivos(e.target.files)} />
+                </div>
+                {erroAnexo && <p className="text-xs text-red-600 mt-1">{erroAnexo}</p>}
+                {anexos.length > 0 && (
+                  <ul className="mt-1.5 space-y-1">
+                    {anexos.map((a) => (
+                      <li key={a.url} className="flex items-center gap-1.5 text-xs bg-gray-50 rounded-lg px-2 py-1.5">
+                        <a href={a.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 truncate text-blue-700 hover:underline">
+                          {a.fileName}
+                        </a>
+                        <button type="button" onClick={() => removerAnexo(a.url)} className="text-gray-400 hover:text-red-600 flex-shrink-0">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           )}
         </div>
