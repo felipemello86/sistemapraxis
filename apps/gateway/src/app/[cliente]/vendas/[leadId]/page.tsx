@@ -11,14 +11,16 @@ import {
   atualizarValorAction,
   atualizarFonteAction,
   atualizarTelefoneAction,
+  enviarMensagemVendasAction,
 } from "../actions";
 
-// Tela de detalhe de um lead do módulo Vendas (06/08/2026) — versão
-// enxuta v1 do equivalente no admin (LeadDetalheConteudo.tsx): sem chat de
-// WhatsApp nem campos personalizados ainda (fica pra quando a integração
-// de canais do tenant existir, ver plano combinado com o Felipe). Página
-// normal (não modal/intercepting route) — simplicidade proposital pra essa
-// primeira versão.
+// Tela de detalhe de um lead do módulo Vendas (06/08/2026) — versão enxuta
+// v1 do equivalente no admin (LeadDetalheConteudo.tsx): sem campos
+// personalizados ainda. Chat de WhatsApp incluído (06/08/2026, 2ª rodada)
+// já que o Embedded Signup existe agora — versão simples (sem polling
+// como o WhatsAppChat.tsx do admin, só recarrega a página no envio; dá pra
+// evoluir depois se o volume de mensagens pedir tempo real). Página normal
+// (não modal/intercepting route) — simplicidade proposital.
 export default async function VendasLeadDetalhe({
   params,
 }: {
@@ -35,11 +37,20 @@ export default async function VendasLeadDetalhe({
 
   const lead = await prisma.vendasLead.findUnique({
     where: { id: params.leadId },
-    include: { atividades: { orderBy: { createdAt: "desc" } }, stage: true },
+    include: {
+      atividades: { orderBy: { createdAt: "desc" } },
+      mensagens: { orderBy: { createdAt: "asc" } },
+      stage: true,
+    },
   });
   if (!lead || lead.tenantId !== tenant.id) notFound();
 
   const etapas = await prisma.vendasEtapa.findMany({ where: { tenantId: tenant.id }, orderBy: { ordem: "asc" } });
+  const temCanalConectado = !!(await prisma.channelConnection.findUnique({
+    where: { tenantId_provider: { tenantId: tenant.id, provider: "WHATSAPP" } },
+    select: { id: true },
+  }));
+  const boundEnviarMensagem = enviarMensagemVendasAction.bind(null, tenant.slug, lead.id);
 
   const boundMoverEtapa = moverEtapaAction.bind(null, tenant.slug, lead.id);
   const boundMarcarGanho = marcarGanhoAction.bind(null, tenant.slug, lead.id);
@@ -203,6 +214,62 @@ export default async function VendasLeadDetalhe({
             <Campo label="Mensagem inicial">
               <p style={valueStyle}>{lead.mensagem}</p>
             </Campo>
+          )}
+        </section>
+
+        <section style={{ ...cardStyle, marginTop: 16 }}>
+          <h2 style={sectionTitle}>WhatsApp</h2>
+          {!temCanalConectado ? (
+            <p style={{ color: "#6e6e73", fontSize: 13, margin: 0 }}>
+              Nenhum WhatsApp conectado ainda —{" "}
+              <a href={`/${tenant.slug}/vendas/canais`} style={{ color: "#0071e3" }}>
+                conecta em Canais
+              </a>
+              .
+            </p>
+          ) : (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12, maxHeight: 260, overflowY: "auto" }}>
+                {lead.mensagens.length === 0 ? (
+                  <p style={{ color: "#a1a1a6", fontSize: 13, margin: 0 }}>Nenhuma mensagem ainda.</p>
+                ) : (
+                  lead.mensagens.map((m) => (
+                    <div
+                      key={m.id}
+                      style={{
+                        alignSelf: m.direcao === "ENVIADA" ? "flex-end" : "flex-start",
+                        background: m.direcao === "ENVIADA" ? "#dcf8c6" : "#f5f5f7",
+                        borderRadius: 10,
+                        padding: "6px 10px",
+                        maxWidth: "80%",
+                        fontSize: 13,
+                      }}
+                    >
+                      <p style={{ margin: 0 }}>{m.conteudo}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 10, color: "#6e6e73" }}>
+                        {new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(m.createdAt)}
+                        {m.direcao === "ENVIADA" && ` · ${m.status.toLowerCase()}`}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <form
+                action={async (fd: FormData) => {
+                  "use server";
+                  await boundEnviarMensagem(String(fd.get("texto") ?? ""));
+                }}
+                style={{ display: "flex", gap: 6 }}
+              >
+                <input name="texto" placeholder="Escreva uma mensagem..." required style={inputStyle} />
+                <button type="submit" style={btnSecondary}>
+                  Enviar
+                </button>
+              </form>
+              <p style={{ fontSize: 11, color: "#a1a1a6", margin: "6px 0 0" }}>
+                Só funciona até 24h depois da última mensagem do contato (regra da Meta).
+              </p>
+            </>
           )}
         </section>
 

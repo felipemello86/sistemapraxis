@@ -83,6 +83,22 @@ export default async function VendasBoard({ params }: { params: { cliente: strin
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
             <NovoLeadForm action={boundCriarLead} />
+            <a
+              href={`/${tenant.slug}/vendas/canais`}
+              style={{
+                padding: "7px 12px",
+                borderRadius: 9,
+                border: "1px solid #d2d2d7",
+                background: "#fff",
+                color: "#1d1d1f",
+                fontSize: 12.5,
+                fontWeight: 600,
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Canais
+            </a>
           </div>
         </div>
 

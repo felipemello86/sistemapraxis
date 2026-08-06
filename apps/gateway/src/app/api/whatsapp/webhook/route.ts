@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@praxis/core";
 import { encontrarOuCriarLeadPorTelefone } from "../../../admin/crm/data";
+import { encontrarOuCriarVendasLeadPorTelefone } from "../../../[cliente]/vendas/data";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,14 @@ type WhatsAppWebhookBody = {
         contacts?: { profile?: { name?: string } }[];
         messages?: WhatsAppMensagemRecebida[];
         statuses?: WhatsAppStatusUpdate[];
+        // Identifica DE QUAL número esse evento é — presente em todo
+        // evento de verdade da Cloud API. É o campo que usamos (06/08/2026)
+        // pra decidir se o evento é do número único do CRM do admin (env
+        // var WHATSAPP_PHONE_NUMBER_ID) ou de um número conectado por um
+        // tenant via Embedded Signup (ChannelConnection.phoneNumberId) —
+        // um webhook só, pra todos os números, sempre foi assim (ver
+        // comentário original acima sobre "não existe webhook por tenant").
+        metadata?: { phone_number_id?: string };
       };
     }[];
   }[];
@@ -82,37 +91,57 @@ export async function POST(req: NextRequest) {
       const value = change.value;
       if (!value) continue;
 
+      const phoneNumberId = value.metadata?.phone_number_id;
+      // Número único do CRM do admin (venda da Praxis pra hotéis) — fluxo
+      // original, intocado. Qualquer OUTRO phone_number_id é de um tenant
+      // que conectou via Embedded Signup (ver ChannelConnection).
+      const ehNumeroDoAdmin = phoneNumberId && phoneNumberId === process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const tenantId = ehNumeroDoAdmin || !phoneNumberId
+        ? null
+        : (await prisma.channelConnection.findUnique({ where: { phoneNumberId }, select: { tenantId: true } }))?.tenantId ?? null;
+
       // Mensagens recebidas.
       for (const msg of value.messages ?? []) {
         const telefoneDigits = msg.from;
         const nomeContato = value.contacts?.[0]?.profile?.name;
         const { conteudo, tipo } = extrairConteudo(msg);
 
-        const lead = await encontrarOuCriarLeadPorTelefone(telefoneDigits, nomeContato);
-
-        // upsert por waMessageId — a Meta reentrega o mesmo webhook mais de
-        // uma vez (at-least-once), sem isso duplicaria a mensagem no chat.
-        await prisma.whatsAppMensagem.upsert({
-          where: { waMessageId: msg.id },
-          create: {
-            leadId: lead.id,
-            direcao: "RECEBIDA",
-            conteudo,
-            tipo,
-            waMessageId: msg.id,
-            status: "ENTREGUE",
-          },
-          update: {},
-        });
-
-        await prisma.leadActivity.create({
-          data: {
-            leadId: lead.id,
-            tipo: "MENSAGEM",
-            conteudo: tipo === "texto" ? conteudo : `Recebeu uma mensagem de WhatsApp (${tipo}).`,
-            autorNome: nomeContato || "Contato (WhatsApp)",
-          },
-        });
+        if (ehNumeroDoAdmin) {
+          const lead = await encontrarOuCriarLeadPorTelefone(telefoneDigits, nomeContato);
+          await prisma.whatsAppMensagem.upsert({
+            where: { waMessageId: msg.id },
+            create: { leadId: lead.id, direcao: "RECEBIDA", conteudo, tipo, waMessageId: msg.id, status: "ENTREGUE" },
+            update: {},
+          });
+          await prisma.leadActivity.create({
+            data: {
+              leadId: lead.id,
+              tipo: "MENSAGEM",
+              conteudo: tipo === "texto" ? conteudo : `Recebeu uma mensagem de WhatsApp (${tipo}).`,
+              autorNome: nomeContato || "Contato (WhatsApp)",
+            },
+          });
+        } else if (tenantId) {
+          const lead = await encontrarOuCriarVendasLeadPorTelefone(tenantId, telefoneDigits, nomeContato);
+          // upsert por waMessageId — a Meta reentrega o mesmo webhook mais
+          // de uma vez (at-least-once), sem isso duplicaria a mensagem.
+          await prisma.vendasMensagem.upsert({
+            where: { waMessageId: msg.id },
+            create: { leadId: lead.id, direcao: "RECEBIDA", conteudo, tipo, waMessageId: msg.id, status: "ENTREGUE" },
+            update: {},
+          });
+          await prisma.vendasAtividade.create({
+            data: {
+              leadId: lead.id,
+              tipo: "MENSAGEM",
+              conteudo: tipo === "texto" ? conteudo : `Recebeu uma mensagem de WhatsApp (${tipo}).`,
+              autorNome: nomeContato || "Contato (WhatsApp)",
+            },
+          });
+        }
+        // Nem admin nem tenant reconhecido: número desconhecido pra nós
+        // (ex: conexão removida depois do evento já ter sido enfileirado
+        // do lado da Meta) — ignora silenciosamente, sem erro.
       }
 
       // Atualizações de status de mensagens que NÓS mandamos.
@@ -127,11 +156,11 @@ export async function POST(req: NextRequest) {
                 : null;
         if (!novoStatus) continue;
 
-        await prisma.whatsAppMensagem
-          .update({ where: { waMessageId: status.id }, data: { status: novoStatus } })
-          .catch(() => {
-            // Mensagem não encontrada (ex: enviada antes desta feature existir) — ignora.
-          });
+        if (ehNumeroDoAdmin) {
+          await prisma.whatsAppMensagem.update({ where: { waMessageId: status.id }, data: { status: novoStatus } }).catch(() => {});
+        } else if (tenantId) {
+          await prisma.vendasMensagem.update({ where: { waMessageId: status.id }, data: { status: novoStatus } }).catch(() => {});
+        }
       }
     }
   }

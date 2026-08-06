@@ -2,8 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { prisma, getSession, hasModuleAccess } from "@praxis/core";
-import { telefoneValido, formatarTelefoneExibicao } from "../../admin/crm/telefone";
+import { prisma, getSession, hasModuleAccess, decifrarToken, enviarMensagemWhatsAppCloudApi } from "@praxis/core";
+import { telefoneValido, formatarTelefoneExibicao, normalizarTelefone } from "../../admin/crm/telefone";
 
 // Módulo Vendas do tenant (06/08/2026) — mesmo padrão de segurança de todo
 // módulo da suíte (ver [cliente]/inteligencia/actions.ts): o tenant vem
@@ -192,4 +192,40 @@ export async function criarLeadManualAction(
   });
 
   redirect(`/${tenantSlug}/vendas`);
+}
+
+// Envia mensagem de WhatsApp pro lead usando o canal QUE O PRÓPRIO TENANT
+// conectou (ChannelConnection) — diferente do enviarMensagemWhatsAppAction
+// do admin, que usa o número único fixo por env var. Mesma regra de janela
+// de 24h de sempre (ver whatsappCloudApi.ts).
+export async function enviarMensagemVendasAction(
+  tenantSlug: string,
+  leadId: string,
+  texto: string
+): Promise<VendasActionResult> {
+  const session = await requireAccess();
+  const textoLimpo = texto.trim();
+  if (!textoLimpo) return { ok: false, error: "Mensagem vazia." };
+
+  const lead = await getLeadOrThrow(leadId, session.tenantId);
+  if (!lead.telefone) return { ok: false, error: "Este lead não tem telefone cadastrado." };
+
+  const conexao = await prisma.channelConnection.findUnique({
+    where: { tenantId_provider: { tenantId: session.tenantId, provider: "WHATSAPP" } },
+  });
+  if (!conexao || conexao.status !== "CONECTADO") {
+    return { ok: false, error: "Nenhum WhatsApp conectado ainda — conecta em Vendas → Canais." };
+  }
+
+  const token = decifrarToken(conexao.accessTokenCifrado);
+  const telefoneDigits = normalizarTelefone(lead.telefone);
+  const resultado = await enviarMensagemWhatsAppCloudApi(token, conexao.phoneNumberId, telefoneDigits, textoLimpo);
+  if (!resultado.ok) return { ok: false, error: resultado.erro };
+
+  await prisma.vendasMensagem.create({
+    data: { leadId, direcao: "ENVIADA", conteudo: textoLimpo, tipo: "texto", waMessageId: resultado.waMessageId, status: "ENVIADA" },
+  });
+
+  revalidatePath(`/${tenantSlug}/vendas/${leadId}`);
+  return { ok: true };
 }

@@ -14,6 +14,8 @@ export * from "./aiEvents";
 export * from "./stripe";
 export * from "./channel-manager";
 export * from "./finance";
+export * from "./channelCrypto";
+export * from "./whatsappCloudApi";
 export type {
   SuiteModule,
   User,

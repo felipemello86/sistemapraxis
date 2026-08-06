@@ -134,6 +134,10 @@ model Tenant {
   // models acima (perto de PipelineStage/DemoLead do admin).
   vendasEtapas VendasEtapa[]
   vendasLeads  VendasLead[]
+
+  // Canais de mensageria conectados pelo próprio tenant (Embedded Signup),
+  // ver ChannelConnection acima.
+  channelConnections ChannelConnection[]
 }
 
 enum SuiteModule {
@@ -2853,6 +2857,7 @@ model VendasLead {
   createdAt DateTime @default(now())
 
   atividades VendasAtividade[]
+  mensagens  VendasMensagem[]
 
   @@index([tenantId, createdAt])
   @@index([tenantId, stageId])
@@ -2866,6 +2871,81 @@ model VendasAtividade {
   conteudo  String
   autorNome String
   createdAt DateTime         @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+enum CanalProvedor {
+  WHATSAPP
+}
+
+enum CanalStatus {
+  PENDENTE
+  CONECTADO
+  ERRO
+}
+
+// Conexão de canal de mensageria por tenant (06/08/2026) — nasce junto com
+// o fluxo de Embedded Signup da Meta (ver [cliente]/vendas/canais). Cada
+// tenant conecta o PRÓPRIO número de WhatsApp aqui, diferente do número
+// único hardcoded do CRM do admin (WHATSAPP_TOKEN/WHATSAPP_PHONE_NUMBER_ID
+// em env var — aquilo é só da Praxis vendendo pra hotel, não muda).
+// accessTokenCifrado NUNCA fica em texto puro — ver
+// packages/core/src/channelCrypto.ts (AES-256-GCM, chave em env var
+// CHANNEL_TOKEN_ENCRYPTION_KEY). Um token por conexão, nunca exposto pro
+// client/frontend em nenhuma resposta de action.
+model ChannelConnection {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  provider CanalProvedor @default(WHATSAPP)
+  status   CanalStatus   @default(PENDENTE)
+  erro     String?
+
+  wabaId             String
+  phoneNumberId      String  @unique
+  displayPhoneNumber String?
+  verifiedName       String?
+
+  accessTokenCifrado String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, provider])
+  @@index([wabaId])
+}
+
+enum VendasMensagemDirecao {
+  ENVIADA
+  RECEBIDA
+}
+
+enum VendasMensagemStatus {
+  ENVIADA
+  ENTREGUE
+  LIDA
+  FALHOU
+}
+
+// Mensagens trocadas com um VendasLead via canal conectado (ChannelConnection)
+// — espelha WhatsAppMensagem do CRM do admin na forma, mas isolada por
+// tenant (mesmo raciocínio de VendasLead vs DemoLead).
+model VendasMensagem {
+  id     String     @id @default(cuid())
+  leadId String
+  lead   VendasLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  direcao  VendasMensagemDirecao
+  conteudo String                @db.Text
+  tipo     String                @default("texto")
+  midiaUrl String?
+
+  waMessageId String?               @unique
+  status      VendasMensagemStatus @default(ENVIADA)
+
+  createdAt DateTime @default(now())
 
   @@index([leadId, createdAt])
 }
