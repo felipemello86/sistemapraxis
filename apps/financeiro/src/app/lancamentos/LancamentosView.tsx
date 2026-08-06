@@ -327,7 +327,12 @@ export function LancamentosView() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full">
+      {/* Cabeçalho + toolbar de filtros: tamanho fixo (não encolhe) — só a
+          área da tabela abaixo estica pra preencher o resto da tela (pedido
+          do Felipe, 05/08/2026: "tem uma parte da tela que poderia ser
+          ocupada por mais linhas"). */}
+      <div className="flex-shrink-0 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-lg font-bold text-gray-900">
           Lançamentos {somentePendentes && <span className="text-amber-600 font-medium text-sm">— sem categoria</span>}
@@ -478,13 +483,15 @@ export function LancamentosView() {
           </div>
         )}
       </div>
+      </div>
 
-      {loading ? (
-        <p className="text-gray-400 text-sm">Carregando...</p>
-      ) : listaFiltrada.length === 0 ? (
-        <p className="text-gray-400 text-sm">Nenhum lançamento encontrado.</p>
-      ) : (
-        <div className="card !p-0 overflow-auto max-h-[calc(100vh-260px)]">
+      <div className="flex-1 min-h-0 mt-4">
+        {loading ? (
+          <p className="text-gray-400 text-sm">Carregando...</p>
+        ) : listaFiltrada.length === 0 ? (
+          <p className="text-gray-400 text-sm">Nenhum lançamento encontrado.</p>
+        ) : (
+        <div className="card !p-0 h-full overflow-auto">
           <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="text-left text-xs text-gray-400">
@@ -674,7 +681,8 @@ export function LancamentosView() {
             </tbody>
           </table>
         </div>
-      )}
+        )}
+      </div>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm p-0 md:p-4">
