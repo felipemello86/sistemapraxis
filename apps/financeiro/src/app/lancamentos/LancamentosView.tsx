@@ -484,7 +484,7 @@ export function LancamentosView() {
       ) : listaFiltrada.length === 0 ? (
         <p className="text-gray-400 text-sm">Nenhum lançamento encontrado.</p>
       ) : (
-        <div className="card !p-0 overflow-x-auto">
+        <div className="card !p-0 overflow-auto max-h-[calc(100vh-260px)]">
           <table className="w-full text-sm table-fixed">
             <thead>
               <tr className="text-left text-xs text-gray-400">
