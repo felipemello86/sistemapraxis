@@ -95,6 +95,16 @@ export function IconCoin({ size = 28 }: IconProps) {
   );
 }
 
+// Novo — módulo Vendas (seta de crescimento, representando funil/receita).
+export function IconTrend({ size = 28 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 17 9 11 13 15 21 6" />
+      <polyline points="14 6 21 6 21 13" />
+    </svg>
+  );
+}
+
 export function IconGear({ size = 28 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

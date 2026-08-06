@@ -4,7 +4,7 @@ import { logoutAction } from "./actions";
 import { LoginForm } from "./LoginForm";
 import PushRegistration from "./PushRegistration";
 import ModuleTile from "./ModuleTile";
-import { IconBed, IconWrench, IconStar, IconBox, IconCloche, IconSparkle, IconGear, IconCalendar, IconCoin } from "@/lib/icons";
+import { IconBed, IconWrench, IconStar, IconBox, IconCloche, IconSparkle, IconGear, IconCalendar, IconCoin, IconTrend } from "@/lib/icons";
 import styles from "./page.module.css";
 
 // Nota: a v1 tinha um componente LockBodyScroll aqui pra travar o scroll
@@ -24,6 +24,7 @@ const MODULE_ICON: Record<SuiteModule, (props: { size?: number }) => JSX.Element
   INTELLIGENCE: IconSparkle,
   RECEPTION: IconCalendar,
   FINANCE: IconCoin,
+  SALES: IconTrend,
 };
 
 const ROLE_LABEL: Record<string, string> = {

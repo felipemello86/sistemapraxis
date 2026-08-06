@@ -40,10 +40,16 @@ function IconePerdido({ size = 15 }: { size?: number }) {
 }
 
 type Etapa = { id: string; nome: string };
+// titulo/subtitulo em vez de hotel/nome (06/08/2026) — componente virou
+// reaproveitado pelo módulo Vendas do tenant também (ver linkBase acima),
+// que não tem o conceito de "hotel" (o lead lá pode ser um hóspede pessoa
+// física, sem empresa). Cada chamador mapeia seu model pro shape genérico:
+// admin/crm usa hotel→titulo e nome→subtitulo; vendas usa nome→titulo e
+// empresa→subtitulo.
 type Lead = {
   id: string;
-  hotel: string;
-  nome: string;
+  titulo: string;
+  subtitulo: string;
   stageId: string | null;
   desfecho: "ABERTO" | "GANHO" | "PERDIDO";
   motivoPerda: string | null;
@@ -82,6 +88,7 @@ export function KanbanBoard({
   marcarGanhoAction,
   marcarPerdidoRapidoAction,
   reabrirLeadAction,
+  linkBase = "/admin/crm",
 }: {
   etapas: Etapa[];
   leadsIniciais: Lead[];
@@ -90,6 +97,12 @@ export function KanbanBoard({
   marcarGanhoAction: (leadId: string) => Promise<void>;
   marcarPerdidoRapidoAction: (leadId: string, motivo: string) => Promise<void>;
   reabrirLeadAction: (leadId: string) => Promise<void>;
+  // Base do link de cada card (06/08/2026) — componente agora é
+  // reaproveitado também pelo módulo Vendas do tenant
+  // ([cliente]/vendas/page.tsx), que precisa apontar pra
+  // /:cliente/vendas/:leadId em vez de /admin/crm/:leadId. Default mantém
+  // o comportamento antigo do admin sem precisar tocar na chamada de lá.
+  linkBase?: string;
 }) {
   const [leads, setLeads] = useState(leadsIniciais);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
@@ -126,7 +139,7 @@ export function KanbanBoard({
   }
 
   function excluir(lead: Lead) {
-    if (!confirm(`Excluir o lead "${lead.hotel}"? Isso apaga o histórico e os campos personalizados dele também. Não tem como desfazer.`)) {
+    if (!confirm(`Excluir o lead "${lead.titulo}"? Isso apaga o histórico e os campos personalizados dele também. Não tem como desfazer.`)) {
       return;
     }
     setLeads((prev) => prev.filter((l) => l.id !== lead.id));
@@ -140,7 +153,7 @@ export function KanbanBoard({
   }
 
   function marcarPerdido(lead: Lead) {
-    const motivo = prompt(`Motivo da perda de "${lead.hotel}" (opcional, Cancelar desiste):`);
+    const motivo = prompt(`Motivo da perda de "${lead.titulo}" (opcional, Cancelar desiste):`);
     if (motivo === null) return; // usuário clicou Cancelar — não marca nada
     setLeads((prev) =>
       prev.map((l) => (l.id === lead.id ? { ...l, desfecho: "PERDIDO", motivoPerda: motivo.trim() || "Não informado" } : l))
@@ -237,9 +250,9 @@ export function KanbanBoard({
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
-                      <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f", flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
-                        <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
+                      <Link href={`${linkBase}/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f", flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.titulo}</div>
+                        <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.subtitulo}</div>
                         {lead.valor > 0 && (
                           <div style={{ fontSize: 12, color: "#1a7f37", fontWeight: 700, marginTop: 2 }}>
                             {formatValorBRL(lead.valor)}
@@ -359,8 +372,8 @@ export function KanbanBoard({
               >
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6 }}>
                   <Link href={`/admin/crm/${lead.id}`} style={{ textDecoration: "none", color: "#1d1d1f", flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.hotel}</div>
-                    <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.nome}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{lead.titulo}</div>
+                    <div style={{ fontSize: 12, color: "#6e6e73" }}>{lead.subtitulo}</div>
                     {lead.valor > 0 && (
                       <div style={{ fontSize: 12, color: "#1a7f37", fontWeight: 700, marginTop: 2 }}>
                         {formatValorBRL(lead.valor)}

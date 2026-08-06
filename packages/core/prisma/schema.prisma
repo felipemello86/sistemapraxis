@@ -129,6 +129,11 @@ model Tenant {
   financeContasBancarias  FinanceContaBancaria[]
   financeEmpreendimentos  FinanceEmpreendimento[]
   financeUnidades         FinanceUnidade[]
+
+  // Vendas (CRM do tenant) — pedido do Felipe (06/08/2026), ver bloco de
+  // models acima (perto de PipelineStage/DemoLead do admin).
+  vendasEtapas VendasEtapa[]
+  vendasLeads  VendasLead[]
 }
 
 enum SuiteModule {
@@ -153,6 +158,13 @@ enum SuiteModule {
   // que existe, mesmo com o módulo já presente no código (mesmo padrão de
   // isolamento que todo módulo da suíte já usa, nada de special-case).
   FINANCE
+  // Vendas — CRM próprio do tenant (funil de leads/oportunidades dele com
+  // os próprios clientes/hóspedes), pedido do Felipe (06/08/2026). Vive
+  // dentro do gateway (sem app próprio, mesmo padrão de INTELLIGENCE) —
+  // ver apps/gateway/src/app/[cliente]/vendas. Reaproveita a mesma engine
+  // visual do CRM do admin (KanbanBoard), mas com tabelas e dados
+  // isolados por tenant (ver VendasEtapa/VendasLead/VendasAtividade).
+  SALES
 }
 
 // Licenciamento por módulo: um tenant só enxerga um módulo se houver uma
@@ -2783,6 +2795,81 @@ model LeadCampoValor {
 
   @@unique([leadId, campoId])
 }
+
+// ---------------------------------------------------------------------
+// Módulo Vendas (tenant) — 06/08/2026, pedido do Felipe. Mesma engine do
+// CRM do admin acima (VendasEtapa/VendasLead/VendasAtividade espelham
+// PipelineStage/DemoLead/LeadActivity 1:1 na forma), mas são tabelas
+// PRÓPRIAS e completamente separadas: o CRM do admin é sobre vender a
+// Praxis PARA hotéis; este módulo é sobre cada hotel vender PROS
+// próprios clientes/hóspedes. Nunca misturar as duas coisas na mesma
+// tabela — um bug de query aqui vazaria lead de um tenant pro admin ou
+// vice-versa. tenantId obrigatório em toda linha, todo find sempre
+// filtrado por ele (o tenant vem da sessão, nunca da URL — mesmo padrão
+// de todo módulo da suíte, ver [cliente]/vendas/actions.ts).
+//
+// Reaproveita os enums LeadDesfecho e LeadActivityTipo já existentes
+// acima (enum não é preso a um model só). Sem campos personalizados nem
+// parceiros nesta v1 (aquilo é específico do CRM do admin) — se algum
+// tenant precisar, adiciona depois do mesmo jeito que foi feito lá.
+model VendasEtapa {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  nome     String
+  ordem    Int
+
+  createdAt DateTime @default(now())
+
+  leads VendasLead[]
+
+  @@index([tenantId, ordem])
+}
+
+model VendasLead {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  nome     String
+  // Empresa/organização do contato — opcional (diferente do CRM do admin,
+  // onde "hotel" é sempre obrigatório): nem todo lead de um hotel
+  // representa uma empresa, pode ser só um hóspede pessoa física.
+  empresa  String?
+  email    String?
+  telefone String
+  mensagem String?
+
+  stageId String?
+  stage   VendasEtapa? @relation(fields: [stageId], references: [id])
+
+  fonte String @default("Site")
+
+  desfecho    LeadDesfecho @default(ABERTO)
+  motivoPerda String?
+
+  valor Float @default(0)
+
+  createdAt DateTime @default(now())
+
+  atividades VendasAtividade[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, stageId])
+}
+
+model VendasAtividade {
+  id        String           @id @default(cuid())
+  leadId    String
+  lead      VendasLead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tipo      LeadActivityTipo
+  conteudo  String
+  autorNome String
+  createdAt DateTime         @default(now())
+
+  @@index([leadId, createdAt])
+}
+// ---------------------------------------------------------------------
 
 // Catálogo de planos vendáveis — cadastrado no admin, espelhando um Price
 // já criado no dashboard do Stripe (stripePriceId). Não criamos Price via

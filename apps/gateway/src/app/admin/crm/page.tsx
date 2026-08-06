@@ -106,7 +106,11 @@ export default async function CrmBoard() {
 
         <KanbanBoard
           etapas={etapas}
-          leadsIniciais={leads}
+          // titulo/subtitulo (06/08/2026) — KanbanBoard virou genérico pra
+          // também ser usado pelo módulo Vendas do tenant (ver
+          // KanbanBoard.tsx); aqui hotel é o título (linha em negrito) e
+          // nome do contato é o subtítulo, igual sempre foi visualmente.
+          leadsIniciais={leads.map((l) => ({ ...l, titulo: l.hotel, subtitulo: l.nome }))}
           moverEtapaAction={moverEtapaAction}
           excluirLeadAction={excluirLeadAction}
           marcarGanhoAction={marcarGanhoAction}

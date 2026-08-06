@@ -14,6 +14,9 @@ export const MODULE_SLUGS: Record<SuiteModule, string> = {
   INTELLIGENCE: "inteligencia",
   RECEPTION: "recepcao",
   FINANCE: "financeiro",
+  // Sem app/deploy próprio — vive dentro do gateway (ver
+  // apps/gateway/src/app/[cliente]/vendas), mesmo caso de INTELLIGENCE.
+  SALES: "vendas",
 };
 
 export const MODULE_LABELS: Record<SuiteModule, string> = {
@@ -25,6 +28,7 @@ export const MODULE_LABELS: Record<SuiteModule, string> = {
   INTELLIGENCE: "Central de Inteligência",
   RECEPTION: "Recepção",
   FINANCE: "Financeiro",
+  SALES: "Vendas",
 };
 
 const SLUG_TO_MODULE: Record<string, SuiteModule> = Object.fromEntries(
