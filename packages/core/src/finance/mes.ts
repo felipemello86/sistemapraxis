@@ -81,3 +81,44 @@ export function projetarDataNoMes(dataVencimentoRaiz: string, mesAlvo: string): 
   const dia = Math.min(diaRaiz, ultimoDia);
   return `${mesAlvo}-${String(dia).padStart(2, "0")}`;
 }
+
+// Frequência de recorrência (pedido do Felipe, 06/08/2026, popup "Repetir
+// Lançamento" da tela de Conciliações): antes só existia recorrência
+// mensal (implícita — dre.ts/orcamento.ts/conciliacao.ts projetavam em TODO
+// mês entre dataVencimento e recorrenciaFimData). ANUAL é a mesma ideia,
+// mas só "aparece" nos meses cujo mês-calendário bate com o da raiz — ver
+// ocorreNoMes, usada nas 3 libs antes de empurrar uma linha projetada.
+export type RecorrenciaFrequencia = "MENSAL" | "ANUAL";
+
+/** true se uma ocorrência recorrente de frequência `frequencia`, com raiz
+ * em `dataVencimentoRaiz`, deve aparecer no mês `mesAlvo` — MENSAL sempre
+ * true (a checagem de intervalo (>=dataVencimento, <=recorrenciaFimData) já
+ * é feita na query, esta função só decide SE aquele mês específico é uma
+ * ocorrência); ANUAL só nos meses com o mesmo mês-calendário da raiz. */
+export function ocorreNoMes(dataVencimentoRaiz: string, frequencia: string, mesAlvo: string): boolean {
+  if (frequencia !== "ANUAL") return true;
+  const mesRaiz = dataVencimentoRaiz.slice(5, 7);
+  const mesAlvoMM = mesAlvo.slice(5, 7);
+  return mesRaiz === mesAlvoMM;
+}
+
+/** Soma (ou subtrai) N anos a uma data YYYY-MM-DD, preservando o dia-do-mês
+ * e clampando pro último dia válido (ex.: 29/fev num ano não-bissexto vira
+ * 28/fev) — usado junto com somarMeses pra calcular o fim de uma
+ * recorrência a partir de uma quantidade de repetições (ver
+ * calcularFimRecorrencia). */
+export function somarAnos(dataISO: string, anos: number): string {
+  return somarMeses(dataISO, anos * 12);
+}
+
+/** Converte "quantidade de repetições" (do popup "Repetir Lançamento") na
+ * recorrenciaFimData equivalente — pedido do Felipe, 06/08/2026: a UI
+ * oferece "infinito" ou um número fixo de repetições, mas o schema só
+ * guarda uma data de fim (mesmo campo que já existia). `qtde` já conta a
+ * PRÓPRIA ocorrência raiz (qtde=1 = só a raiz, sem repetição adicional —
+ * fim = a própria data raiz). Retorna null pra "infinito" (qtde null). */
+export function calcularFimRecorrencia(dataVencimentoRaiz: string, frequencia: string, qtde: number | null): string | null {
+  if (qtde == null) return null;
+  const ocorrenciasAdicionais = Math.max(0, qtde - 1);
+  return frequencia === "ANUAL" ? somarAnos(dataVencimentoRaiz, ocorrenciasAdicionais) : somarMeses(dataVencimentoRaiz, ocorrenciasAdicionais);
+}

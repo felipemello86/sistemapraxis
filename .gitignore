@@ -21,8 +21,12 @@ packages/core/generated_verify/
 packages/core/generated_verify2/
 packages/core/generated_verify3/
 packages/core/generated_verify4/
+packages/core/generated_verify5/
 packages/core/prisma/schema.verify.prisma
 packages/core/prisma/schema.verify2.prisma
 packages/core/prisma/schema.verify3.prisma
 packages/core/prisma/schema.verify4.prisma
+packages/core/prisma/schema.verify5.prisma
 packages/core/check_old_tmp.js
+packages/core/apply_mig3_tmp.js
+packages/core/*_tmp.js

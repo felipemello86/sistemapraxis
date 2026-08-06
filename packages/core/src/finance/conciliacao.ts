@@ -9,7 +9,7 @@
 
 import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
-import { limitesDoMes, projetarDataNoMes } from "./mes";
+import { limitesDoMes, projetarDataNoMes, ocorreNoMes, calcularFimRecorrencia } from "./mes";
 
 function normalizar(s: string | null | undefined): string {
   if (!s) return "";
@@ -71,7 +71,10 @@ async function buscarPrevistosDoMes(tenantId: string, mes: string) {
 
   return [
     ...pontuais.map((l) => ({ ...l, dataEfetiva: l.dataVencimento })),
-    ...recorrentes.map((l) => ({ ...l, dataEfetiva: projetarDataNoMes(l.dataVencimento, mes) })),
+    // ANUAL (pedido do Felipe, 06/08/2026): só é candidato nos meses cujo
+    // mês-calendário bate com o da raiz — senão uma recorrência anual (ex.:
+    // IPTU em janeiro) seria sugerida como candidata em todo mês do ano.
+    ...recorrentes.filter((l) => ocorreNoMes(l.dataVencimento, l.recorrenciaFrequencia, mes)).map((l) => ({ ...l, dataEfetiva: projetarDataNoMes(l.dataVencimento, mes) })),
   ];
 }
 
@@ -237,4 +240,99 @@ export async function desfazerConciliacao(tenantId: string, lancamentoId: string
     where: { id: lancamentoId },
     data: { conciliadoComId: null, conciliadoMesReferencia: null, conciliadoDiverso: false },
   });
+}
+
+// Novo fluxo "Novo lançamento" (pedido do Felipe, 06/08/2026, redesign da
+// tela de Conciliações espelhando o Conta Azul): quando o sistema não
+// sugere nenhum previsto pra um lançamento importado (ou o usuário prefere
+// não usar a sugestão), a tela oferece criar um previsto NOVO ali mesmo —
+// com categoria, centro de custo e, opcionalmente, recorrência (pra virar
+// uma expectativa nos meses seguintes no Orçamento) — e já conciliar o
+// lançamento importado com ele, numa operação só.
+export interface NovoLancamentoConciliacao {
+  descricao: string;
+  fornecedor?: string | null;
+  categoriaId: string;
+  centroCustoTipo?: string; // ADMINISTRACAO (default) | EMPREENDIMENTO | UNIDADE
+  propertyId?: string | null;
+  uhId?: string | null;
+  dataVencimento: string; // YYYY-MM-DD — "1º vencimento" do popup (raiz da recorrência, se houver)
+  recorrente?: boolean;
+  recorrenciaFrequencia?: string; // MENSAL (default) | ANUAL — só relevante se recorrente
+  recorrenciaQtde?: number | null; // null/undefined = infinito; N = calcula recorrenciaFimData (ver mes.ts)
+  contaBancariaId?: string | null;
+  formaPagamento?: string | null;
+  observacoes?: string | null;
+}
+
+/** Cria um FinanceLancamento MANUAL novo (o "previsto") e já concilia o
+ * lançamento importado (`lancamentoRealId`) com ele — pedido do Felipe,
+ * 06/08/2026, card "Novo lançamento" da tela de Conciliações. O valor é
+ * sempre copiado do lançamento real (a proposta é sempre "isto que já
+ * aconteceu passa a ser esperado também nos próximos meses", nunca um
+ * valor arbitrário digitado à parte) — só descrição/fornecedor podem ser
+ * ajustados em relação ao texto bruto importado do banco. */
+export async function criarEConciliar(tenantId: string, lancamentoRealId: string, dados: NovoLancamentoConciliacao) {
+  const real = await prisma.financeLancamento.findUnique({ where: { id: lancamentoRealId } });
+  if (!real || real.tenantId !== tenantId) throw new Error("Lançamento não encontrado");
+  if (real.origem !== "PLUGGY") throw new Error("Só é possível criar um novo lançamento previsto a partir de um lançamento importado");
+  if (real.conciliadoComId || real.conciliadoDiverso) throw new Error("Este lançamento já está conciliado — desfaça a conciliação atual antes de criar um novo previsto");
+
+  if (!dados.descricao?.trim()) throw new Error("descricao é obrigatória");
+
+  const categoria = await prisma.financeCategoria.findUnique({ where: { id: dados.categoriaId } });
+  if (!categoria || categoria.tenantId !== tenantId) throw new Error("Categoria não encontrada");
+
+  const centroCustoTipo = dados.centroCustoTipo ?? "ADMINISTRACAO";
+  if (!["ADMINISTRACAO", "EMPREENDIMENTO", "UNIDADE"].includes(centroCustoTipo)) {
+    throw new Error("centroCustoTipo deve ser ADMINISTRACAO, EMPREENDIMENTO ou UNIDADE");
+  }
+  let propertyId: string | null = null;
+  let uhId: string | null = null;
+  if (centroCustoTipo === "EMPREENDIMENTO") {
+    if (!dados.propertyId) throw new Error("propertyId é obrigatório quando centroCustoTipo=EMPREENDIMENTO");
+    const property = await prisma.property.findUnique({ where: { id: dados.propertyId } });
+    if (!property || property.tenantId !== tenantId) throw new Error("Empreendimento não encontrado");
+    propertyId = dados.propertyId;
+  } else if (centroCustoTipo === "UNIDADE") {
+    if (!dados.uhId) throw new Error("uhId é obrigatório quando centroCustoTipo=UNIDADE");
+    const uh = await prisma.uH.findUnique({ where: { id: dados.uhId } });
+    if (!uh || uh.tenantId !== tenantId) throw new Error("Unidade não encontrada");
+    uhId = dados.uhId;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dados.dataVencimento ?? "")) throw new Error("dataVencimento inválida (esperado YYYY-MM-DD)");
+
+  const recorrente = Boolean(dados.recorrente);
+  const recorrenciaFrequencia = dados.recorrenciaFrequencia ?? "MENSAL";
+  if (recorrente && !["MENSAL", "ANUAL"].includes(recorrenciaFrequencia)) {
+    throw new Error("recorrenciaFrequencia deve ser MENSAL ou ANUAL");
+  }
+  const recorrenciaFimData = recorrente ? calcularFimRecorrencia(dados.dataVencimento, recorrenciaFrequencia, dados.recorrenciaQtde ?? null) : null;
+
+  const previsto = await prisma.financeLancamento.create({
+    data: {
+      tenantId,
+      categoriaId: dados.categoriaId,
+      descricao: dados.descricao.trim(),
+      fornecedor: dados.fornecedor?.trim() || real.fornecedor,
+      valor: real.valor,
+      dataVencimento: dados.dataVencimento,
+      recorrente,
+      recorrenciaFrequencia,
+      recorrenciaFimData,
+      origem: "MANUAL",
+      centroCustoTipo,
+      propertyId,
+      uhId,
+      contaBancariaId: dados.contaBancariaId || null,
+      formaPagamento: dados.formaPagamento?.trim() || null,
+      observacoes: dados.observacoes?.trim() || null,
+    },
+  });
+
+  const mesReferencia = (real.dataCompetencia || real.dataVencimento).slice(0, 7);
+  await confirmarConciliacao(tenantId, lancamentoRealId, previsto.id, mesReferencia);
+
+  return previsto;
 }

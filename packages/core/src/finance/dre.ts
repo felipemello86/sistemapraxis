@@ -38,7 +38,7 @@ import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
 import type { DreTotalizador } from "./categoria-defaults";
 import { carregarContextoRateio, fatorRateio, type FiltroCentroCusto } from "./centro-de-custo";
-import { limitesDoMes, projetarDataNoMes } from "./mes";
+import { limitesDoMes, projetarDataNoMes, ocorreNoMes } from "./mes";
 import { carregarConciliacoesDoMes } from "./conciliacao";
 
 const ZERO = new Prisma.Decimal(0);
@@ -65,6 +65,15 @@ export interface DreLinhaLancamento {
   valor: Prisma.Decimal;
   dataEfetiva: string; // YYYY-MM-DD dentro do mês consultado
   projetadaDeRecorrencia: boolean; // true = ocorrência virtual (mês diferente do lançamento raiz)
+  // Pedido do Felipe, 06/08/2026 — popup "Buscar lançamento" da tela de
+  // Conciliações: precisa distinguir, sem lógica própria no frontend,
+  // quais linhas da DRE são candidatas válidas pra virar o "previsto" de
+  // uma conciliação (ver confirmarConciliacao em conciliacao.ts, que exige
+  // origem=MANUAL). `origem` vem direto do lançamento; `conciliavel` já
+  // resolve a regra completa (MANUAL e ainda sem um real conciliado nesse
+  // mês) pra a UI só desabilitar/marcar visualmente, nunca reimplementar.
+  origem: string; // MANUAL | PLUGGY
+  conciliavel: boolean;
 }
 
 export interface DreCategoriaResumo {
@@ -168,14 +177,20 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
       valor: fator === 1 ? l.valor : l.valor.mul(fator),
       dataEfetiva: l.dataVencimento,
       projetadaDeRecorrencia: false,
+      origem: l.origem,
+      conciliavel: l.origem === "MANUAL", // já filtramos os fulfilled acima, então todo MANUAL que sobrou ainda está pendente
     });
   }
 
   for (const l of candidatosRecorrentes) {
     if (l.origem === "MANUAL" && fulfilled.has(l.id)) continue; // ocorrência recorrente deste mês já cumprida por um real
+    const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;
+    // ANUAL (pedido do Felipe, 06/08/2026): só "aparece" nos meses cujo
+    // mês-calendário bate com o da raiz — a query já garante o intervalo
+    // [dataVencimento, recorrenciaFimData], falta só filtrar o mês certo.
+    if (!raizEstaNesteMes && !ocorreNoMes(l.dataVencimento, l.recorrenciaFrequencia, mes)) continue;
     const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
     if (fator === 0) continue;
-    const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;
     linhas.push({
       id: l.id,
       categoriaId: l.categoriaId,
@@ -184,6 +199,8 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
       valor: fator === 1 ? l.valor : l.valor.mul(fator),
       dataEfetiva: raizEstaNesteMes ? l.dataVencimento : projetarDataNoMes(l.dataVencimento, mes),
       projetadaDeRecorrencia: !raizEstaNesteMes,
+      origem: l.origem,
+      conciliavel: l.origem === "MANUAL",
     });
   }
 

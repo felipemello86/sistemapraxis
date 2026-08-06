@@ -11,7 +11,7 @@
 import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
 import { calcularDre, type DreLinhaLancamento } from "./dre";
-import { limitesDoMes, projetarDataNoMes } from "./mes";
+import { limitesDoMes, projetarDataNoMes, ocorreNoMes } from "./mes";
 import { carregarConciliacoesDoMes } from "./conciliacao";
 import { carregarContextoRateio, fatorRateio, type FiltroCentroCusto, type ContextoRateio } from "./centro-de-custo";
 
@@ -165,9 +165,10 @@ export async function calcularOrcamento(tenantId: string, mes: string, filtroCen
     });
   }
   for (const l of recorrentes) {
+    const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;
+    if (!raizEstaNesteMes && !ocorreNoMes(l.dataVencimento, l.recorrenciaFrequencia, mes)) continue; // ANUAL: só nos meses com o mês-calendário da raiz
     const fator = ctxRateio ? fatorRateio(l, filtro, ctxRateio) : 1;
     if (fator === 0) continue;
-    const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;
     addPrevisto(l.categoriaId, {
       id: l.id,
       descricao: l.descricao,
