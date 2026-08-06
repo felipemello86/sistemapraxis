@@ -152,7 +152,7 @@ export type PluggyTransaction = {
   accountId: string;
   description: string;
   amount: number; // negativo = saída, positivo = entrada (mesma convenção que já usamos em FinanceLancamento.valor)
-  date: string; // ISO — vira dataVencimento (YYYY-MM-DD) na hora de gravar
+  date: string; // ISO — a data REAL da transação. Vira dataCompetencia sempre (pedido do Felipe, 05/08/2026, 3ª rodada: "o sistema deve manter a data que vem da Pluggy como data de competência"); vira dataVencimento também, exceto em cartão de crédito com diaVencimentoFatura configurado, onde dataVencimento passa a ser a data da FATURA (ver calcularVencimentoFatura).
   category?: string; // categorização automática da própria Pluggy — usada só como sugestão, nunca grava direto (categorização final é sempre humana, ver requisito 6)
   merchant?: { name?: string };
 };
@@ -188,6 +188,15 @@ export async function listarTransacoes(accountId: string, desde?: string): Promi
   }
 
   return todas;
+}
+
+/** Busca UMA transação pelo id — usado só pelo script de backfill de
+ * dataCompetencia (scripts/backfill-data-competencia.ts), pra recuperar a
+ * data real de compras que já foram sincronizadas antes desse campo
+ * existir (a única fonte de verdade pra data original é a própria Pluggy,
+ * já que dataVencimento pode ter sido reescrita pro dia da fatura). */
+export async function buscarTransacao(id: string): Promise<PluggyTransaction> {
+  return pluggyFetch<PluggyTransaction>(`/transactions/${id}`);
 }
 
 // ---- Vencimento de fatura de cartão ----------------------------------------
@@ -326,10 +335,11 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
     const transacoes = await listarTransacoes(conta.pluggyAccountId, desde);
 
     for (const t of transacoes) {
+      const dataCompetencia = t.date.slice(0, 10);
       const dataVencimento =
         conta.tipo === "CREDIT" && conta.diaVencimentoFatura
-          ? calcularVencimentoFatura(t.date.slice(0, 10), conta.diaVencimentoFatura, conta.diaFechamentoFatura)
-          : t.date.slice(0, 10);
+          ? calcularVencimentoFatura(dataCompetencia, conta.diaVencimentoFatura, conta.diaFechamentoFatura)
+          : dataCompetencia;
 
       // Lançamento de conta corrente (BANK) já é sempre "quitado" por
       // definição (regra do Felipe — dinheiro que já saiu de fato); cartão
@@ -345,6 +355,11 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
             fornecedor: t.merchant?.name ?? null,
             valor: t.amount,
             dataVencimento,
+            // Data de Competência sempre a data real da transação, vinda da
+            // Pluggy — pedido do Felipe, 05/08/2026, 3ª rodada. Pra cartão
+            // de crédito é isso que difere da Data de Vencimento (que vira a
+            // data da fatura); pra conta corrente as duas coincidem.
+            dataCompetencia,
             origem: "PLUGGY",
             contaBancariaId: conta.id,
             pluggyTransactionId: t.id,

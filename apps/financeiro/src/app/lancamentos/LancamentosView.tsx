@@ -155,6 +155,12 @@ export function LancamentosView() {
   const todasContas = useMemo(() => contasConectadas.flatMap((cc) => cc.contas.map((c) => ({ ...c, instituicao: cc.instituicao }))), [contasConectadas]);
   const contaAtual = todasContas.find((c) => c.id === contaSelecionada) || null;
 
+  // Cartão de crédito não tem "saldo atual" que faça sentido (não é conta
+  // corrente) — mostra o total do período em vez disso: valor da fatura
+  // inteira quando o filtro é Mensal, ou soma do range quando é período
+  // específico (pedido do Felipe, 05/08/2026, 3ª rodada).
+  const somaPeriodo = useMemo(() => lancamentos.reduce((acc, l) => acc + Number(l.valor), 0), [lancamentos]);
+
   function periodoAtual(): { inicio: string; fim: string } {
     if (periodoModo === "mensal") return limitesDoMesLocal(mes);
     if (periodoEspecificoTipo === "ano") return { inicio: `${ano}-01-01`, fim: `${ano}-12-31` };
@@ -338,7 +344,14 @@ export function LancamentosView() {
             </option>
           ))}
         </select>
-        {contaAtual && contaAtual.saldoAtual != null && <span className="text-xs text-gray-400 mr-1">saldo atual: {formatBRL(contaAtual.saldoAtual)}</span>}
+        {contaAtual && contaAtual.tipo === "CREDIT" && (
+          <span className="text-xs text-gray-400 mr-1">
+            {periodoModo === "mensal" ? "saldo da fatura" : "somatório do período"}: {formatBRL(somaPeriodo)}
+          </span>
+        )}
+        {contaAtual && contaAtual.tipo !== "CREDIT" && contaAtual.saldoAtual != null && (
+          <span className="text-xs text-gray-400 mr-1">saldo atual: {formatBRL(contaAtual.saldoAtual)}</span>
+        )}
 
         {/* Escolha explícita do tipo de período — Mensal ou Período específico */}
         <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
