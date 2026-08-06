@@ -127,9 +127,14 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// DELETE /api/unidades?id=xxx — soft delete (ativo:false). Sai dos
-// seletores de novo lançamento E do denominador do rateio, mas mantém o
-// histórico de lançamentos já ligados a ela.
+// DELETE /api/unidades?id=xxx — EXCLUSÃO DE VERDADE (pedido do Felipe,
+// 05/08/2026, 3ª rodada), diferente de "desativar" (PATCH ativo:false, que
+// preserva histórico com corte por mês). Excluir apaga a Unidade do
+// cadastro pra sempre. Qualquer FinanceLancamento que estava ligado a ela
+// (centroCustoTipo=UNIDADE) volta pra "Administração" — o dinheiro não
+// desaparece, só passa a ser rateado entre TODAS as unidades restantes, e o
+// rateio de TODOS os meses (passados e futuros) já reflete a nova proporção
+// na próxima consulta (sem o "período de graça" que a desativação tem).
 export async function DELETE(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -146,6 +151,13 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Unidade não encontrada" }, { status: 404 });
   }
 
-  await prisma.financeUnidade.update({ where: { id }, data: { ativo: false } });
-  return NextResponse.json({ ok: true });
+  const [{ count: lancamentosReatribuidos }] = await prisma.$transaction([
+    prisma.financeLancamento.updateMany({
+      where: { tenantId: session.tenantId, unidadeId: id },
+      data: { centroCustoTipo: "ADMINISTRACAO", unidadeId: null },
+    }),
+    prisma.financeUnidade.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ ok: true, lancamentosReatribuidos });
 }

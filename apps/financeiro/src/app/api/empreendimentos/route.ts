@@ -88,10 +88,15 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// DELETE /api/empreendimentos?id=xxx — soft delete (ativo:false). Nunca
-// apaga de verdade: empreendimentos antigos continuam ligados ao histórico
-// de lançamentos e às Unidades já cadastradas (ver onDelete: Restrict no
-// schema pra apagar de verdade), só somem dos seletores de novo lançamento.
+// DELETE /api/empreendimentos?id=xxx — EXCLUSÃO DE VERDADE (pedido do
+// Felipe, 05/08/2026, 3ª rodada), diferente de "desativar" (PATCH
+// ativo:false, que só oculta dos seletores mas preserva histórico).
+// Bloqueada enquanto o empreendimento ainda tiver Unidades cadastradas
+// (ativas ou não) — exclua/mova as Unidades primeiro (evita apagar um
+// prédio inteiro sem querer). Qualquer FinanceLancamento marcado
+// diretamente nesse Empreendimento (sem Unidade específica) volta pra
+// "Administração" antes de apagar — o dinheiro não desaparece, só passa a
+// ser rateado entre todas as Unidades restantes.
 export async function DELETE(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -108,6 +113,21 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Empreendimento não encontrado" }, { status: 404 });
   }
 
-  await prisma.financeEmpreendimento.update({ where: { id }, data: { ativo: false } });
-  return NextResponse.json({ ok: true });
+  const totalUnidades = await prisma.financeUnidade.count({ where: { empreendimentoId: id } });
+  if (totalUnidades > 0) {
+    return NextResponse.json(
+      { error: `Este empreendimento ainda tem ${totalUnidades} unidade(s) cadastrada(s). Exclua (ou mova pra outro empreendimento) as unidades antes de excluir o empreendimento.` },
+      { status: 409 }
+    );
+  }
+
+  const [{ count: lancamentosReatribuidos }] = await prisma.$transaction([
+    prisma.financeLancamento.updateMany({
+      where: { tenantId: session.tenantId, empreendimentoId: id },
+      data: { centroCustoTipo: "ADMINISTRACAO", empreendimentoId: null },
+    }),
+    prisma.financeEmpreendimento.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ ok: true, lancamentosReatribuidos });
 }

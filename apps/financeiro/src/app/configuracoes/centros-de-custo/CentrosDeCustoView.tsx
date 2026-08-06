@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Building2, ChevronDown, ChevronRight, Check, Plus, EyeOff, Eye, X } from "lucide-react";
+import { ArrowLeft, Building2, ChevronDown, ChevronRight, Check, Plus, EyeOff, Eye, X, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Cadastro de Empreendimentos e Unidades — pedido do Felipe, 05/08/2026:
@@ -64,6 +64,11 @@ export function CentrosDeCustoView() {
   // esse mês (inclusive), só some do denominador a partir do mês seguinte.
   const [desativando, setDesativando] = useState<Unidade | null>(null);
   const [mesDesativacao, setMesDesativacao] = useState(mesAtualLocal());
+  // Excluir (pedido do Felipe, 05/08/2026, 3ª rodada) — diferente de
+  // desativar: apaga o cadastro de vez, não tem mês de corte, e o rateio de
+  // TODOS os meses (passados e futuros) já sai recalculado com a nova
+  // proporção. Sempre passa por essa confirmação, que explica a diferença.
+  const [excluindo, setExcluindo] = useState<{ tipo: "empreendimento" | "unidade"; id: string; nome: string } | null>(null);
 
   async function carregar() {
     setLoading(true);
@@ -160,6 +165,19 @@ export function CentrosDeCustoView() {
     }
   }
 
+  async function confirmarExclusao() {
+    if (!excluindo) return;
+    const url = excluindo.tipo === "empreendimento" ? `/api/empreendimentos?id=${excluindo.id}` : `/api/unidades?id=${excluindo.id}`;
+    const res = await apiFetch(url, { method: "DELETE" });
+    if (res.ok) {
+      setExcluindo(null);
+      carregar();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Erro ao excluir.");
+    }
+  }
+
   const totalUnidadesAtivas = empreendimentos.reduce((acc, e) => acc + e.totalUnidadesAtivas, 0);
 
   return (
@@ -215,6 +233,13 @@ export function CentrosDeCustoView() {
                   <button onClick={() => toggleAtivoEmpreendimento(e)} className="text-gray-300 hover:text-gray-700 flex-shrink-0" title={e.ativo ? "Desativar" : "Reativar"}>
                     {e.ativo ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
+                  <button
+                    onClick={() => setExcluindo({ tipo: "empreendimento", id: e.id, nome: e.nome })}
+                    className="text-gray-300 hover:text-red-600 flex-shrink-0"
+                    title="Excluir"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
 
                 {aberto && (
@@ -230,6 +255,13 @@ export function CentrosDeCustoView() {
                           )}
                           <button onClick={() => toggleAtivoUnidade(u)} className="text-gray-300 hover:text-gray-700 flex-shrink-0" title={u.ativo ? "Desativar" : "Reativar"}>
                             {u.ativo ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => setExcluindo({ tipo: "unidade", id: u.id, nome: u.nome })}
+                            className="text-gray-300 hover:text-red-600 flex-shrink-0"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ))
@@ -274,6 +306,43 @@ export function CentrosDeCustoView() {
             <button onClick={confirmarDesativacao} className="btn-danger w-full">
               Desativar a partir de {labelMesAno(mesDesativacao)}
             </button>
+          </div>
+        </div>
+      )}
+
+      {excluindo && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30 backdrop-blur-sm p-0 md:p-4">
+          <div className="bg-white rounded-t-2xl md:rounded-2xl w-full md:max-w-md p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-gray-900">
+                Excluir {excluindo.tipo === "empreendimento" ? "empreendimento" : "unidade"} "{excluindo.nome}"?
+              </h2>
+              <button onClick={() => setExcluindo(null)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-sm text-gray-600 space-y-2">
+              <p>
+                <span className="font-semibold text-gray-800">Desativar</span> só oculta {excluindo.tipo === "empreendimento" ? "o empreendimento" : "a unidade"} a
+                partir de um mês escolhido, mas mantém o cadastro e o histórico — dá pra reativar depois.
+              </p>
+              <p>
+                <span className="font-semibold text-red-700">Excluir</span> apaga o cadastro definitivamente. Não tem volta.{" "}
+                {excluindo.tipo === "unidade"
+                  ? "Lançamentos que estavam nessa unidade passam a contar como \"Administração\", e o rateio de TODOS os meses (passados e futuros) já sai recalculado com a nova proporção — sem o mês de graça que a desativação tem."
+                  : "Só é possível excluir um empreendimento sem nenhuma unidade cadastrada nele. Lançamentos marcados direto nesse empreendimento passam a contar como \"Administração\", e o rateio de TODOS os meses já sai recalculado."}
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setExcluindo(null)} className="btn-secondary flex-1">
+                Cancelar
+              </button>
+              <button onClick={confirmarExclusao} className="btn-danger flex-1">
+                Excluir definitivamente
+              </button>
+            </div>
           </div>
         </div>
       )}
