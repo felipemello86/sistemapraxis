@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, CreditCard, SlidersHorizontal, Building2 } from "lucide-react";
+import { ChevronRight, CreditCard, SlidersHorizontal } from "lucide-react";
 
 // Hub de Configurações do módulo Financeiro — cada área é sua própria
 // subtela (pedido do Felipe, 05/08/2026, 2ª rodada: "Cartões de Crédito
@@ -20,13 +20,12 @@ const ITENS = [
     titulo: "Cartões de Crédito",
     descricao: "Dia de vencimento da fatura de cada cartão conectado",
   },
-  {
-    href: "/configuracoes/centros-de-custo",
-    icon: Building2,
-    titulo: "Centros de Custo",
-    descricao: "Empreendimentos e Unidades — usados pra ratear custos e ver a DRE por prédio ou por unidade",
-  },
 ];
+
+// Centros de Custo (pedido do Felipe, 06/08/2026): deixou de ter uma tela
+// própria aqui — "Empreendimento" e "Unidade" agora são a Property/UH reais
+// do Gateway, então o cadastro (criar/editar/desativar/excluir) passou a
+// ser feito só em Gateway > Configurações > Unidades.
 
 export function ConfiguracoesView() {
   return (

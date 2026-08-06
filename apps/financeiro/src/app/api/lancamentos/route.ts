@@ -76,8 +76,8 @@ export async function GET(req: NextRequest) {
     include: {
       categoria: { select: { nome: true, tipo: true, bloco: { select: { nome: true } } } },
       contaBancaria: { select: { id: true, nome: true, tipo: true } },
-      empreendimento: { select: { nome: true } },
-      unidade: { select: { nome: true } },
+      property: { select: { nome: true } },
+      uh: { select: { numero: true } },
     },
     orderBy: { dataVencimento: "desc" },
     take: 5000,
@@ -113,14 +113,17 @@ export async function GET(req: NextRequest) {
   // Achata categoria.bloco.nome -> categoria.bloco (string), mesma
   // convenção de /api/categorias — mantém o shape que as telas já esperam.
   // Idem pra empreendimento/unidade -> nome (string), evita include aninhado do lado do cliente.
-  let resposta = lancamentos.map((l) => ({
-    ...l,
-    categoria: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo, bloco: l.categoria.bloco.nome } : null,
-    empreendimento: l.empreendimento?.nome ?? null,
-    unidade: l.unidade?.nome ?? null,
-    status: calcularStatusLancamento({ contaTipo: l.contaBancaria?.tipo, pago: l.pago, dataVencimento: l.dataVencimento, hoje }),
-    saldo: saldoPorId.get(l.id) ?? null,
-  }));
+  let resposta = lancamentos.map((l) => {
+    const { property, uh, ...resto } = l;
+    return {
+      ...resto,
+      categoria: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo, bloco: l.categoria.bloco.nome } : null,
+      empreendimento: property?.nome ?? null,
+      unidade: uh?.numero ?? null,
+      status: calcularStatusLancamento({ contaTipo: l.contaBancaria?.tipo, pago: l.pago, dataVencimento: l.dataVencimento, hoje }),
+      saldo: saldoPorId.get(l.id) ?? null,
+    };
+  });
 
   // Período ainda não aplicado (caso de conta selecionada) — filtra agora,
   // já com status/saldo corretos calculados sobre o histórico completo.
@@ -146,43 +149,47 @@ type NovoLancamentoBody = {
   recorrenciaFimData?: string | null;
   contaBancariaId?: string | null;
   centroCustoTipo?: "ADMINISTRACAO" | "EMPREENDIMENTO" | "UNIDADE";
-  empreendimentoId?: string | null;
-  unidadeId?: string | null;
+  empreendimentoId?: string | null; // nome do body field mantido (compat com a UI atual) — vira propertyId
+  unidadeId?: string | null; // nome do body field mantido (compat com a UI atual) — vira uhId
   observacoes?: string;
 };
 
 // Valida e normaliza o Centro de Custo (Administração -> Empreendimento ->
 // Unidade, pedido do Felipe, 05/08/2026) a partir do body — usado tanto na
 // criação quanto na edição. ADMINISTRACAO é o default (nenhuma FK setada);
-// EMPREENDIMENTO exige empreendimentoId (de um empreendimento do próprio
-// tenant); UNIDADE exige unidadeId (de uma unidade do próprio tenant) — em
-// ambos os casos a outra FK fica sempre null (nunca as duas setadas juntas).
+// EMPREENDIMENTO exige propertyId (de uma Property do próprio tenant);
+// UNIDADE exige uhId (de uma UH do próprio tenant) — em ambos os casos a
+// outra FK fica sempre null (nunca as duas setadas juntas).
+//
+// 06/08/2026 (pedido do Felipe): valida contra Property/UH reais do
+// Gateway em vez do antigo cadastro próprio FinanceEmpreendimento/
+// FinanceUnidade (removido).
 async function resolverCentroCusto(
   tenantId: string,
   centroCustoTipo: string | undefined,
-  empreendimentoId: string | null | undefined,
-  unidadeId: string | null | undefined
-): Promise<{ ok: true; data: { centroCustoTipo: string; empreendimentoId: string | null; unidadeId: string | null } } | { ok: false; error: string }> {
+  propertyId: string | null | undefined,
+  uhId: string | null | undefined
+): Promise<{ ok: true; data: { centroCustoTipo: string; propertyId: string | null; uhId: string | null } } | { ok: false; error: string }> {
   const tipo = centroCustoTipo ?? "ADMINISTRACAO";
   if (!["ADMINISTRACAO", "EMPREENDIMENTO", "UNIDADE"].includes(tipo)) {
     return { ok: false, error: "centroCustoTipo deve ser ADMINISTRACAO, EMPREENDIMENTO ou UNIDADE" };
   }
 
   if (tipo === "EMPREENDIMENTO") {
-    if (!empreendimentoId) return { ok: false, error: "empreendimentoId é obrigatório quando centroCustoTipo=EMPREENDIMENTO" };
-    const empreendimento = await prisma.financeEmpreendimento.findUnique({ where: { id: empreendimentoId } });
-    if (!empreendimento || empreendimento.tenantId !== tenantId) return { ok: false, error: "Empreendimento não encontrado" };
-    return { ok: true, data: { centroCustoTipo: tipo, empreendimentoId, unidadeId: null } };
+    if (!propertyId) return { ok: false, error: "empreendimentoId é obrigatório quando centroCustoTipo=EMPREENDIMENTO" };
+    const property = await prisma.property.findUnique({ where: { id: propertyId } });
+    if (!property || property.tenantId !== tenantId) return { ok: false, error: "Empreendimento não encontrado" };
+    return { ok: true, data: { centroCustoTipo: tipo, propertyId, uhId: null } };
   }
 
   if (tipo === "UNIDADE") {
-    if (!unidadeId) return { ok: false, error: "unidadeId é obrigatório quando centroCustoTipo=UNIDADE" };
-    const unidade = await prisma.financeUnidade.findUnique({ where: { id: unidadeId } });
-    if (!unidade || unidade.tenantId !== tenantId) return { ok: false, error: "Unidade não encontrada" };
-    return { ok: true, data: { centroCustoTipo: tipo, empreendimentoId: null, unidadeId } };
+    if (!uhId) return { ok: false, error: "unidadeId é obrigatório quando centroCustoTipo=UNIDADE" };
+    const uh = await prisma.uH.findUnique({ where: { id: uhId } });
+    if (!uh || uh.tenantId !== tenantId) return { ok: false, error: "Unidade não encontrada" };
+    return { ok: true, data: { centroCustoTipo: tipo, propertyId: null, uhId } };
   }
 
-  return { ok: true, data: { centroCustoTipo: "ADMINISTRACAO", empreendimentoId: null, unidadeId: null } };
+  return { ok: true, data: { centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null } };
 }
 
 // POST /api/lancamentos — cria um lançamento normal, parcelado ou recorrente
@@ -292,7 +299,7 @@ export async function PATCH(req: NextRequest) {
 
   // Centro de custo só é revalidado/atualizado quando algum dos 3 campos
   // vem no body — evita reprocessar em todo PATCH (ex.: só marcar "pago").
-  let centroCustoData: { centroCustoTipo: string; empreendimentoId: string | null; unidadeId: string | null } | undefined;
+  let centroCustoData: { centroCustoTipo: string; propertyId: string | null; uhId: string | null } | undefined;
   if (centroCustoTipo !== undefined || empreendimentoId !== undefined || unidadeId !== undefined) {
     const resolvido = await resolverCentroCusto(session.tenantId, centroCustoTipo ?? existente.centroCustoTipo, empreendimentoId, unidadeId);
     if (!resolvido.ok) return NextResponse.json({ error: resolvido.error }, { status: resolvido.error.includes("não encontrad") ? 404 : 400 });

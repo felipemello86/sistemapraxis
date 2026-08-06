@@ -26,13 +26,13 @@ export async function GET(req: NextRequest) {
   // Geral/Empreendimento/Unidade (pedido do Felipe, 06/08/2026) — mesmo
   // filtro que a DRE já usa, ver lib/finance/centro-de-custo.ts.
   const centroCusto = searchParams.get("centroCusto");
-  const empreendimentoId = searchParams.get("empreendimentoId");
-  const unidadeId = searchParams.get("unidadeId");
+  const propertyId = searchParams.get("empreendimentoId"); // nome do query param mantido (compat com a UI atual)
+  const uhId = searchParams.get("unidadeId"); // nome do query param mantido (compat com a UI atual)
   let filtro: FiltroCentroCusto = { tipo: "GERAL" };
-  if (centroCusto === "EMPREENDIMENTO" && empreendimentoId) {
-    filtro = { tipo: "EMPREENDIMENTO", empreendimentoId };
-  } else if (centroCusto === "UNIDADE" && unidadeId) {
-    filtro = { tipo: "UNIDADE", unidadeId };
+  if (centroCusto === "EMPREENDIMENTO" && propertyId) {
+    filtro = { tipo: "EMPREENDIMENTO", propertyId };
+  } else if (centroCusto === "UNIDADE" && uhId) {
+    filtro = { tipo: "UNIDADE", uhId };
   }
 
   const orcamento = await calcularOrcamento(session.tenantId, mes, filtro);

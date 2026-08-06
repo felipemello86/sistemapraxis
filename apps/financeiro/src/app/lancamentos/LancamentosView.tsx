@@ -45,10 +45,10 @@ type Lancamento = {
   recorrenciaFimData: string | null;
   origem: string;
   centroCustoTipo: string;
-  empreendimentoId: string | null;
-  empreendimento: string | null;
-  unidadeId: string | null;
-  unidade: string | null;
+  propertyId: string | null; // "Empreendimento" (Property real do Gateway) — pedido do Felipe, 06/08/2026
+  empreendimento: string | null; // nome achatado (property.nome), retornado por /api/lancamentos
+  uhId: string | null; // "Unidade" (UH real do Gateway) — pedido do Felipe, 06/08/2026
+  unidade: string | null; // nome achatado (uh.numero), retornado por /api/lancamentos
   observacoes: string | null;
   conciliadoComId: string | null;
   conciliadoMesReferencia: string | null;
@@ -377,8 +377,8 @@ export function LancamentosView() {
           recorrente: editando.recorrente,
           pago: editando.pago,
           centroCustoTipo: editando.centroCustoTipo,
-          empreendimentoId: editando.centroCustoTipo === "EMPREENDIMENTO" ? editando.empreendimentoId : null,
-          unidadeId: editando.centroCustoTipo === "UNIDADE" ? editando.unidadeId : null,
+          empreendimentoId: editando.centroCustoTipo === "EMPREENDIMENTO" ? editando.propertyId : null,
+          unidadeId: editando.centroCustoTipo === "UNIDADE" ? editando.uhId : null,
         }),
       });
       setEditando(null);
@@ -1059,12 +1059,12 @@ export function LancamentosView() {
 
             <SeletorCentroCusto
               tipo={editando.centroCustoTipo}
-              empreendimentoId={editando.empreendimentoId}
-              unidadeId={editando.unidadeId}
+              empreendimentoId={editando.propertyId}
+              unidadeId={editando.uhId}
               empreendimentos={empreendimentos}
               unidades={unidades}
               onChange={(v) =>
-                setEditando((ed) => (ed ? { ...ed, centroCustoTipo: v.centroCustoTipo, empreendimentoId: v.empreendimentoId, unidadeId: v.unidadeId } : ed))
+                setEditando((ed) => (ed ? { ...ed, centroCustoTipo: v.centroCustoTipo, propertyId: v.empreendimentoId, uhId: v.unidadeId } : ed))
               }
             />
 

@@ -26,13 +26,13 @@ export async function GET(req: Request) {
   const centroCustoTipo = searchParams.get("centroCusto") ?? "GERAL";
   let filtroCentroCusto: FiltroCentroCusto;
   if (centroCustoTipo === "EMPREENDIMENTO") {
-    const empreendimentoId = searchParams.get("empreendimentoId");
-    if (!empreendimentoId) return NextResponse.json({ error: "empreendimentoId é obrigatório quando centroCusto=EMPREENDIMENTO" }, { status: 400 });
-    filtroCentroCusto = { tipo: "EMPREENDIMENTO", empreendimentoId };
+    const propertyId = searchParams.get("empreendimentoId"); // nome do query param mantido (compat com a UI atual)
+    if (!propertyId) return NextResponse.json({ error: "empreendimentoId é obrigatório quando centroCusto=EMPREENDIMENTO" }, { status: 400 });
+    filtroCentroCusto = { tipo: "EMPREENDIMENTO", propertyId };
   } else if (centroCustoTipo === "UNIDADE") {
-    const unidadeId = searchParams.get("unidadeId");
-    if (!unidadeId) return NextResponse.json({ error: "unidadeId é obrigatório quando centroCusto=UNIDADE" }, { status: 400 });
-    filtroCentroCusto = { tipo: "UNIDADE", unidadeId };
+    const uhId = searchParams.get("unidadeId"); // nome do query param mantido (compat com a UI atual)
+    if (!uhId) return NextResponse.json({ error: "unidadeId é obrigatório quando centroCusto=UNIDADE" }, { status: 400 });
+    filtroCentroCusto = { tipo: "UNIDADE", uhId };
   } else {
     filtroCentroCusto = { tipo: "GERAL" };
   }

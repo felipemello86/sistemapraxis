@@ -22,7 +22,7 @@ import { carregarContextoRateio, fatorRateio, type FiltroCentroCusto, type Conte
 // (rateado igualmente entre as Unidades, ou entre as do Empreendimento
 // selecionado), a mesma regra já usada pra qualquer lançamento sem
 // Empreendimento/Unidade marcado.
-const CENTRO_CUSTO_ADMINISTRACAO = { centroCustoTipo: "ADMINISTRACAO", empreendimentoId: null, unidadeId: null };
+const CENTRO_CUSTO_ADMINISTRACAO = { centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null };
 
 const ZERO = new Prisma.Decimal(0);
 

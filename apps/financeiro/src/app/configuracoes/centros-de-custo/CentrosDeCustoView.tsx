@@ -4,14 +4,17 @@ import Link from "next/link";
 import { ArrowLeft, Building2, ChevronDown, ChevronRight, Check, Plus, EyeOff, Eye, X, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
-// Cadastro de Empreendimentos e Unidades — pedido do Felipe, 05/08/2026:
-// hierarquia Administração -> Empreendimento (= "Administração Local", ex.:
-// prédio "Vicentina") -> Unidade (ex.: 101, 201, 203 dentro de Vicentina).
-// Esse catálogo alimenta o seletor de Centro de Custo em Lançamentos e o
-// seletor Empreendimento/Unidade na DRE — e o NÚMERO DE UNIDADES ATIVAS é o
-// denominador do rateio de custos de Administração/Empreendimento (ver
-// lib/finance/centro-de-custo.ts): desativar uma unidade aqui muda o rateio
-// de toda a DRE na hora.
+// DEPRECADO (pedido do Felipe, 06/08/2026): esta tela de CRUD de
+// Empreendimento/Unidade não é mais usada — "Empreendimento" e "Unidade"
+// agora são a Property/UH reais do Gateway, e o cadastro passou a ser feito
+// só em Gateway > Configurações > Unidades. A rota ../page.tsx agora só
+// redireciona pra /configuracoes; este arquivo ficou órfão porque a
+// sandbox não conseguiu apagá-lo (EPERM) — Felipe pode `git rm -r` a pasta
+// apps/financeiro/src/app/configuracoes/centros-de-custo manualmente. Os
+// endpoints /api/empreendimentos e /api/unidades que este componente
+// chamava agora são GET-only (POST/PATCH/DELETE removidos), então os
+// botões de criar/editar/excluir abaixo vão falhar se algo ainda navegar
+// até aqui.
 
 type Empreendimento = { id: string; nome: string; ativo: boolean; totalUnidades: number; totalUnidadesAtivas: number };
 type Unidade = { id: string; nome: string; ativo: boolean; desativadaEm: string | null; empreendimentoId: string; empreendimento: string };
