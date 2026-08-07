@@ -157,8 +157,14 @@ export function TransacoesFluxoView({ role }: { role: string }) {
     return valoresEdicao[execucaoId] ?? sugerido;
   }
 
-  async function confirmarGerente(execucaoId: string) {
-    const valor = Number(valorEdicaoDe(execucaoId, "0").replace(",", "."));
+  async function confirmarGerente(execucaoId: string, valorSugerido: string) {
+    // Bug corrigido (pedido do Felipe, 07/08/2026: "pq deu esse erro?"): o
+    // fallback aqui era hardcoded "0" em vez do valor sugerido — se o
+    // usuário clicasse Confirmar sem TOCAR no campo (aceitando o sugerido
+    // como está, o caso mais comum), valoresEdicao[execucaoId] continuava
+    // undefined e o cálculo virava 0, disparando "Informe um valor válido"
+    // mesmo com um valor sugerido válido visível na tela.
+    const valor = Number(valorEdicaoDe(execucaoId, valorSugerido).replace(",", "."));
     if (!valor || valor <= 0) {
       setErro("Informe um valor válido antes de confirmar.");
       return;
@@ -227,7 +233,7 @@ export function TransacoesFluxoView({ role }: { role: string }) {
                   onChange={(v) => setValoresEdicao((prev) => ({ ...prev, [e.id]: v }))}
                 />
                 <div className="flex items-center gap-1.5">
-                  <button onClick={() => confirmarGerente(e.id)} disabled={processandoId === e.id} className="btn-primary rounded-xl flex-1 flex items-center justify-center gap-1 text-xs py-1.5">
+                  <button onClick={() => confirmarGerente(e.id, e.valorSugerido)} disabled={processandoId === e.id} className="btn-primary rounded-xl flex-1 flex items-center justify-center gap-1 text-xs py-1.5">
                     <Check className="w-3.5 h-3.5" /> Confirmar
                   </button>
                   <button
