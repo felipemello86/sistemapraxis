@@ -132,6 +132,7 @@ export function ConciliacaoDetalhe({
   unidades,
   contas,
   onConciliado,
+  onValorExibidoChange,
 }: {
   item: ItemPendente;
   categorias: Categoria[];
@@ -139,6 +140,14 @@ export function ConciliacaoDetalhe({
   unidades: Unidade[];
   contas: ContaParaSelect[];
   onConciliado: () => void;
+  // Avisa o card compacto (ConciliacaoCardCompacto) qual valor mostrar na
+  // linha-resumo — quando a compra está marcada como parcelada, o valor
+  // "de verdade" passa a ser o da parcela, não o total bruto do banco
+  // (pedido do Felipe, 06/08/2026: "ainda continua mostrando o valor total
+  // [no canto superior direito]" — o resumo do card, que fica sempre
+  // visível mesmo com o detalhe expandido, não sabia da configuração de
+  // parcelamento porque ela vive só aqui dentro).
+  onValorExibidoChange?: (valor: number | null) => void;
 }) {
   const [modo, setModo] = useState<"previsto" | "novo">(item.melhorSugestao ? "previsto" : "novo");
   const [previstoEscolhidoId, setPrevistoEscolhidoId] = useState<string>(item.melhorSugestao?.id ?? "");
@@ -222,6 +231,11 @@ export function ConciliacaoDetalhe({
   const metadataConhecida = temMetadataDeParcelamento(item);
   const valorParcelaCalculado = parcelado ? (metadataConhecida ? arredondarCentavos(valorNum) : arredondarCentavos(valorNum / totalParcelas)) : null;
   const parcelasRestantes = parcelado ? totalParcelas - parcelaAtual + 1 : null;
+
+  useEffect(() => {
+    onValorExibidoChange?.(parcelado && valorParcelaCalculado != null ? valorParcelaCalculado : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parcelado, valorParcelaCalculado]);
   // Conta/cartão de onde o lançamento veio (pedido do Felipe, 06/08/2026:
   // "sinto falta de saber de qual conta (ou cartão) se trata aquele
   // lançamento") — `contas` já vem carregado pra outra finalidade

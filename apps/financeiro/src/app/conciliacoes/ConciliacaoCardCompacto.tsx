@@ -57,6 +57,13 @@ export function ConciliacaoCardCompacto({
   const [expandido, setExpandido] = useState(false);
   const [popupCategoria, setPopupCategoria] = useState(false);
   const [popupCentroCusto, setPopupCentroCusto] = useState(false);
+  // Valor "de verdade" quando o detalhe expandido configurou compra
+  // parcelada (pedido do Felipe, 06/08/2026: "ainda continua mostrando o
+  // valor total [na linha-resumo]") — o ConciliacaoDetalhe avisa aqui via
+  // onValorExibidoChange sempre que parcelado/valorParcelaCalculado mudam;
+  // null significa "mostra o valor bruto do banco" (não parcelado, ou
+  // detalhe nunca foi aberto).
+  const [valorParcelaExibido, setValorParcelaExibido] = useState<number | null>(null);
 
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
@@ -141,7 +148,9 @@ export function ConciliacaoCardCompacto({
             ) : (
               <span className="text-xs text-gray-300">—</span>
             )}
-            <span className={`text-sm font-semibold text-right whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</span>
+            <span className={`text-sm font-semibold text-right whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>
+              {formatBRL(valorParcelaExibido ?? item.lancamento.valor)}
+            </span>
             <button
               type="button"
               onClick={() => setExpandido((v) => !v)}
@@ -197,6 +206,7 @@ export function ConciliacaoCardCompacto({
               setExpandido(false);
               onConciliado();
             }}
+            onValorExibidoChange={setValorParcelaExibido}
           />
         </div>
       )}
