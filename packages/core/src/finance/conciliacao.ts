@@ -221,10 +221,12 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
       fornecedor: p.fornecedor,
       valor: Number(p.valor),
       // Mês de competência do lançamento — usado pra nunca sugerir o
-      // mesmo imóvel 2x no mesmo mês (pedido do Felipe, 06/08/2026: "a
-      // 'regra' é q um mesmo imóvel n deve ter dois pagamentos no mesmo
-      // mês"), ver sugestao-centro-custo.ts.
+      // mesmo imóvel 2x na MESMA natureza (categoria) no mesmo mês (pedido
+      // do Felipe, 06/08/2026 e refinado em 07/08/2026: "a regra deve ser
+      // um lançamento por natureza por UH por mês"), ver
+      // sugestao-centro-custo.ts.
       mes: (p.dataCompetencia || p.dataVencimento).slice(0, 7),
+      categoriaId: p.categoriaId,
     }));
   const sugestoesCentroCusto = await sugerirCentroCustoEmLote(tenantId, semCentroCusto);
 

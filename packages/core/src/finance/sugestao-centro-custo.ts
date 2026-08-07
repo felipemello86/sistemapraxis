@@ -52,6 +52,28 @@
 // conciliado pra aquele imóvel naquele mês), não só o que está sendo
 // sugerido agora. Se todos os candidatos de um lançamento já estiverem
 // reservados naquele mês, fica sem sugestão (não força um imóvel errado).
+//
+// CORREÇÃO (Felipe reportou, 07/08/2026: vários "CHEQUE COMPE UNICRED"
+// pendentes de julho/26, com valor batendo 1:1 com histórico de aluguel,
+// apareciam sem sugestão nenhuma) — a regra acima estava ampla demais:
+// reservava a UH-mês contra QUALQUER lançamento UNIDADE já gravado, sem
+// distinguir tipo de pagamento. Um imóvel legitimamente tem VÁRIOS
+// lançamentos no mesmo mês (aluguel + conta de luz + condomínio) — a regra
+// só deveria impedir DOIS pagamentos do MESMO TIPO. Primeira tentativa de
+// correção usou o VALOR como proxy de "tipo" (aluguel sempre >= R$1.000,
+// contas pequenas sempre < R$1.000) — funcional, mas um proxy indireto.
+//
+// REFINAMENTO (Felipe, 07/08/2026: "a regra deve ser um lançamento por
+// natureza por UH por mês (uma conta de energia, um aluguel...)") — a
+// "natureza" real do lançamento já existe no sistema: é a própria
+// Categoria (categoriaId, ex. "Aluguel (Flats)", "Energia", "Condomínio" —
+// ver sugestao-categoria.ts). Chave de exclusividade agora é
+// (mês, categoriaId), não mais um corte por valor: um imóvel pode ter UM
+// lançamento de "Aluguel" e, no MESMO mês, também UM de "Energia" e UM de
+// "Condomínio" — cada categoria reserva a UH independentemente. Lançamentos
+// sem categoria ainda definida caem no bucket "sem categoria" (ainda
+// participam da exclusividade entre si, só não competem com categorias já
+// identificadas).
 
 import { prisma } from "../prisma";
 import { chaveAgrupamento } from "./texto";
@@ -73,6 +95,12 @@ const MAX_HISTORICO = 5000;
 // "maioria"); abaixo, sorteia entre os candidatos (origem "sorteio", ver
 // escolherCandidato) em vez de deixar sem sugestão nenhuma.
 const MIN_CONFIANCA = 60;
+
+/** Chave de exclusividade mensal — (mês, categoria), ver nota de correção
+ * acima. `categoriaId` null vira "" (bucket único "sem categoria"). */
+function chaveMesCategoria(mes: string, categoriaId: string | null | undefined): string {
+  return `${mes}|${categoriaId ?? ""}`;
+}
 
 /** Hash determinístico simples (djb2) normalizado pra [0, 1) — usado como
  * "moeda" do sorteio ponderado. Determinístico por design: a MESMA string
@@ -128,15 +156,16 @@ function escolherCandidato(votos: Map<string, number>, usadosNoMes: Set<string>,
 async function construirIndice(tenantId: string): Promise<{ porGrupo: Map<string, Map<string, number>>; usadoNoMesGravado: Map<string, Set<string>> }> {
   const historico = await prisma.financeLancamento.findMany({
     where: { tenantId, centroCustoTipo: { not: "ADMINISTRACAO" } },
-    select: { descricao: true, fornecedor: true, valor: true, centroCustoTipo: true, propertyId: true, uhId: true, dataVencimento: true, dataCompetencia: true },
+    select: { descricao: true, fornecedor: true, valor: true, centroCustoTipo: true, propertyId: true, uhId: true, categoriaId: true, dataVencimento: true, dataCompetencia: true },
     orderBy: { createdAt: "desc" },
     take: MAX_HISTORICO,
   });
 
   // chave (grupo de descrição+valor) -> votos por combinação "centroCustoTipo|propertyId|uhId"
   const porGrupo = new Map<string, Map<string, number>>();
-  // mês (YYYY-MM) -> UHs que JÁ têm um lançamento gravado nesse mês — usado
-  // pra nunca sugerir o mesmo imóvel 2x no mesmo mês (ver comentário do topo).
+  // chave (mês|categoriaId) -> UHs que JÁ têm um lançamento gravado nesse
+  // mês NESSA categoria — usado pra nunca sugerir o mesmo imóvel 2x na
+  // mesma natureza no mesmo mês (ver comentário do topo).
   const usadoNoMesGravado = new Map<string, Set<string>>();
 
   for (const h of historico) {
@@ -151,8 +180,9 @@ async function construirIndice(tenantId: string): Promise<{ porGrupo: Map<string
 
     if (h.centroCustoTipo === "UNIDADE" && h.uhId) {
       const mes = (h.dataCompetencia || h.dataVencimento).slice(0, 7);
-      if (!usadoNoMesGravado.has(mes)) usadoNoMesGravado.set(mes, new Set());
-      usadoNoMesGravado.get(mes)!.add(h.uhId);
+      const chaveMes = chaveMesCategoria(mes, h.categoriaId);
+      if (!usadoNoMesGravado.has(chaveMes)) usadoNoMesGravado.set(chaveMes, new Set());
+      usadoNoMesGravado.get(chaveMes)!.add(h.uhId);
     }
   }
 
@@ -168,14 +198,14 @@ async function construirIndice(tenantId: string): Promise<{ porGrupo: Map<string
  * resultado quem teve pelo menos um candidato AINDA DISPONÍVEL nesse mês. */
 export async function sugerirCentroCustoEmLote(
   tenantId: string,
-  itens: { id: string; descricao: string; fornecedor?: string | null; valor: number; mes: string }[]
+  itens: { id: string; descricao: string; fornecedor?: string | null; valor: number; mes: string; categoriaId?: string | null }[]
 ): Promise<Map<string, SugestaoCentroCusto>> {
   const resultado = new Map<string, SugestaoCentroCusto>();
   if (itens.length === 0) return resultado;
 
   const { porGrupo, usadoNoMesGravado } = await construirIndice(tenantId);
-  const usadoPorMes = new Map<string, Set<string>>();
-  for (const [mes, set] of usadoNoMesGravado) usadoPorMes.set(mes, new Set(set));
+  const usadoPorMesCategoria = new Map<string, Set<string>>();
+  for (const [chaveMes, set] of usadoNoMesGravado) usadoPorMesCategoria.set(chaveMes, new Set(set));
 
   const ordenados = [...itens].sort((a, b) => a.id.localeCompare(b.id));
 
@@ -184,10 +214,15 @@ export async function sugerirCentroCustoEmLote(
     const votos = porGrupo.get(chave);
     if (!votos || votos.size === 0) continue;
 
-    const usadosNoMes = usadoPorMes.get(item.mes) ?? new Set<string>();
+    // Exclusividade mensal por NATUREZA (mês + categoria, ver nota de
+    // correção no topo) — um aluguel e uma conta de energia da mesma UH no
+    // mesmo mês não competem entre si; dois lançamentos de "Aluguel" da
+    // mesma UH no mesmo mês, sim.
+    const chaveMes = chaveMesCategoria(item.mes, item.categoriaId);
+    const usadosNoMes = usadoPorMesCategoria.get(chaveMes) ?? new Set<string>();
     const semente = hashDeterministico01(item.id);
     const escolha = escolherCandidato(votos, usadosNoMes, semente);
-    if (!escolha) continue; // todos os candidatos já reservados esse mês — sem sugestão, não arrisca
+    if (!escolha) continue; // todos os candidatos já reservados nessa natureza/mês — sem sugestão, não arrisca
 
     const [centroCustoTipo, propertyId, uhId] = escolha.composto.split("|");
     if (centroCustoTipo !== "EMPREENDIMENTO" && centroCustoTipo !== "UNIDADE") continue;
@@ -195,8 +230,8 @@ export async function sugerirCentroCustoEmLote(
     resultado.set(item.id, { centroCustoTipo, propertyId: propertyId || null, uhId: uhId || null, confianca: escolha.confianca, origem: escolha.origem });
 
     if (centroCustoTipo === "UNIDADE" && uhId) {
-      if (!usadoPorMes.has(item.mes)) usadoPorMes.set(item.mes, new Set());
-      usadoPorMes.get(item.mes)!.add(uhId);
+      if (!usadoPorMesCategoria.has(chaveMes)) usadoPorMesCategoria.set(chaveMes, new Set());
+      usadoPorMesCategoria.get(chaveMes)!.add(uhId);
     }
   }
 
