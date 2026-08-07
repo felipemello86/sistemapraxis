@@ -72,15 +72,37 @@ function propostaInicial(item: ItemPendente): PropostaLote {
   // lançamento" em lote — o número de parcelas não tem como o sistema
   // adivinhar (a descrição não traz essa informação), e sem ele o valor
   // certo (total ÷ parcelas) também não dá pra calcular. Fica sempre
-  // desmarcado, mesmo que a categoria tenha sido aprendida com confiança —
-  // o card mostra um aviso pra abrir o detalhe e configurar (ver
-  // ConciliacaoCardCompacto.tsx).
+  // desmarcado, mesmo que a categoria já seja conhecida — o card mostra um
+  // aviso pra abrir o detalhe e configurar (ver ConciliacaoCardCompacto.tsx).
   if (pareceParcelado(item.lancamento.descricao)) {
     return {
       checked: false,
       modo: "novo",
       previstoId: "",
-      categoriaId: item.categoriaSugerida?.categoriaId ?? "",
+      categoriaId: item.lancamento.categoriaId ?? item.categoriaSugerida?.categoriaId ?? "",
+      centroCustoTipo: "ADMINISTRACAO",
+      propertyId: null,
+      uhId: null,
+    };
+  }
+  // Já tem categoria própria salva (categorização em lote anterior, import
+  // do Conta Azul, etc.) — usa direto, com prioridade sobre a sugestão da
+  // IA. BUG encontrado 06/08/2026 (pergunta do Felipe: "pq o sistema ainda
+  // n entendeu q BOOKING.COM é 'Diárias de Plataformas'?"): esse caso
+  // específico é justamente lançamentos que JÁ tinham a categoria certa no
+  // banco — a sugestão por IA (sugerirCategoriasEmLote) só roda pra quem
+  // ainda NÃO tem categoriaId (ver conciliacao.ts#listarPendentesDeConciliacao),
+  // então pra esses `item.categoriaSugerida` vem sempre null e essa tela em
+  // lote caía direto no fallback "Escolher categoria" — mesmo com o dado já
+  // certo salvo. O editor individual (categoriaInicial em
+  // ConciliacaoDetalhe.tsx) já fazia essa checagem certa; faltava replicar
+  // aqui.
+  if (item.lancamento.categoriaId) {
+    return {
+      checked: true,
+      modo: "novo",
+      previstoId: "",
+      categoriaId: item.lancamento.categoriaId,
       centroCustoTipo: "ADMINISTRACAO",
       propertyId: null,
       uhId: null,
