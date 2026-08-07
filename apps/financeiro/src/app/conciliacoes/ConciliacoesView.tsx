@@ -5,7 +5,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
 import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
-import { normalizarTexto, type NovoLancamentoConciliacao } from "@praxis/core";
+import type { NovoLancamentoConciliacao } from "@praxis/core";
 import { type ItemPendente, pareceParcelado } from "./ConciliacaoDetalhe";
 import { ConciliacaoCardCompacto } from "./ConciliacaoCardCompacto";
 import { GRID_COLUNAS } from "./gridColunas";
@@ -26,6 +26,21 @@ import { GRID_COLUNAS } from "./gridColunas";
 // completo de antes, ConciliacaoDetalhe, só que agora é a exceção).
 
 type Categoria = { id: string; nome: string; tipo: string; bloco: string };
+
+// Cópia local de normalizarTexto (fonte: packages/core/src/finance/texto.ts)
+// — mesmo motivo de DreView.tsx (mesAdjacenteLocal): um "use client" daqui
+// não pode fazer import de VALOR de "@praxis/core", só de tipo, porque o
+// index.ts do pacote também reexporta adminSession.ts/session.ts (que usam
+// next/headers) e o build do Next quebra tentando bundlar isso no cliente.
+function normalizarTextoLocal(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
 
 export interface PropostaLote {
   checked: boolean;
@@ -184,8 +199,8 @@ export function ConciliacoesView() {
   // normalizarTexto (mesma normalização usada na sugestão de categoria).
   const pendentesFiltrados = useMemo(() => {
     if (!filtroDescricao.trim()) return pendentes;
-    const alvo = normalizarTexto(filtroDescricao);
-    return pendentes.filter((item) => normalizarTexto(item.lancamento.descricao).includes(alvo));
+    const alvo = normalizarTextoLocal(filtroDescricao);
+    return pendentes.filter((item) => normalizarTextoLocal(item.lancamento.descricao).includes(alvo));
   }, [pendentes, filtroDescricao]);
 
   const pendentesOrdenados = useMemo(() => {
