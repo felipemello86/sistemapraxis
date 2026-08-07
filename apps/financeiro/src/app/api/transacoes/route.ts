@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getSession,
-  hasModuleAccess,
-  listarExecucoes,
-  confirmarValorGerente,
-  confirmarPagamentoMaster,
-  rejeitarExecucao,
-  type StatusTransacaoExecucao,
-} from "@praxis/core";
+import { getSession, hasModuleAccess, listarExecucoes, confirmarValorGerente, rejeitarExecucao, type StatusTransacaoExecucao } from "@praxis/core";
 
 // Tela de TRANSAÇÕES (pedido do Felipe, 07/08/2026) — fila de aprovação
 // das execuções mensais geradas pelo cron a partir das regras cadastradas
@@ -29,7 +21,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(execucoes);
 }
 
-// PATCH /api/transacoes — { id, acao: "confirmar-gerente" | "confirmar-master" | "rejeitar", valorConfirmado?, motivo? }
+// PATCH /api/transacoes — { id, acao: "confirmar-gerente" | "rejeitar", valorConfirmado?, motivo? }
+// Não existe mais "confirmar-master" (pedido do Felipe, 07/08/2026: "o
+// movimento da coluna Aprovação Master para Executadas sempre deve ser
+// automatizado, e nunca manual") — essa etapa agora é 100% detectada pelo
+// cron a partir do que a Pluggy importa (ver detectarExecucoesConfirmadas
+// em lib/finance/transacoes-automatizadas.ts).
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -51,16 +48,6 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    if (acao === "confirmar-master") {
-      // Etapa final — representa "eu, titular da conta, efetuei o
-      // pagamento": não é delegável a nenhum outro perfil.
-      if (session.role !== "MASTER") {
-        return NextResponse.json({ error: "Só o perfil Master pode confirmar o pagamento" }, { status: 403 });
-      }
-      await confirmarPagamentoMaster(session.tenantId, id, session.nome);
-      return NextResponse.json({ ok: true });
-    }
-
     if (acao === "rejeitar") {
       if (session.role !== "GERENTE" && session.role !== "MASTER") {
         return NextResponse.json({ error: "Só os perfis Gerente ou Master podem rejeitar" }, { status: 403 });
@@ -69,7 +56,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    return NextResponse.json({ error: 'acao deve ser "confirmar-gerente", "confirmar-master" ou "rejeitar"' }, { status: 400 });
+    return NextResponse.json({ error: 'acao deve ser "confirmar-gerente" ou "rejeitar"' }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 });
   }

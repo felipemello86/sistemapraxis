@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, listarTransacoesAutomatizadas, criarTransacaoAutomatizada, atualizarTransacaoAutomatizada } from "@praxis/core";
+import { getSession, hasModuleAccess, listarTransacoesAutomatizadas, criarTransacaoAutomatizada, atualizarTransacaoAutomatizada, excluirTransacaoAutomatizada } from "@praxis/core";
 
 // CRUD das REGRAS de Transação Automatizada (pedido do Felipe, 07/08/2026)
 // — o cadastro ("todo dia 1º pagar R$468 pro Jurandir") em si, separado
@@ -56,6 +56,30 @@ export async function PATCH(req: NextRequest) {
   try {
     const regra = await atualizarTransacaoAutomatizada(session.tenantId, id, dados);
     return NextResponse.json(regra);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 400 });
+  }
+}
+
+// DELETE /api/transacoes-automatizadas?id=xxx — só permitido sem histórico
+// de execuções (ver excluirTransacaoAutomatizada); com histórico, a tela de
+// Cadastro orienta desativar em vez de excluir.
+export async function DELETE(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasModuleAccess(session, "FINANCE"))) {
+    return NextResponse.json({ error: "Sem acesso ao módulo" }, { status: 403 });
+  }
+  if (session.role !== "MASTER") {
+    return NextResponse.json({ error: "Só o perfil Master pode excluir Transações Automatizadas" }, { status: 403 });
+  }
+
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+
+  try {
+    await excluirTransacaoAutomatizada(session.tenantId, id);
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 400 });
   }

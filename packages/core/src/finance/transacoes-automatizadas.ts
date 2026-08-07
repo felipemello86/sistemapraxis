@@ -7,31 +7,60 @@
 // valor em uma tela de TRANSAÇÕES. Após confirmação [...] cabendo ao
 // perfil Master, titular da conta, apenas confirmar a transação").
 //
-// Fase 1 (decisão do Felipe depois de eu explicar que o Pluggy hoje só
-// está integrado pra LEITURA — automatizar o Pix de verdade exigiria um
+// Fase 1 (07/08/2026, depois de eu explicar que o Pluggy hoje só está
+// integrado pra LEITURA — automatizar o Pix de verdade exigiria um
 // contrato à parte de Iniciação de Pagamento): "Daria certo o sistema
 // cadastrar as transações e o Master aprovar pelo internet banking do
-// banco?" — sim. O fluxo é maker-checker em 2 etapas:
-//   1. Cron diário (ver apps/financeiro/.../api/cron/transacoes-
-//      automatizadas) gera a pendência sozinho, no dia configurado da
-//      regra — sem nenhuma ação humana até aqui.
-//   2. GERENTE confirma (ou ajusta) o valor na tela de Transações.
-//   3. MASTER confirma que efetuou o Pix pelo internet banking dele — só
-//      NESTE momento o sistema grava um FinanceLancamento normal (um
-//      "previsto" MANUAL, igual qualquer outro lançamento futuro digitado
-//      à mão). A Conciliação já casa esse previsto com a transação REAL
-//      quando ela chegar do banco via Pluggy — nenhuma lógica nova lá.
+// banco?" — sim, maker-checker em 2 etapas, com o Master confirmando NO
+// SISTEMA depois de pagar (botão manual).
 //
-// Rejeição é permitida em qualquer uma das duas etapas de aprovação (ex.:
-// GERENTE percebe que o valor mudou e ainda não tem a regra atualizada, ou
-// Master decide não pagar aquele mês) — a execução fica com um registro
-// permanente (histórico), nunca é apagada.
+// Fase 2 (07/08/2026, mesmo dia, pedido seguinte): "o movimento da coluna
+// Aprovação Master para Executadas sempre deve ser automatizado, e nunca
+// manual" — o botão manual do Master foi REMOVIDO. O fluxo agora é:
+//   1. Cron diário (gerarExecucoesDoDia) gera a pendência sozinho, no dia
+//      configurado da regra — sem ação humana.
+//   2. GERENTE confirma (ou ajusta) o valor na tela de Transações
+//      (confirmarValorGerente) — único passo ainda manual.
+//   3. O Master paga pelo internet banking dele, POR FORA do sistema (Fase
+//      1 continua valendo: não iniciamos o Pix). O sistema detecta sozinho
+//      que aconteceu (detectarExecucoesConfirmadas, chamada depois de todo
+//      cron de sincronização da Pluggy) casando a transação REAL importada
+//      com a execução pendente por valor exato + janela de data + (conta
+//      bancária da regra OU nome do favorecido na descrição/fornecedor) —
+//      mesmo cuidado de validação de texto do backfill de centro de custo
+//      (scripts/importar-centro-custo-conta-azul.ts): nunca confia só no
+//      valor, sempre exige um segundo sinal antes de confirmar sozinho.
+//      Quando casa, categoriza a transação real com a categoria/centro de
+//      custo da regra e marca `conciliadoDiverso=true` nela (mesmo efeito
+//      de uma conciliação manual — some da fila de Conciliações) e a
+//      execução vira CONFIRMADA, com lancamentoId apontando pra essa
+//      transação REAL (não mais um previsto MANUAL criado à parte).
+//
+// Rejeição continua permitida em AGUARDANDO_GERENTE ou AGUARDANDO_MASTER
+// (ex.: Gerente percebe que o valor mudou, ou decide não pagar aquele mês)
+// — a execução fica com um registro permanente (histórico), nunca é
+// apagada. A REGRA (FinanceTransacaoAutomatizada) só pode ser excluída de
+// verdade se nunca gerou nenhuma execução — com histórico, só desativar
+// (ver excluirTransacaoAutomatizada).
 
 import { Prisma } from "../../generated";
 import { prisma } from "../prisma";
 import { limitesDoMes } from "./mes";
 import { validarCategoriaTipo } from "./sugestao-categoria";
+import { tokensSignificativos } from "./texto";
 import { sendPushToUser } from "../push";
+
+function diffDias(a: string, b: string): number {
+  const [a1, a2, a3] = a.split("-").map(Number);
+  const [b1, b2, b3] = b.split("-").map(Number);
+  return Math.round((Date.UTC(a1, a2 - 1, a3) - Date.UTC(b1, b2 - 1, b3)) / 86400000);
+}
+
+function somarDiasISO(dataISO: string, dias: number): string {
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  const d = new Date(Date.UTC(ano, mes - 1, dia + dias));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
 
 export type StatusTransacaoExecucao = "AGUARDANDO_GERENTE" | "AGUARDANDO_MASTER" | "CONFIRMADA" | "REJEITADA";
 
@@ -153,6 +182,20 @@ export async function atualizarTransacaoAutomatizada(tenantId: string, id: strin
   });
 }
 
+/** Exclusão de verdade — só permitida quando a regra NUNCA gerou nenhuma
+ * execução (cadastro errado, apagado antes do 1º cron). Com histórico
+ * existente, a exclusão apagaria o rastro de pagamentos passados junto
+ * (a FK é onDelete:Cascade) — a Cadastro de Transações deve orientar
+ * "Desativar" nesse caso em vez de excluir. */
+export async function excluirTransacaoAutomatizada(tenantId: string, id: string): Promise<void> {
+  const existente = await prisma.financeTransacaoAutomatizada.findUnique({ where: { id }, include: { _count: { select: { execucoes: true } } } });
+  if (!existente || existente.tenantId !== tenantId) throw new Error("Transação automatizada não encontrada");
+  if (existente._count.execucoes > 0) {
+    throw new Error("Esta transação automatizada já tem histórico de execuções — desative em vez de excluir, pra não perder o registro dos pagamentos passados.");
+  }
+  await prisma.financeTransacaoAutomatizada.delete({ where: { id } });
+}
+
 /** Usuários de um role específico com acesso ao módulo FINANCE — pra onde
  * mandar o push de "tem transação esperando você" em cada etapa. */
 async function usuariosParaNotificar(tenantId: string, role: string): Promise<string[]> {
@@ -230,7 +273,7 @@ export interface ExecucaoComRegra {
   motivoRejeicao: string | null;
   lancamentoId: string | null;
   createdAt: Date;
-  regra: { id: string; descricao: string; favorecido: string; dadosBancarios: string; categoriaNome: string; contaBancariaId: string | null };
+  regra: { id: string; descricao: string; favorecido: string; dadosBancarios: string; categoriaNome: string; contaBancariaId: string | null; diaDoMes: number };
 }
 
 /** Lista execuções pra tela de Transações — pendentes (AGUARDANDO_*) e
@@ -264,6 +307,7 @@ export async function listarExecucoes(tenantId: string, status?: StatusTransacao
       dadosBancarios: e.transacaoAutomatizada.dadosBancarios,
       categoriaNome: e.transacaoAutomatizada.categoria.nome,
       contaBancariaId: e.transacaoAutomatizada.contaBancariaId,
+      diaDoMes: e.transacaoAutomatizada.diaDoMes,
     },
   }));
 }
@@ -299,48 +343,111 @@ export async function confirmarValorGerente(tenantId: string, execucaoId: string
   );
 }
 
-/** Etapa 2 (MASTER): confirma que efetuou o Pix pelo internet banking dele
- * (Fase 1 — ver nota no topo do arquivo). Só AGORA nasce o
- * FinanceLancamento (um "previsto" MANUAL comum, dataVencimento = diaDoMes
- * da regra dentro do mesReferencia da execução) — a Conciliação casa esse
- * previsto com a transação real quando ela chegar do banco. */
-export async function confirmarPagamentoMaster(tenantId: string, execucaoId: string, nomeUsuario: string): Promise<void> {
-  const execucao = await prisma.financeTransacaoExecucao.findUnique({ where: { id: execucaoId }, include: { transacaoAutomatizada: true } });
-  if (!execucao || execucao.tenantId !== tenantId) throw new Error("Transação não encontrada");
-  if (execucao.status !== "AGUARDANDO_MASTER") throw new Error(`Esta transação está em "${execucao.status}" — não é mais possível confirmar o pagamento`);
-  if (execucao.valorConfirmado == null) throw new Error("Valor ainda não foi confirmado pelo Gerente");
+// Janela de tolerância de data pro casamento automático — o Pix pode cair
+// um pouco antes (Master adianta) ou alguns dias depois (fim de semana,
+// esqueceu e pagou atrasado) da data esperada. Mesma faixa de tolerância
+// de +/-2 dias já usada em sugestao-centro-custo.ts, com mais folga pra
+// trás porque atraso é mais comum que adiantamento nesse tipo de pagamento.
+const JANELA_DIAS_ANTES = 2;
+const JANELA_DIAS_DEPOIS = 5;
 
-  const regra = execucao.transacaoAutomatizada;
-  const { ultimoDia } = limitesDoMes(execucao.mesReferencia);
-  const dataVencimento = `${execucao.mesReferencia}-${String(Math.min(regra.diaDoMes, ultimoDia)).padStart(2, "0")}`;
-
-  const previsto = await prisma.financeLancamento.create({
-    data: {
-      tenantId,
-      categoriaId: regra.categoriaId,
-      descricao: regra.descricao,
-      fornecedor: regra.favorecido,
-      valor: new Prisma.Decimal(execucao.valorConfirmado).negated(),
-      dataVencimento,
-      origem: "MANUAL",
-      centroCustoTipo: regra.centroCustoTipo,
-      propertyId: regra.propertyId,
-      uhId: regra.uhId,
-      contaBancariaId: regra.contaBancariaId,
-      observacoes: `Gerado por Transação Automatizada — confirmado por ${nomeUsuario} em ${new Date().toLocaleDateString("pt-BR")}. Dados bancários: ${regra.dadosBancarios}`,
-      criadoPorNome: nomeUsuario,
-    },
+/** Etapa 3 (detecção automática — Fase 2, 07/08/2026): varre toda execução
+ * AGUARDANDO_MASTER do tenant e tenta casar com uma transação REAL
+ * (origem=PLUGGY, ainda não conciliada) já importada — valor exato +
+ * janela de data em torno do dia esperado, e um segundo sinal obrigatório
+ * pra confirmar sozinho (nunca só valor+data, mesma lição do backfill de
+ * centro de custo que já causou um bug de atribuição errada nesta base):
+ *   - se a regra tem contaBancariaId configurado, exige que a transação
+ *     real tenha saído DAQUELA conta (sinal forte, quem cadastrou já sabe
+ *     de onde sai o dinheiro);
+ *   - senão, exige que algum token significativo do nome do favorecido
+ *     apareça na descrição/fornecedor da transação (mesmo princípio de
+ *     extrairNomePix do backfill de centro de custo).
+ * Quando casa: categoriza a transação real com a categoria/centro de
+ * custo da regra, marca conciliadoDiverso=true nela (mesmo efeito de uma
+ * conciliação manual — some da fila de Conciliações) e a execução vira
+ * CONFIRMADA, com lancamentoId apontando pra essa transação real.
+ * Chamada depois de todo cron de sincronização da Pluggy (ver
+ * cron/sync-pluggy) e também no cron diário de transacoes-automatizadas,
+ * pra cobrir tanto "transação chegou agora" quanto "já tinha chegado antes
+ * da execução existir". Idempotente: só mexe em execuções ainda
+ * AGUARDANDO_MASTER, uma vez CONFIRMADA nunca é revisitada. */
+export async function detectarExecucoesConfirmadas(tenantId: string): Promise<{ confirmadas: number }> {
+  const pendentes = await prisma.financeTransacaoExecucao.findMany({
+    where: { tenantId, status: "AGUARDANDO_MASTER" },
+    include: { transacaoAutomatizada: true },
   });
+  if (pendentes.length === 0) return { confirmadas: 0 };
 
-  await prisma.financeTransacaoExecucao.update({
-    where: { id: execucaoId },
-    data: {
-      status: "CONFIRMADA",
-      confirmadoMasterPorNome: nomeUsuario,
-      confirmadoMasterEm: new Date(),
-      lancamentoId: previsto.id,
-    },
-  });
+  let confirmadas = 0;
+  for (const execucao of pendentes) {
+    const regra = execucao.transacaoAutomatizada;
+    if (execucao.valorConfirmado == null) continue; // defensivo — não deveria acontecer (só chega em AGUARDANDO_MASTER via confirmarValorGerente)
+
+    const { ultimoDia } = limitesDoMes(execucao.mesReferencia);
+    const dataEsperada = `${execucao.mesReferencia}-${String(Math.min(regra.diaDoMes, ultimoDia)).padStart(2, "0")}`;
+    const valorNegativo = new Prisma.Decimal(execucao.valorConfirmado).negated();
+
+    const candidatos = await prisma.financeLancamento.findMany({
+      where: {
+        tenantId,
+        origem: "PLUGGY",
+        conciliadoComId: null,
+        conciliadoDiverso: false,
+        valor: valorNegativo,
+        dataVencimento: { gte: somarDiasISO(dataEsperada, -JANELA_DIAS_ANTES), lte: somarDiasISO(dataEsperada, JANELA_DIAS_DEPOIS) },
+        ...(regra.contaBancariaId ? { contaBancariaId: regra.contaBancariaId } : {}),
+      },
+    });
+    if (candidatos.length === 0) continue;
+
+    // Sem conta configurada na regra — a query acima não filtrou por
+    // conta, então o segundo sinal obrigatório aqui é o nome do
+    // favorecido aparecer no texto da transação.
+    const validos = regra.contaBancariaId
+      ? candidatos
+      : candidatos.filter((c) => {
+          const tokensTexto = new Set(tokensSignificativos(`${c.descricao} ${c.fornecedor ?? ""}`));
+          return tokensSignificativos(regra.favorecido).some((t) => tokensTexto.has(t));
+        });
+    if (validos.length === 0) continue;
+
+    // Mais de um candidato ainda empatado (raro: mesmo valor, mesma
+    // janela, mesmo texto) — escolhe o mais próximo da data esperada, sem
+    // adivinhar entre eles.
+    const escolhido = validos.reduce((melhor, atual) => (Math.abs(diffDias(atual.dataVencimento, dataEsperada)) < Math.abs(diffDias(melhor.dataVencimento, dataEsperada)) ? atual : melhor));
+
+    await prisma.$transaction([
+      prisma.financeLancamento.update({
+        where: { id: escolhido.id },
+        data: {
+          categoriaId: regra.categoriaId,
+          centroCustoTipo: regra.centroCustoTipo,
+          propertyId: regra.propertyId,
+          uhId: regra.uhId,
+          // Mesma convenção de marcarComoDiverso em conciliacao.ts:
+          // conciliadoMesReferencia só é usado quando conciliadoComId
+          // aponta pra um previsto recorrente (desambiguar qual ocorrência)
+          // — aqui não há previsto específico, fica null.
+          conciliadoComId: null,
+          conciliadoMesReferencia: null,
+          conciliadoDiverso: true,
+        },
+      }),
+      prisma.financeTransacaoExecucao.update({
+        where: { id: execucao.id },
+        data: {
+          status: "CONFIRMADA",
+          confirmadoMasterPorNome: "Detectado automaticamente via Pluggy",
+          confirmadoMasterEm: new Date(),
+          lancamentoId: escolhido.id,
+        },
+      }),
+    ]);
+    confirmadas++;
+  }
+
+  return { confirmadas };
 }
 
 /** Rejeita em qualquer uma das duas etapas de aprovação — fica registrado
