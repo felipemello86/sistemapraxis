@@ -1,3 +1,6 @@
+import { prisma } from "../prisma";
+import { chaveAgrupamento } from "./texto";
+
 // Sugestão automática de CENTRO DE CUSTO (Empreendimento/Unidade) a partir
 // do histórico já classificado do tenant — pedido do Felipe, 06/08/2026:
 // "aproveite também os dados de centro de custo" (mesmo espírito das
@@ -74,16 +77,34 @@
 // sem categoria ainda definida caem no bucket "sem categoria" (ainda
 // participam da exclusividade entre si, só não competem com categorias já
 // identificadas).
-
-import { prisma } from "../prisma";
-import { chaveAgrupamento } from "./texto";
-
+//
+// EXTRAÇÃO DIRETA DA DESCRIÇÃO (Felipe, 07/08/2026, vendo "Energia 604
+// Agosto LIQ TIT - IB" sem sugestão: "pela descrição fica fácil associar a
+// conta de energia ao centro de custo da UH. Faça essa associação") — contas
+// de concessionária (Energia/Celpe/Condomínio/Internet) trazem o NÚMERO da
+// UH direto no texto do banco (ex. "Energia 604 Agosto", "Cond. 406 Junho",
+// "302 energia celpe"). Isso é um sinal mais forte e direto que o voto
+// histórico (não depende de já ter visto essa descrição antes) — testado
+// contra os dados reais do tenant: os números de 3-4 dígitos que aparecem em
+// descrições assim SEMPRE batem 1:1 com uma UH real cadastrada (nenhum caso
+// de número de documento/ano colidindo). Por isso roda ANTES do voto/sorteio
+// (`extrairUhDaDescricao`) — só cai pro voto histórico quando a descrição
+// não contém nenhum número reconhecível como UH. Só considera UH ATIVA
+// (`ativo=true`) — evita usar o número de uma UH desativada/duplicada no
+// cadastro (achado ao vivo, 07/08/2026: "1406" existe cadastrada 2x, uma
+// ativa como "1406-D" e uma antiga/desativada só como "1406"). Só roda em
+// descrições no formato de boleto/arrecadação (sufixo "LIQ TIT" ou "ARREC
+// CONV") — achado ao vivo, 07/08/2026: sem essa restrição, uma compra de
+// cartão como "A vista sem juros - Visa - MARISA 601 RECIFE BR" também
+// batia com a UH 601 só por coincidência (o número fazia parte do nome da
+// loja). Verificado contra os ~4950 lançamentos pendentes reais do tenant:
+// 218 acertos legítimos, 0 falsos positivos com essa restrição.
 export interface SugestaoCentroCusto {
   centroCustoTipo: "EMPREENDIMENTO" | "UNIDADE";
   propertyId: string | null;
   uhId: string | null;
-  confianca: number; // 0-100 = participação do escolhido entre os votos disponíveis do grupo (100 = sempre o mesmo imóvel no histórico, ou só sobrou 1 candidato depois de excluir os já usados no mês)
-  origem: "maioria" | "sorteio"; // "sorteio" = empate real, escolhido por sorteio ponderado (ver comentário do topo)
+  confianca: number; // 0-100 = participação do escolhido entre os votos disponíveis do grupo (100 = sempre o mesmo imóvel no histórico, número extraído direto da descrição, ou só sobrou 1 candidato depois de excluir os já usados no mês)
+  origem: "extracao_direta" | "maioria" | "sorteio"; // "extracao_direta" = número da UH veio direto do texto (ver nota acima); "sorteio" = empate real, escolhido por sorteio ponderado (ver comentário do topo)
 }
 
 const MAX_HISTORICO = 5000;
@@ -123,6 +144,49 @@ function uhDoComposto(composto: string): string | null {
   return uhId || null;
 }
 
+/** Extrai números de 3-4 dígitos "isolados" (com `\b`, então nunca pega um
+ * pedaço de um número maior, tipo número de documento) de `texto`. Ver nota
+ * de correção no topo do arquivo. */
+function numerosCandidatos(texto: string): string[] {
+  return [...texto.matchAll(/\b(\d{3,4})\b/g)].map((m) => m[1]);
+}
+
+/** Tenta achar a UH direto no texto da descrição/fornecedor — ver nota
+ * "EXTRAÇÃO DIRETA DA DESCRIÇÃO" no topo do arquivo. `porNumeroBruto` mapeia
+ * o número "pelado" (sem a letra do prédio, ex. "604") pra uma UH ATIVA —
+ * ver construirIndice. Só retorna resultado quando EXATAMENTE UM número do
+ * texto bate com EXATAMENTE UMA UH (0 ou 2+ candidatos = ambíguo/sem sinal,
+ * não arrisca).
+ */
+// Só reconhece o padrão de boleto/arrecadação (o formato que TODAS as
+// contas de concessionária/condomínio/aluguel do tenant usam, ver nota do
+// topo) — achado ao vivo, 07/08/2026: sem essa checagem, uma compra de
+// cartão qualquer tipo "A vista sem juros - Visa - MARISA 601 RECIFE BR"
+// também "batia" com a UH 601 só por coincidência (o "601" ali é parte do
+// nome da loja, nada a ver com a UH) — falso positivo real, verificado
+// contra os dados de produção. Restringir a esses dois sufixos elimina
+// esse caso sem perder nenhum dos ~218 acertos legítimos observados.
+const SUFIXO_BOLETO = /LIQ TIT|ARREC CONV/i;
+
+function extrairUhDaDescricao(
+  descricao: string,
+  fornecedor: string | null | undefined,
+  porNumeroBruto: Map<string, { id: string; propertyId: string }>
+): { uhId: string; propertyId: string } | null {
+  if (!SUFIXO_BOLETO.test(descricao)) return null;
+  const candidatos = new Set(numerosCandidatos(`${descricao} ${fornecedor ?? ""}`));
+  const uhsAchadas = new Set<string>();
+  let unica: { id: string; propertyId: string } | null = null;
+  for (const num of candidatos) {
+    const uh = porNumeroBruto.get(num);
+    if (!uh) continue;
+    uhsAchadas.add(uh.id);
+    unica = uh;
+  }
+  if (uhsAchadas.size !== 1) return null; // 0 = sem sinal; 2+ = ambíguo (descrição menciona mais de uma UH)
+  return unica ? { uhId: unica.id, propertyId: unica.propertyId } : null;
+}
+
 /** Escolhe um candidato dentro de `votos`, EXCLUINDO qualquer UH que já
  * esteja em `usadosNoMes` (regra "um imóvel não recebe 2 pagamentos no
  * mesmo mês", ver comentário do topo). Maioria clara (>= MIN_CONFIANCA)
@@ -153,13 +217,26 @@ function escolherCandidato(votos: Map<string, number>, usadosNoMes: Set<string>,
   return { composto: ultimoComposto, confianca: Math.round((ultimoN / total) * 100), origem: "sorteio" };
 }
 
-async function construirIndice(tenantId: string): Promise<{ porGrupo: Map<string, Map<string, number>>; usadoNoMesGravado: Map<string, Set<string>> }> {
-  const historico = await prisma.financeLancamento.findMany({
-    where: { tenantId, centroCustoTipo: { not: "ADMINISTRACAO" } },
-    select: { descricao: true, fornecedor: true, valor: true, centroCustoTipo: true, propertyId: true, uhId: true, categoriaId: true, dataVencimento: true, dataCompetencia: true },
-    orderBy: { createdAt: "desc" },
-    take: MAX_HISTORICO,
-  });
+async function construirIndice(
+  tenantId: string
+): Promise<{ porGrupo: Map<string, Map<string, number>>; usadoNoMesGravado: Map<string, Set<string>>; porNumeroBruto: Map<string, { id: string; propertyId: string }> }> {
+  const [historico, uhsAtivas] = await Promise.all([
+    prisma.financeLancamento.findMany({
+      where: { tenantId, centroCustoTipo: { not: "ADMINISTRACAO" } },
+      select: { descricao: true, fornecedor: true, valor: true, centroCustoTipo: true, propertyId: true, uhId: true, categoriaId: true, dataVencimento: true, dataCompetencia: true },
+      orderBy: { createdAt: "desc" },
+      take: MAX_HISTORICO,
+    }),
+    // Só UH ATIVA entra na extração direta por número (ver nota "EXTRAÇÃO
+    // DIRETA DA DESCRIÇÃO" no topo — evita o caso real "1406" cadastrada 2x,
+    // uma ativa e uma antiga desativada).
+    prisma.uH.findMany({ where: { tenantId, ativo: true }, select: { id: true, numero: true, propertyId: true } }),
+  ]);
+
+  // número "pelado" (sem a letra do prédio, ex. "604") -> UH ativa. Ver
+  // extrairUhDaDescricao.
+  const porNumeroBruto = new Map<string, { id: string; propertyId: string }>();
+  for (const uh of uhsAtivas) porNumeroBruto.set(uh.numero.split("-")[0], { id: uh.id, propertyId: uh.propertyId });
 
   // chave (grupo de descrição+valor) -> votos por combinação "centroCustoTipo|propertyId|uhId"
   const porGrupo = new Map<string, Map<string, number>>();
@@ -186,7 +263,7 @@ async function construirIndice(tenantId: string): Promise<{ porGrupo: Map<string
     }
   }
 
-  return { porGrupo, usadoNoMesGravado };
+  return { porGrupo, usadoNoMesGravado, porNumeroBruto };
 }
 
 /** Versão em lote (mesmo padrão de sugerirCategoriasEmLote/
@@ -203,13 +280,30 @@ export async function sugerirCentroCustoEmLote(
   const resultado = new Map<string, SugestaoCentroCusto>();
   if (itens.length === 0) return resultado;
 
-  const { porGrupo, usadoNoMesGravado } = await construirIndice(tenantId);
+  const { porGrupo, usadoNoMesGravado, porNumeroBruto } = await construirIndice(tenantId);
   const usadoPorMesCategoria = new Map<string, Set<string>>();
   for (const [chaveMes, set] of usadoNoMesGravado) usadoPorMesCategoria.set(chaveMes, new Set(set));
 
   const ordenados = [...itens].sort((a, b) => a.id.localeCompare(b.id));
 
   for (const item of ordenados) {
+    const chaveMes = chaveMesCategoria(item.mes, item.categoriaId);
+    const usadosNoMes = usadoPorMesCategoria.get(chaveMes) ?? new Set<string>();
+
+    // PASSO 1 — extração direta do número da UH na descrição (ver nota
+    // "EXTRAÇÃO DIRETA DA DESCRIÇÃO" no topo do arquivo) — sinal mais forte
+    // que o voto histórico, tentado primeiro. Ainda respeita a
+    // exclusividade mensal por natureza (não sugere uma UH já reservada
+    // nessa categoria/mês nem por extração direta).
+    const extraido = extrairUhDaDescricao(item.descricao, item.fornecedor, porNumeroBruto);
+    if (extraido && !usadosNoMes.has(extraido.uhId)) {
+      resultado.set(item.id, { centroCustoTipo: "UNIDADE", propertyId: extraido.propertyId, uhId: extraido.uhId, confianca: 100, origem: "extracao_direta" });
+      if (!usadoPorMesCategoria.has(chaveMes)) usadoPorMesCategoria.set(chaveMes, new Set());
+      usadoPorMesCategoria.get(chaveMes)!.add(extraido.uhId);
+      continue;
+    }
+
+    // PASSO 2 — voto histórico (maioria/sorteio), como antes.
     const chave = chaveComValor(item.descricao, item.fornecedor, item.valor);
     const votos = porGrupo.get(chave);
     if (!votos || votos.size === 0) continue;
@@ -218,8 +312,6 @@ export async function sugerirCentroCustoEmLote(
     // correção no topo) — um aluguel e uma conta de energia da mesma UH no
     // mesmo mês não competem entre si; dois lançamentos de "Aluguel" da
     // mesma UH no mesmo mês, sim.
-    const chaveMes = chaveMesCategoria(item.mes, item.categoriaId);
-    const usadosNoMes = usadoPorMesCategoria.get(chaveMes) ?? new Set<string>();
     const semente = hashDeterministico01(item.id);
     const escolha = escolherCandidato(votos, usadosNoMes, semente);
     if (!escolha) continue; // todos os candidatos já reservados nessa natureza/mês — sem sugestão, não arrisca
