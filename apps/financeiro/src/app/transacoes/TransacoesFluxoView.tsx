@@ -4,6 +4,7 @@ import { Check, X, Clock, Landmark, AlertTriangle, CheckCircle2, Bot } from "luc
 import type { LucideIcon } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
+import { InputMoeda } from "@/components/InputMoeda";
 import { AbasTransacoes } from "./AbasTransacoes";
 
 // Fluxo de Transações — pedido do Felipe, 07/08/2026: "No fluxo, deve
@@ -220,12 +221,10 @@ export function TransacoesFluxoView({ role }: { role: string }) {
             <p className="text-xs text-gray-500">Sugerido: {formatBRL(e.valorSugerido)}</p>
             {podeConfirmarGerente && (
               <>
-                <input
-                  type="number"
-                  step="0.01"
+                <InputMoeda
                   className="input text-sm py-1 w-full"
                   value={valorEdicaoDe(e.id, e.valorSugerido)}
-                  onChange={(ev) => setValoresEdicao((v) => ({ ...v, [e.id]: ev.target.value }))}
+                  onChange={(v) => setValoresEdicao((prev) => ({ ...prev, [e.id]: v }))}
                 />
                 <div className="flex items-center gap-1.5">
                   <button onClick={() => confirmarGerente(e.id)} disabled={processandoId === e.id} className="btn-primary rounded-xl flex-1 flex items-center justify-center gap-1 text-xs py-1.5">

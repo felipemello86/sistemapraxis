@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, X, Pencil, Trash2, AlertTriangle, Repeat } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorCentroCusto } from "@/components/SeletorCentroCusto";
+import { InputMoeda } from "@/components/InputMoeda";
 import { AbasTransacoes } from "./AbasTransacoes";
 
 // Cadastro de Transações — pedido do Felipe, 07/08/2026: "Divida a tela
@@ -261,7 +262,7 @@ export function TransacoesCadastroView({ role }: { role: string }) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">Valor</label>
-                <input className="input" type="number" step="0.01" min="0" value={form.valor} onChange={(e) => setForm((f) => ({ ...f, valor: e.target.value }))} />
+                <InputMoeda value={form.valor} onChange={(v) => setForm((f) => ({ ...f, valor: v }))} />
               </div>
               <div>
                 <label className="label">Dia do mês</label>
