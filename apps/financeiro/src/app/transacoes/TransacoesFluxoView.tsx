@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Check, X, Clock, Landmark, AlertTriangle, CheckCircle2, Bot } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
 import { AbasTransacoes } from "./AbasTransacoes";
@@ -19,6 +20,19 @@ import { AbasTransacoes } from "./AbasTransacoes";
 // detectarExecucoesConfirmadas em @praxis/core). Rejeitar continua manual
 // (Gerente ou Master desistindo do pagamento daquele mês), em qualquer uma
 // das duas primeiras colunas.
+//
+// Identidade visual — pedido do Felipe, 07/08/2026: "deixe a tela Fluxo de
+// Transações com essa identidade visual (Manutenção > Correções)". Réplica
+// do padrão visual de apps/maintenance (kanban-execucao.tsx +
+// correction-card-header.tsx): colunas como painéis brancos arredondados
+// com ícone+título+contador no cabeçalho, cards com tonalidade de cor por
+// status (neutro = aguardando, azul = em andamento/aguardando detecção,
+// verde = concluído — mesmo espírito de "Planejadas"/"Executadas" lá), e
+// badges em formato de pill (rounded-full, ícone + texto curto). Como
+// apps/financeiro usa classes Tailwind fixas (não variáveis CSS do
+// shadcn/ui como o maintenance), a réplica usa as cores hardcoded do
+// próprio design system daqui (gray/blue/green/red/amber) em vez de
+// var(--primary) etc., mas com a mesma composição visual.
 
 type Status = "AGUARDANDO_GERENTE" | "AGUARDANDO_MASTER" | "CONFIRMADA" | "REJEITADA";
 
@@ -69,10 +83,10 @@ function dataEsperada(mesReferencia: string, diaDoMes: number): string {
   return `${mesReferencia}-${String(Math.min(diaDoMes, ultimoDia)).padStart(2, "0")}`;
 }
 
-const COLUNAS: { status: Status; titulo: string }[] = [
-  { status: "AGUARDANDO_GERENTE", titulo: "Aprovação Gerencial" },
-  { status: "AGUARDANDO_MASTER", titulo: "Aprovação Master" },
-  { status: "CONFIRMADA", titulo: "Executadas" },
+const COLUNAS: { status: Status; titulo: string; icon: LucideIcon; corIcone: string; corCard: string }[] = [
+  { status: "AGUARDANDO_GERENTE", titulo: "Aprovação Gerencial", icon: Clock, corIcone: "text-gray-400", corCard: "border-gray-200 bg-white" },
+  { status: "AGUARDANDO_MASTER", titulo: "Aprovação Master", icon: Landmark, corIcone: "text-blue-500", corCard: "border-blue-200 bg-blue-50/50" },
+  { status: "CONFIRMADA", titulo: "Executadas", icon: CheckCircle2, corIcone: "text-green-600", corCard: "border-green-200 bg-green-50/60" },
 ];
 
 export function TransacoesFluxoView({ role }: { role: string }) {
@@ -130,12 +144,13 @@ export function TransacoesFluxoView({ role }: { role: string }) {
 
   // Vencidas (pedido do Felipe) — global, independente do filtro de mês:
   // ainda não Executada/Rejeitada e a data esperada já passou.
+  const hoje = hojeISOSP();
   const vencidas = useMemo(() => {
-    const hoje = hojeISOSP();
     return execucoes
       .filter((e) => (e.status === "AGUARDANDO_GERENTE" || e.status === "AGUARDANDO_MASTER") && dataEsperada(e.mesReferencia, e.regra.diaDoMes) < hoje)
       .sort((a, b) => dataEsperada(a.mesReferencia, a.regra.diaDoMes).localeCompare(dataEsperada(b.mesReferencia, b.regra.diaDoMes)));
-  }, [execucoes]);
+  }, [execucoes, hoje]);
+  const vencidasIds = useMemo(() => new Set(vencidas.map((e) => e.id)), [vencidas]);
 
   function valorEdicaoDe(execucaoId: string, sugerido: string): string {
     return valoresEdicao[execucaoId] ?? sugerido;
@@ -182,15 +197,23 @@ export function TransacoesFluxoView({ role }: { role: string }) {
     setProcessandoId(null);
   }
 
-  function Cartao({ e }: { e: Execucao }) {
+  function Cartao({ e, corCard }: { e: Execucao; corCard: string }) {
+    const atrasada = vencidasIds.has(e.id);
     return (
-      <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-2 text-sm">
-        <div>
+      <div className={`rounded-xl border ${corCard} p-3 space-y-2 text-sm`}>
+        <div className="flex items-start justify-between gap-2">
           <p className="font-medium text-gray-900">{e.regra.descricao}</p>
-          <p className="text-xs text-gray-400">
-            {e.regra.favorecido} · {e.regra.categoriaNome}
-          </p>
+          <span className="flex-shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 whitespace-nowrap">
+            {e.regra.categoriaNome}
+          </span>
         </div>
+        <p className="text-xs text-gray-400">{e.regra.favorecido}</p>
+
+        {atrasada && (e.status === "AGUARDANDO_GERENTE" || e.status === "AGUARDANDO_MASTER") && (
+          <span className="flex items-center gap-0.5 w-fit rounded-full bg-red-50 border border-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
+            <AlertTriangle className="h-2.5 w-2.5" /> Vencida
+          </span>
+        )}
 
         {e.status === "AGUARDANDO_GERENTE" && (
           <div className="space-y-1.5">
@@ -205,13 +228,14 @@ export function TransacoesFluxoView({ role }: { role: string }) {
                   onChange={(ev) => setValoresEdicao((v) => ({ ...v, [e.id]: ev.target.value }))}
                 />
                 <div className="flex items-center gap-1.5">
-                  <button onClick={() => confirmarGerente(e.id)} disabled={processandoId === e.id} className="btn-primary flex-1 flex items-center justify-center gap-1 text-xs py-1.5">
+                  <button onClick={() => confirmarGerente(e.id)} disabled={processandoId === e.id} className="btn-primary rounded-xl flex-1 flex items-center justify-center gap-1 text-xs py-1.5">
                     <Check className="w-3.5 h-3.5" /> Confirmar
                   </button>
                   <button
                     onClick={() => setRejeitandoId(e.id)}
                     disabled={processandoId === e.id}
-                    className="flex items-center justify-center gap-1 text-xs text-red-600 border border-red-200 hover:bg-red-50 rounded-lg px-2 py-1.5"
+                    className="flex items-center justify-center gap-1 text-xs text-red-600 border border-red-200 hover:bg-red-50 rounded-xl px-2.5 py-1.5"
+                    title="Rejeitar"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -224,21 +248,21 @@ export function TransacoesFluxoView({ role }: { role: string }) {
         {e.status === "AGUARDANDO_MASTER" && (
           <div className="space-y-1.5">
             <p className="text-sm font-semibold text-gray-900">{formatBRL(e.valorConfirmado ?? e.valorSugerido)}</p>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-xs space-y-1">
+            <div className="bg-white/70 border border-blue-100 rounded-xl p-2 text-xs space-y-1">
               <p className="flex items-center gap-1 text-gray-700 font-medium">
                 <Landmark className="w-3 h-3 flex-shrink-0" /> {e.regra.favorecido}
               </p>
               <p className="text-gray-500 whitespace-pre-wrap">{e.regra.dadosBancarios}</p>
               {e.regra.contaBancariaId && <p className="text-gray-400">Saída de: {contaPorId.get(e.regra.contaBancariaId) ?? "—"}</p>}
             </div>
-            <p className="text-[11px] text-gray-400 flex items-center gap-1">
-              <Bot className="w-3 h-3 flex-shrink-0" /> Move sozinho pra Executadas quando o sistema detectar o Pix.
+            <p className="flex items-center gap-1 w-fit rounded-full bg-blue-100/70 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+              <Bot className="h-2.5 w-2.5 flex-shrink-0" /> Move sozinho quando detectar o Pix
             </p>
             {podeRejeitar && (
               <button
                 onClick={() => setRejeitandoId(e.id)}
                 disabled={processandoId === e.id}
-                className="flex items-center justify-center gap-1 text-xs text-red-600 border border-red-200 hover:bg-red-50 rounded-lg px-2 py-1.5 w-full"
+                className="flex items-center justify-center gap-1 text-xs text-red-600 border border-red-200 hover:bg-red-50 rounded-xl px-2 py-1.5 w-full"
               >
                 <X className="w-3.5 h-3.5" /> Rejeitar
               </button>
@@ -261,7 +285,7 @@ export function TransacoesFluxoView({ role }: { role: string }) {
           <div className="border-t border-gray-100 pt-2 space-y-1.5">
             <input className="input text-xs py-1" placeholder="Motivo (opcional)" value={motivoRejeicao} onChange={(ev) => setMotivoRejeicao(ev.target.value)} />
             <div className="flex items-center gap-1.5">
-              <button onClick={() => rejeitar(e.id)} disabled={processandoId === e.id} className="text-xs bg-red-600 text-white rounded-lg px-2 py-1 flex-1">
+              <button onClick={() => rejeitar(e.id)} disabled={processandoId === e.id} className="text-xs bg-red-600 text-white rounded-xl px-2 py-1 flex-1">
                 Confirmar rejeição
               </button>
               <button
@@ -293,7 +317,7 @@ export function TransacoesFluxoView({ role }: { role: string }) {
       {erro && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{erro}</p>}
 
       {vencidas.length > 0 && mostrarVencidas && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-800 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="font-medium">
@@ -316,7 +340,7 @@ export function TransacoesFluxoView({ role }: { role: string }) {
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <SeletorMes mes={mes} onChange={setMes} />
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
           <Clock className="w-4 h-4 text-gray-400" />
           <span className="text-gray-500">Score do mês:</span>
           <span className="font-semibold text-gray-900">
@@ -329,24 +353,23 @@ export function TransacoesFluxoView({ role }: { role: string }) {
       {loading ? (
         <p className="text-gray-400 text-sm">Carregando...</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {COLUNAS.map((col) => {
             const itens = ordenar(execucoesDoMes.filter((e) => e.status === col.status));
             return (
-              <div key={col.status} className="bg-gray-50 rounded-xl p-3 space-y-2 min-h-[120px]">
-                <div className="flex items-center justify-between px-1">
-                  <h2 className="text-sm font-semibold text-gray-700">{col.titulo}</h2>
-                  <span className="text-xs text-gray-400 bg-white rounded-full px-2 py-0.5">{itens.length}</span>
+              <div key={col.status} className="flex max-h-[75vh] flex-col rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <col.icon className={`h-4 w-4 ${col.corIcone}`} />
+                  <h2 className="text-sm font-semibold text-gray-900">{col.titulo}</h2>
+                  <span className="text-xs text-gray-400">({itens.length})</span>
                 </div>
-                {itens.length === 0 ? (
-                  <p className="text-xs text-gray-400 px-1">Nada aqui.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {itens.map((e) => (
-                      <Cartao key={e.id} e={e} />
-                    ))}
-                  </div>
-                )}
+                <div className="space-y-3 overflow-y-auto pr-1">
+                  {itens.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-gray-400">Nada aqui.</p>
+                  ) : (
+                    itens.map((e) => <Cartao key={e.id} e={e} corCard={col.corCard} />)
+                  )}
+                </div>
               </div>
             );
           })}
