@@ -38,6 +38,20 @@
 // Isso também significa que, ao longo de vários meses, os sorteios tendem a
 // se distribuir entre os imóveis candidatos na mesma proporção do
 // histórico, em vez de sempre "chutar" o mesmo errado.
+//
+// REGRA adicional (pedido do Felipe, 06/08/2026: "a 'regra' é q um mesmo
+// imóvel n deve ter dois pagamentos no mesmo mês") — um flat só recebe UM
+// aluguel por mês; se dois lançamentos ambíguos do mesmo mês (ex.: duas
+// transferências de Fabio Nunes Ferreira de R$2.300 em agosto) sorteassem
+// o MESMO imóvel, um dos dois estaria necessariamente errado. Por isso o
+// lote inteiro é processado numa ordem fixa (por id, não pela ordem de
+// chegada) reservando o imóvel escolhido pro mês daquele lançamento — o
+// próximo lançamento ambíguo do MESMO mês já exclui esse imóvel dos
+// candidatos (tanto na maioria quanto no sorteio). A reserva também
+// considera o que já está GRAVADO de verdade no banco (outro lançamento já
+// conciliado pra aquele imóvel naquele mês), não só o que está sendo
+// sugerido agora. Se todos os candidatos de um lançamento já estiverem
+// reservados naquele mês, fica sem sugestão (não força um imóvel errado).
 
 import { prisma } from "../prisma";
 import { chaveAgrupamento } from "./texto";
@@ -46,7 +60,7 @@ export interface SugestaoCentroCusto {
   centroCustoTipo: "EMPREENDIMENTO" | "UNIDADE";
   propertyId: string | null;
   uhId: string | null;
-  confianca: number; // 0-100 = participação do escolhido entre os votos do grupo (100 = sempre o mesmo imóvel no histórico)
+  confianca: number; // 0-100 = participação do escolhido entre os votos disponíveis do grupo (100 = sempre o mesmo imóvel no histórico, ou só sobrou 1 candidato depois de excluir os já usados no mês)
   origem: "maioria" | "sorteio"; // "sorteio" = empate real, escolhido por sorteio ponderado (ver comentário do topo)
 }
 
@@ -57,7 +71,7 @@ const MAX_HISTORICO = 5000;
 // diferentes é sinal de ambiguidade real (o mesmo proprietário cobrando o
 // mesmo valor de mais de um flat). Acima do limiar, aplica direto (origem
 // "maioria"); abaixo, sorteia entre os candidatos (origem "sorteio", ver
-// sortearEntreEmpatados) em vez de deixar sem sugestão nenhuma.
+// escolherCandidato) em vez de deixar sem sugestão nenhuma.
 const MIN_CONFIANCA = 60;
 
 /** Hash determinístico simples (djb2) normalizado pra [0, 1) — usado como
@@ -70,36 +84,61 @@ function hashDeterministico01(s: string): number {
   return (h >>> 0) / 4294967296;
 }
 
-/** Sorteio ponderado entre os candidatos empatados de um grupo — cada
- * candidato tem probabilidade proporcional aos seus votos históricos (não
- * uniforme). `semente` vem de hashDeterministico01(item.id), garantindo
- * resultado estável pro MESMO lançamento entre reloads. */
-function sortearEntreEmpatados(votos: Map<string, number>, total: number, semente: number): [string, number] {
-  const ordenado = [...votos.entries()].sort((a, b) => b[1] - a[1]);
-  let acumulado = 0;
-  for (const [composto, n] of ordenado) {
-    acumulado += n / total;
-    if (semente < acumulado) return [composto, n];
-  }
-  return ordenado[ordenado.length - 1]; // proteção contra erro de arredondamento de ponto flutuante
-}
-
 /** Chave fina — descrição+fornecedor (chaveAgrupamento) + valor exato. Ver
  * comentário do topo do arquivo pra por que o valor entra aqui. */
 function chaveComValor(descricao: string, fornecedor: string | null | undefined, valor: number): string {
   return `${chaveAgrupamento(descricao, fornecedor)}|${valor.toFixed(2)}`;
 }
 
-async function construirIndice(tenantId: string): Promise<Map<string, Map<string, number>>> {
+function uhDoComposto(composto: string): string | null {
+  const uhId = composto.split("|")[2];
+  return uhId || null;
+}
+
+/** Escolhe um candidato dentro de `votos`, EXCLUINDO qualquer UH que já
+ * esteja em `usadosNoMes` (regra "um imóvel não recebe 2 pagamentos no
+ * mesmo mês", ver comentário do topo). Maioria clara (>= MIN_CONFIANCA)
+ * entre os candidatos restantes aplica direto; senão sorteia ponderado
+ * pelos votos restantes. `null` quando não sobra nenhum candidato
+ * disponível (todos já reservados esse mês). */
+function escolherCandidato(votos: Map<string, number>, usadosNoMes: Set<string>, semente: number): { composto: string; confianca: number; origem: "maioria" | "sorteio" } | null {
+  const disponiveis = [...votos.entries()].filter(([composto]) => {
+    const uhId = uhDoComposto(composto);
+    return !uhId || !usadosNoMes.has(uhId);
+  });
+  if (disponiveis.length === 0) return null;
+
+  const total = disponiveis.reduce((soma, [, n]) => soma + n, 0);
+  const ordenado = disponiveis.sort((a, b) => b[1] - a[1]);
+  const [composto, vencedores] = ordenado[0];
+  const confiancaMaioria = Math.round((vencedores / total) * 100);
+  if (confiancaMaioria >= MIN_CONFIANCA) {
+    return { composto, confianca: confiancaMaioria, origem: "maioria" };
+  }
+
+  let acumulado = 0;
+  for (const [composto2, n] of ordenado) {
+    acumulado += n / total;
+    if (semente < acumulado) return { composto: composto2, confianca: Math.round((n / total) * 100), origem: "sorteio" };
+  }
+  const [ultimoComposto, ultimoN] = ordenado[ordenado.length - 1]; // proteção contra erro de arredondamento de ponto flutuante
+  return { composto: ultimoComposto, confianca: Math.round((ultimoN / total) * 100), origem: "sorteio" };
+}
+
+async function construirIndice(tenantId: string): Promise<{ porGrupo: Map<string, Map<string, number>>; usadoNoMesGravado: Map<string, Set<string>> }> {
   const historico = await prisma.financeLancamento.findMany({
     where: { tenantId, centroCustoTipo: { not: "ADMINISTRACAO" } },
-    select: { descricao: true, fornecedor: true, valor: true, centroCustoTipo: true, propertyId: true, uhId: true },
+    select: { descricao: true, fornecedor: true, valor: true, centroCustoTipo: true, propertyId: true, uhId: true, dataVencimento: true, dataCompetencia: true },
     orderBy: { createdAt: "desc" },
     take: MAX_HISTORICO,
   });
 
   // chave (grupo de descrição+valor) -> votos por combinação "centroCustoTipo|propertyId|uhId"
   const porGrupo = new Map<string, Map<string, number>>();
+  // mês (YYYY-MM) -> UHs que JÁ têm um lançamento gravado nesse mês — usado
+  // pra nunca sugerir o mesmo imóvel 2x no mesmo mês (ver comentário do topo).
+  const usadoNoMesGravado = new Map<string, Set<string>>();
+
   for (const h of historico) {
     const chave = chaveComValor(h.descricao, h.fornecedor, Number(h.valor));
     const composto = `${h.centroCustoTipo}|${h.propertyId ?? ""}|${h.uhId ?? ""}`;
@@ -109,51 +148,56 @@ async function construirIndice(tenantId: string): Promise<Map<string, Map<string
       porGrupo.set(chave, votos);
     }
     votos.set(composto, (votos.get(composto) ?? 0) + 1);
+
+    if (h.centroCustoTipo === "UNIDADE" && h.uhId) {
+      const mes = (h.dataCompetencia || h.dataVencimento).slice(0, 7);
+      if (!usadoNoMesGravado.has(mes)) usadoNoMesGravado.set(mes, new Set());
+      usadoNoMesGravado.get(mes)!.add(h.uhId);
+    }
   }
-  return porGrupo;
+
+  return { porGrupo, usadoNoMesGravado };
 }
 
 /** Versão em lote (mesmo padrão de sugerirCategoriasEmLote/
  * sugerirRecorrenciaEmLote): constrói o índice do histórico UMA vez só e
- * sugere pra vários lançamentos de uma vez. Só entra no Map resultado quem
- * teve pelo menos um grupo conhecido — com maioria clara (>= MIN_CONFIANCA)
- * ou, na falta dela, por sorteio ponderado entre os empatados (ver
- * sortearEntreEmpatados). */
+ * sugere pra vários lançamentos de uma vez. Processa em ordem
+ * DETERMINÍSTICA (por id, não pela ordem de chegada de `itens`) reservando
+ * o imóvel escolhido pro mês daquele item, pra nunca sugerir o mesmo imóvel
+ * 2x no mesmo mês dentro do lote — ver comentário do topo. Só entra no Map
+ * resultado quem teve pelo menos um candidato AINDA DISPONÍVEL nesse mês. */
 export async function sugerirCentroCustoEmLote(
   tenantId: string,
-  itens: { id: string; descricao: string; fornecedor?: string | null; valor: number }[]
+  itens: { id: string; descricao: string; fornecedor?: string | null; valor: number; mes: string }[]
 ): Promise<Map<string, SugestaoCentroCusto>> {
   const resultado = new Map<string, SugestaoCentroCusto>();
   if (itens.length === 0) return resultado;
 
-  const indice = await construirIndice(tenantId);
+  const { porGrupo, usadoNoMesGravado } = await construirIndice(tenantId);
+  const usadoPorMes = new Map<string, Set<string>>();
+  for (const [mes, set] of usadoNoMesGravado) usadoPorMes.set(mes, new Set(set));
 
-  for (const item of itens) {
+  const ordenados = [...itens].sort((a, b) => a.id.localeCompare(b.id));
+
+  for (const item of ordenados) {
     const chave = chaveComValor(item.descricao, item.fornecedor, item.valor);
-    const votos = indice.get(chave);
+    const votos = porGrupo.get(chave);
     if (!votos || votos.size === 0) continue;
 
-    const total = [...votos.values()].reduce((a, b) => a + b, 0);
-    const ordenado = [...votos.entries()].sort((a, b) => b[1] - a[1]);
-    const [composto, vencedores] = ordenado[0];
-    const confiancaMaioria = Math.round((vencedores / total) * 100);
+    const usadosNoMes = usadoPorMes.get(item.mes) ?? new Set<string>();
+    const semente = hashDeterministico01(item.id);
+    const escolha = escolherCandidato(votos, usadosNoMes, semente);
+    if (!escolha) continue; // todos os candidatos já reservados esse mês — sem sugestão, não arrisca
 
-    let composto2: string;
-    let n: number;
-    let origem: "maioria" | "sorteio";
-    if (confiancaMaioria >= MIN_CONFIANCA) {
-      [composto2, n] = [composto, vencedores];
-      origem = "maioria";
-    } else {
-      const semente = hashDeterministico01(item.id);
-      [composto2, n] = sortearEntreEmpatados(votos, total, semente);
-      origem = "sorteio";
-    }
-
-    const [centroCustoTipo, propertyId, uhId] = composto2.split("|");
+    const [centroCustoTipo, propertyId, uhId] = escolha.composto.split("|");
     if (centroCustoTipo !== "EMPREENDIMENTO" && centroCustoTipo !== "UNIDADE") continue;
 
-    resultado.set(item.id, { centroCustoTipo, propertyId: propertyId || null, uhId: uhId || null, confianca: Math.round((n / total) * 100), origem });
+    resultado.set(item.id, { centroCustoTipo, propertyId: propertyId || null, uhId: uhId || null, confianca: escolha.confianca, origem: escolha.origem });
+
+    if (centroCustoTipo === "UNIDADE" && uhId) {
+      if (!usadoPorMes.has(item.mes)) usadoPorMes.set(item.mes, new Set());
+      usadoPorMes.get(item.mes)!.add(uhId);
+    }
   }
 
   return resultado;

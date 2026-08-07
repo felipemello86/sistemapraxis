@@ -215,7 +215,17 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
   // sugestão.
   const semCentroCusto = pendentes
     .filter((p) => p.centroCustoTipo === "ADMINISTRACAO" && !p.propertyId && !p.uhId)
-    .map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor, valor: Number(p.valor) }));
+    .map((p) => ({
+      id: p.id,
+      descricao: p.descricao,
+      fornecedor: p.fornecedor,
+      valor: Number(p.valor),
+      // Mês de competência do lançamento — usado pra nunca sugerir o
+      // mesmo imóvel 2x no mesmo mês (pedido do Felipe, 06/08/2026: "a
+      // 'regra' é q um mesmo imóvel n deve ter dois pagamentos no mesmo
+      // mês"), ver sugestao-centro-custo.ts.
+      mes: (p.dataCompetencia || p.dataVencimento).slice(0, 7),
+    }));
   const sugestoesCentroCusto = await sugerirCentroCustoEmLote(tenantId, semCentroCusto);
 
   return pendentes.map((real) => {
