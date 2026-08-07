@@ -245,11 +245,33 @@ function tokensDeConsulta(descricao: string, fornecedor?: string | null, payeeMc
 
 /** RECEITA se valor > 0, DESPESA se valor < 0, `null` se exatamente zero
  * (caso raro — não filtra por tipo nesse caso). Ver nota de correção no
- * topo do arquivo. */
-function tipoEsperadoPorValor(valor: number): string | null {
+ * topo do arquivo. Exportada porque também é usada pra VALIDAR (não só
+ * sugerir) — ver validarCategoriaTipo abaixo. */
+export function tipoEsperadoPorValor(valor: number): string | null {
   if (valor > 0) return "RECEITA";
   if (valor < 0) return "DESPESA";
   return null;
+}
+
+// VALIDAÇÃO EM TEMPO DE ESCRITA (pedido do Felipe, 07/08/2026, depois de ver
+// a sugestão errada: "O sistema n deve nem permitir categorias de receitas
+// associadas a despesas e vice versa") — até aqui só a SUGESTÃO tinha sido
+// corrigida pra nunca PROPOR o tipo errado; isso não impede alguém de gravar
+// a combinação errada por outro caminho (API chamada direto, um seletor de
+// categoria em alguma tela que esqueça de filtrar por tipo, etc.). Esta
+// função é chamada em TODO ponto que grava categoriaId+valor juntos —
+// api/lancamentos (POST/PATCH), api/lancamentos/categorizar-lote e
+// criarEConciliar (conciliacao.ts) — como última linha de defesa
+// server-side, independente do que a UI já filtra.
+/** Lança erro se `categoria.tipo` não bater com o sinal de `valor`. Não faz
+ * nada se `categoria` for null/undefined (sem categoria, nada a validar) ou
+ * se `valor` for exatamente zero (não dá pra inferir tipo esperado). */
+export function validarCategoriaTipo(categoria: { nome: string; tipo: string } | null | undefined, valor: number): void {
+  if (!categoria) return;
+  const esperado = tipoEsperadoPorValor(valor);
+  if (!esperado || categoria.tipo === esperado) return;
+  const rotulo = (t: string) => (t === "RECEITA" ? "Receita" : "Despesa");
+  throw new Error(`Categoria "${categoria.nome}" é de ${rotulo(categoria.tipo)}, mas o valor do lançamento é ${valor > 0 ? "positivo" : "negativo"} (${rotulo(esperado)}) — categorias de ${rotulo(categoria.tipo)} só podem ser usadas em lançamentos de ${rotulo(categoria.tipo)}.`);
 }
 
 /** Sugere uma categoria pra UM texto novo (descrição + fornecedor +

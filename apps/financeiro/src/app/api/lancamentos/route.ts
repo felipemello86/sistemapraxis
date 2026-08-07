@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hasModuleAccess, prisma, limitesDoMes, somarMeses, dataAtualSP, calcularStatusLancamento } from "@praxis/core";
+import { getSession, hasModuleAccess, prisma, limitesDoMes, somarMeses, dataAtualSP, calcularStatusLancamento, validarCategoriaTipo } from "@praxis/core";
 import { randomUUID } from "crypto";
 
 // CRUD manual de lançamentos (requisito 8 do TaskList / DRE viva). Cobre os
@@ -218,6 +218,19 @@ export async function POST(req: NextRequest) {
   if (!centroCusto.ok) return NextResponse.json({ error: centroCusto.error }, { status: centroCusto.error.includes("não encontrad") ? 404 : 400 });
 
   const sinal = tipo === "DESPESA" ? -1 : 1;
+
+  // Categoria de Receita não pode ir num lançamento de Despesa (nem
+  // vice-versa) — pedido do Felipe, 07/08/2026: "O sistema n deve nem
+  // permitir categorias de receitas associadas a despesas e vice versa".
+  if (categoriaId) {
+    const categoria = await prisma.financeCategoria.findUnique({ where: { id: categoriaId } });
+    if (!categoria || categoria.tenantId !== session.tenantId) return NextResponse.json({ error: "Categoria não encontrada" }, { status: 404 });
+    try {
+      validarCategoriaTipo(categoria, sinal * valor);
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+  }
   const dadosBase = {
     tenantId: session.tenantId,
     categoriaId: categoriaId || null,
@@ -313,6 +326,25 @@ export async function PATCH(req: NextRequest) {
     const sinalAtual = Number(existente.valor) < 0 ? -1 : 1;
     const sinal = tipo === "RECEITA" ? 1 : tipo === "DESPESA" ? -1 : sinalAtual;
     novoValor = sinal * Math.abs(Number(valor));
+  }
+
+  // Categoria de Receita não pode ir num lançamento de Despesa (nem
+  // vice-versa) — pedido do Felipe, 07/08/2026: "O sistema n deve nem
+  // permitir categorias de receitas associadas a despesas e vice versa". Só
+  // revalida quando a categoria OU o valor mudou nesse PATCH (evita query
+  // extra em todo PATCH irrelevante, ex.: só marcar "pago").
+  if (categoriaId !== undefined || novoValor !== undefined) {
+    const categoriaIdFinal = categoriaId !== undefined ? categoriaId || null : existente.categoriaId;
+    const valorFinal = novoValor !== undefined ? novoValor : Number(existente.valor);
+    if (categoriaIdFinal) {
+      const categoria = await prisma.financeCategoria.findUnique({ where: { id: categoriaIdFinal } });
+      if (!categoria || categoria.tenantId !== session.tenantId) return NextResponse.json({ error: "Categoria não encontrada" }, { status: 404 });
+      try {
+        validarCategoriaTipo(categoria, valorFinal);
+      } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 400 });
+      }
+    }
   }
 
   try {

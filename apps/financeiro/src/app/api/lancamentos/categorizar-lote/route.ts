@@ -25,14 +25,25 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Categoria não encontrada" }, { status: 404 });
   }
 
-  const { count } = await prisma.financeLancamento.updateMany({
-    where: {
-      tenantId: session.tenantId,
-      categoriaId: null,
-      ...(tipo === "fornecedor" ? { fornecedor: chave } : { descricao: chave }),
-    },
-    data: { categoriaId },
-  });
+  // Categoria de Receita não pode ir num lançamento de Despesa (nem
+  // vice-versa) — pedido do Felipe, 07/08/2026: "O sistema n deve nem
+  // permitir categorias de receitas associadas a despesas e vice versa".
+  // Um grupo (mesmo fornecedor/descrição) normalmente tem o MESMO sinal em
+  // todas as ocorrências, mas não é garantido — o filtro de valor abaixo só
+  // aplica a categoria aos lançamentos do grupo cujo sinal bate com o tipo
+  // da categoria escolhida; o resto fica de fora (reportado em `ignorados`),
+  // nunca é forçado pra um tipo errado.
+  const filtroValor = categoria.tipo === "RECEITA" ? { gt: 0 } : { lt: 0 };
+  const baseWhere = {
+    tenantId: session.tenantId,
+    categoriaId: null,
+    ...(tipo === "fornecedor" ? { fornecedor: chave } : { descricao: chave }),
+  };
 
-  return NextResponse.json({ atualizados: count });
+  const [{ count }, ignorados] = await Promise.all([
+    prisma.financeLancamento.updateMany({ where: { ...baseWhere, valor: filtroValor }, data: { categoriaId } }),
+    prisma.financeLancamento.count({ where: { ...baseWhere, NOT: { valor: filtroValor } } }),
+  ]);
+
+  return NextResponse.json({ atualizados: count, ignorados });
 }

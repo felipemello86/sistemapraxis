@@ -11,7 +11,7 @@ import { prisma } from "../prisma";
 import { Prisma } from "../../generated";
 import { limitesDoMes, projetarDataNoMes, ocorreNoMes, calcularFimRecorrencia } from "./mes";
 import { tokensSignificativos } from "./texto";
-import { sugerirCategoriasEmLote, type SugestaoCategoria } from "./sugestao-categoria";
+import { sugerirCategoriasEmLote, validarCategoriaTipo, type SugestaoCategoria } from "./sugestao-categoria";
 import { sugerirRecorrenciaEmLote, type SugestaoRecorrencia } from "./sugestao-recorrencia";
 import { sugerirCentroCustoEmLote, type SugestaoCentroCusto } from "./sugestao-centro-custo";
 
@@ -397,6 +397,12 @@ export async function criarEConciliar(tenantId: string, lancamentoRealId: string
     if (!mesmoSinal) throw new Error("valorParcela precisa ter o mesmo sinal do lançamento real (despesa continua negativa, receita continua positiva)");
     valorFinal = new Prisma.Decimal(dados.valorParcela);
   }
+
+  // Categoria de Receita não pode ir num lançamento de Despesa (nem
+  // vice-versa) — pedido do Felipe, 07/08/2026: "O sistema n deve nem
+  // permitir categorias de receitas associadas a despesas e vice versa".
+  // Ver validarCategoriaTipo em sugestao-categoria.ts.
+  validarCategoriaTipo(categoria, Number(valorFinal));
 
   const previsto = await prisma.financeLancamento.create({
     data: {

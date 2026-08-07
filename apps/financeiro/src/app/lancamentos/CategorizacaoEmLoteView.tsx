@@ -23,6 +23,7 @@ export function CategorizacaoEmLoteView({ onVoltar }: { onVoltar: () => void }) 
   const [totalPendentes, setTotalPendentes] = useState(0);
   const [loading, setLoading] = useState(true);
   const [aplicando, setAplicando] = useState<string | null>(null);
+  const [aviso, setAviso] = useState("");
 
   async function carregar() {
     setLoading(true);
@@ -43,6 +44,7 @@ export function CategorizacaoEmLoteView({ onVoltar }: { onVoltar: () => void }) 
   async function aplicarCategoria(grupo: Grupo, categoriaId: string) {
     const id = `${grupo.tipo}:${grupo.chave}`;
     setAplicando(id);
+    setAviso("");
     try {
       const res = await apiFetch("/api/lancamentos/categorizar-lote", {
         method: "PATCH",
@@ -50,8 +52,22 @@ export function CategorizacaoEmLoteView({ onVoltar }: { onVoltar: () => void }) 
         body: JSON.stringify({ tipo: grupo.tipo, chave: grupo.chave, categoriaId }),
       });
       if (res.ok) {
-        setTotalPendentes((n) => n - grupo.quantidade);
-        setGrupos((prev) => prev.filter((g) => `${g.tipo}:${g.chave}` !== id));
+        const { atualizados, ignorados } = await res.json();
+        // `ignorados` (pedido do Felipe, 07/08/2026: "O sistema n deve nem
+        // permitir categorias de receitas associadas a despesas e vice
+        // versa") — o grupo tinha lançamentos de sinal OPOSTO ao da
+        // categoria escolhida (raro: mesmo fornecedor/descrição com receita
+        // E despesa), e o backend não forçou o tipo errado neles. Recarrega
+        // a lista inteira nesse caso (o grupo continua pendente, com
+        // quantidade/total recalculados certos) em vez de só remover da
+        // tela local — mais seguro que tentar recalcular isso no cliente.
+        if (ignorados > 0) {
+          setAviso(`${ignorados} lançamento${ignorados !== 1 ? "s" : ""} de "${grupo.chave}" tinha${ignorados !== 1 ? "m" : ""} sinal oposto ao da categoria escolhida e não ${ignorados !== 1 ? "foram" : "foi"} tocado${ignorados !== 1 ? "s" : ""} — ainda pendente${ignorados !== 1 ? "s" : ""} na lista.`);
+          await carregar();
+        } else {
+          setTotalPendentes((n) => n - atualizados);
+          setGrupos((prev) => prev.filter((g) => `${g.tipo}:${g.chave}` !== id));
+        }
       }
     } finally {
       setAplicando(null);
@@ -73,6 +89,8 @@ export function CategorizacaoEmLoteView({ onVoltar }: { onVoltar: () => void }) 
       <p className="text-sm text-gray-500">
         Agrupado por fornecedor — categoriza todos os lançamentos do grupo de uma vez. Só mexe em quem ainda está sem categoria.
       </p>
+
+      {aviso && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">{aviso}</p>}
 
       {loading ? (
         <p className="text-gray-400 text-sm">Carregando...</p>
