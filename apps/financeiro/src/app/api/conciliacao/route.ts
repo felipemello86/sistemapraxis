@@ -21,6 +21,12 @@ import {
 // GET /api/conciliacao?mes=YYYY-MM (opcional) — lista em lote todos os
 // lançamentos PLUGGY ainda pendentes de conciliação, cada um já com sua(s)
 // sugestão(ões) (usado pela tela /conciliacoes).
+// GET /api/conciliacao?dataInicio=YYYY-MM-DD&dataFim=YYYY-MM-DD — mesma
+// listagem, mas por um range explícito de Data de Vencimento em vez de um
+// mês inteiro (pedido do Felipe, 07/08/2026: "inclua as mesmas alternativas
+// de filtros de período que temos em Lançamentos" — Ano/Dia/Período
+// específico, ver LancamentosView.tsx/api/lancamentos/route.ts). Tem
+// prioridade sobre `mes` se os dois vierem juntos.
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -31,10 +37,20 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const lancamentoId = searchParams.get("lancamentoId");
   const mes = searchParams.get("mes");
+  const dataInicio = searchParams.get("dataInicio");
+  const dataFim = searchParams.get("dataFim");
 
   if (lancamentoId) {
     const sugestoes = await sugerirConciliacao(session.tenantId, lancamentoId);
     return NextResponse.json({ sugestoes });
+  }
+
+  if (dataInicio || dataFim) {
+    if (!dataInicio || !dataFim || !/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+      return NextResponse.json({ error: "dataInicio e dataFim são obrigatórios juntos (esperado YYYY-MM-DD)" }, { status: 400 });
+    }
+    const pendentes = await listarPendentesDeConciliacao(session.tenantId, { inicio: dataInicio, fim: dataFim });
+    return NextResponse.json(pendentes);
   }
 
   if (mes && !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {

@@ -142,10 +142,14 @@ export async function sugerirConciliacao(tenantId: string, lancamentoId: string)
 
 /** Todos os lançamentos PLUGGY ainda não conciliados (nem por match
  * específico, nem marcados diverso) — usado pela tela /conciliacoes.
- * `mes` opcional filtra pelo mês de competência. Cada item já vem com a
- * lista de sugestões (a melhor primeiro). */
-export async function listarPendentesDeConciliacao(tenantId: string, mes?: string) {
-  const filtroMes = mes ? limitesDoMes(mes) : null;
+ * `periodo` opcional filtra por Data de Vencimento: uma string "YYYY-MM"
+ * (mês inteiro, formato legado) ou um range explícito `{ inicio, fim }`
+ * (pedido do Felipe, 07/08/2026: "inclua as mesmas alternativas de filtros
+ * de período que temos em Lançamentos" — Ano/Dia/Período específico, ver
+ * LancamentosView.tsx). Cada item já vem com a lista de sugestões (a melhor
+ * primeiro). */
+export async function listarPendentesDeConciliacao(tenantId: string, periodo?: string | { inicio: string; fim: string }) {
+  const filtroMes = !periodo ? null : typeof periodo === "string" ? limitesDoMes(periodo) : periodo;
 
   const pendentes = await prisma.financeLancamento.findMany({
     where: {

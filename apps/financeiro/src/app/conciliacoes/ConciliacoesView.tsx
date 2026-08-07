@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Link2, Loader2, ArrowUp, ArrowDown, Search } from "lucide-react";
+import { Link2, Loader2, ArrowUp, ArrowDown, Search, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
@@ -40,6 +40,23 @@ function normalizarTextoLocal(s: string | null | undefined): string {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
+}
+
+// Filtro de período (pedido do Felipe, 07/08/2026: "inclua as mesmas
+// alternativas de filtros de período que temos em Lançamentos") — mesmo
+// padrão de LancamentosView.tsx: "Mensal" (SeletorMes compartilhado) ou
+// "Período específico" (Ano/Dia/Período). Cópia local de limitesDoMes por
+// causa da mesma restrição de "use client" documentada acima
+// (normalizarTextoLocal) — não pode importar VALOR de @praxis/core aqui.
+const hojeISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+type PeriodoModo = "mensal" | "especifico";
+type PeriodoEspecificoTipo = "ano" | "dia" | "range";
+
+function limitesDoMesLocal(mes: string): { inicio: string; fim: string } {
+  const [ano, m] = mes.split("-").map(Number);
+  const ultimoDia = new Date(ano, m, 0).getDate();
+  return { inicio: `${mes}-01`, fim: `${mes}-${String(ultimoDia).padStart(2, "0")}` };
 }
 
 export interface PropostaLote {
@@ -238,7 +255,13 @@ function ColunaFiltro({
 }
 
 export function ConciliacoesView() {
-  const [mes, setMes] = useState(() => new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7));
+  const [mes, setMes] = useState(() => hojeISO.slice(0, 7));
+  const [periodoModo, setPeriodoModo] = useState<PeriodoModo>("mensal");
+  const [periodoEspecificoTipo, setPeriodoEspecificoTipo] = useState<PeriodoEspecificoTipo>("ano");
+  const [ano, setAno] = useState(String(Number(hojeISO.slice(0, 4))));
+  const [diaEspecifico, setDiaEspecifico] = useState(hojeISO);
+  const [rangeInicio, setRangeInicio] = useState(hojeISO);
+  const [rangeFim, setRangeFim] = useState(hojeISO);
   const [pendentes, setPendentes] = useState<ItemPendente[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [empreendimentos, setEmpreendimentos] = useState<Empreendimento[]>([]);
@@ -267,11 +290,26 @@ export function ConciliacoesView() {
     }
   }
 
+  const anosDisponiveis = useMemo(() => {
+    const atual = Number(hojeISO.slice(0, 4));
+    const anos: number[] = [];
+    for (let a = atual + 5; a >= atual - 15; a--) anos.push(a);
+    return anos;
+  }, []);
+
+  function periodoAtual(): { inicio: string; fim: string } {
+    if (periodoModo === "mensal") return limitesDoMesLocal(mes);
+    if (periodoEspecificoTipo === "ano") return { inicio: `${ano}-01-01`, fim: `${ano}-12-31` };
+    if (periodoEspecificoTipo === "dia") return { inicio: diaEspecifico, fim: diaEspecifico };
+    return { inicio: rangeInicio, fim: rangeFim };
+  }
+
   async function carregar() {
     setLoading(true);
     setResultado("");
+    const { inicio, fim } = periodoAtual();
     const [resP, resC, resE, resU, resCt] = await Promise.all([
-      apiFetch(`/api/conciliacao?mes=${mes}`),
+      apiFetch(`/api/conciliacao?dataInicio=${inicio}&dataFim=${fim}`),
       apiFetch("/api/categorias"),
       apiFetch("/api/empreendimentos"),
       apiFetch("/api/unidades"),
@@ -294,7 +332,7 @@ export function ConciliacoesView() {
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mes]);
+  }, [periodoModo, periodoEspecificoTipo, mes, ano, diaEspecifico, rangeInicio, rangeFim]);
 
   function atualizarProposta(lancamentoId: string, updates: Partial<PropostaLote>) {
     setPropostas((prev) => {
@@ -457,8 +495,70 @@ export function ConciliacoesView() {
           <h1 className="text-lg font-bold text-gray-900">Conciliações</h1>
           <p className="text-xs text-gray-400">{loading ? "Carregando..." : `${pendentes.length} lançamento${pendentes.length !== 1 ? "s" : ""} pendente${pendentes.length !== 1 ? "s" : ""} de conciliação`}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <SeletorMes mes={mes} onChange={setMes} />
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Filtro de período (pedido do Felipe, 07/08/2026: "inclua as
+              mesmas alternativas de filtros de período que temos em
+              Lançamentos") — mesmo toggle Mensal/Período específico de
+              LancamentosView.tsx. */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setPeriodoModo("mensal")}
+              className={`text-xs font-medium px-2.5 py-1.5 rounded-md ${periodoModo === "mensal" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              Mensal
+            </button>
+            <button
+              onClick={() => setPeriodoModo("especifico")}
+              className={`text-xs font-medium px-2.5 py-1.5 rounded-md ${periodoModo === "especifico" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              Período específico
+            </button>
+          </div>
+
+          {periodoModo === "mensal" ? (
+            <SeletorMes mes={mes} onChange={setMes} />
+          ) : (
+            <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-2 py-1">
+              <div className="flex gap-1">
+                {(
+                  [
+                    ["ano", "Ano"],
+                    ["dia", "Dia"],
+                    ["range", "Período"],
+                  ] as const
+                ).map(([tipo, rotulo]) => (
+                  <button
+                    key={tipo}
+                    onClick={() => setPeriodoEspecificoTipo(tipo)}
+                    className={`text-xs py-1 px-2 rounded ${periodoEspecificoTipo === tipo ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"}`}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+
+              {periodoEspecificoTipo === "ano" && (
+                <select className="input text-xs py-1 w-24" value={ano} onChange={(e) => setAno(e.target.value)}>
+                  {anosDisponiveis.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {periodoEspecificoTipo === "range" && (
+                <div className="flex items-center gap-1.5">
+                  <input type="date" className="input text-xs py-1" value={rangeInicio} onChange={(e) => setRangeInicio(e.target.value)} />
+                  <span className="text-gray-400 text-xs">até</span>
+                  <input type="date" className="input text-xs py-1" value={rangeFim} onChange={(e) => setRangeFim(e.target.value)} />
+                </div>
+              )}
+
+              {periodoEspecificoTipo === "dia" && <input type="date" className="input text-xs py-1" value={diaEspecifico} onChange={(e) => setDiaEspecifico(e.target.value)} />}
+            </div>
+          )}
+
           <button
             onClick={conciliarSelecionados}
             disabled={selecionados.length === 0 || conciliandoLote}
@@ -535,13 +635,27 @@ export function ConciliacoesView() {
                       }}
                     />
                     <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56 normal-case font-normal" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        autoFocus
-                        className="input text-xs py-1.5"
-                        placeholder="Buscar descrição..."
-                        value={filtroDescricao}
-                        onChange={(e) => setFiltroDescricao(e.target.value)}
-                      />
+                      <div className="relative">
+                        <input
+                          autoFocus
+                          className="input text-xs py-1.5 pr-6"
+                          placeholder="Buscar descrição..."
+                          value={filtroDescricao}
+                          onChange={(e) => setFiltroDescricao(e.target.value)}
+                        />
+                        {/* 'x' pra limpar de vez o filtro digitado (pedido
+                            do Felipe, 07/08/2026) */}
+                        {filtroDescricao && (
+                          <button
+                            type="button"
+                            onClick={() => setFiltroDescricao("")}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                            aria-label="Limpar filtro de descrição"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </>
                 )}
