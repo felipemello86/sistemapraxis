@@ -22,6 +22,21 @@
 // (mesmas 3 palavras). A normalização por cosseno resolve isso: o placar
 // não é mais "soma bruta de pontos entre todos os históricos parecidos",
 // e sim "o quão parecido é o histórico mais parecido, individualmente".
+//
+// CORREÇÃO (Felipe reportou, 07/08/2026, vendo um "erivelton lucena santos
+// DEBITO TRANSF PIX" de -R$1.661,00 sugerido com a categoria "Reserva
+// Direta", que é RECEITA: "como é q um pagamento pode estar associado a uma
+// Categoria de Receita? (...) a melhor forma é dividir as categorias entre
+// Receitas e Despesas") — FinanceCategoria.tipo já existe e já é validado
+// no CRUD manual (ver resolverCentroCusto/tipo em api/lancamentos), mas o
+// vizinho-mais-próximo aqui buscava por PARECENÇA DE TEXTO pura, sem checar
+// se o tipo da categoria do vizinho batia com o sinal do valor sendo
+// categorizado — só coincidência de texto pode, em casos raros, aproximar
+// mais um exemplo de RECEITA de uma descrição de DESPESA nova (ou
+// vice-versa). Agora todo exemplo do índice carrega o `tipo` da sua
+// categoria, e a busca de vizinhos SÓ considera exemplos com o MESMO tipo
+// esperado pro valor sendo categorizado (RECEITA se valor > 0, DESPESA se
+// valor < 0) — nunca mistura os dois espaços.
 
 import { prisma } from "../prisma";
 import { normalizarTexto, tokensSignificativos } from "./texto";
@@ -34,6 +49,7 @@ export interface SugestaoCategoria {
 interface GrupoHistorico {
   tokens: string[];
   categoriaId: string;
+  tipo: string; // RECEITA | DESPESA — herdado da categoria (ver nota de correção acima)
   norma: number; // sqrt(soma dos idf^2 dos tokens) — pra normalizar o cosseno
 }
 
@@ -79,7 +95,15 @@ function tokenMerchantCategoria(cat: string): string {
 async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
   const historico = await prisma.financeLancamento.findMany({
     where: { tenantId, categoriaId: { not: null } },
-    select: { descricao: true, fornecedor: true, categoriaId: true, pluggyPayeeMcc: true, pluggyCategoria: true, pluggyMerchantCategoria: true },
+    select: {
+      descricao: true,
+      fornecedor: true,
+      categoriaId: true,
+      pluggyPayeeMcc: true,
+      pluggyCategoria: true,
+      pluggyMerchantCategoria: true,
+      categoria: { select: { tipo: true } }, // ver nota de correção acima — precisa pra nunca sugerir RECEITA pra um valor de DESPESA (ou vice-versa)
+    },
     orderBy: { createdAt: "desc" },
     take: MAX_HISTORICO,
   });
@@ -102,8 +126,14 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
       merchantCatVotos: Map<string, number>;
     }
   >();
+  // categoriaId -> tipo (RECEITA|DESPESA) — cada categoria só tem UM tipo
+  // fixo, então basta guardar o primeiro que aparecer (ver nota de correção
+  // acima).
+  const tipoPorCategoria = new Map<string, string>();
+
   for (const h of historico) {
     if (!h.categoriaId) continue;
+    if (h.categoria && !tipoPorCategoria.has(h.categoriaId)) tipoPorCategoria.set(h.categoriaId, h.categoria.tipo);
     // normalizarTexto (não trim()+toLowerCase() puro) é essencial aqui: os
     // extratos importados vêm com espaçamento interno inconsistente entre
     // ocorrências da MESMA descrição (largura fixa de statement bancário).
@@ -123,17 +153,19 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
     return votos.size > 0 ? [...votos.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
   }
 
-  const exemplos = [...porDescricao.values()].map((grupo) => {
-    const categoriaMaisVotada = maisVotado(grupo.votos)!;
-    const mccMaisVotado = maisVotado(grupo.mccVotos);
-    const pluggyCatMaisVotada = maisVotado(grupo.pluggyCatVotos);
-    const merchantCatMaisVotada = maisVotado(grupo.merchantCatVotos);
-    const tokens = tokensSignificativos(`${grupo.descricao} ${grupo.fornecedor ?? ""}`);
-    if (mccMaisVotado != null) tokens.push(tokenMcc(mccMaisVotado));
-    if (pluggyCatMaisVotada) tokens.push(tokenPluggyCategoria(pluggyCatMaisVotada));
-    if (merchantCatMaisVotada) tokens.push(tokenMerchantCategoria(merchantCatMaisVotada));
-    return { tokens: [...new Set(tokens)], categoriaId: categoriaMaisVotada };
-  });
+  const exemplos = [...porDescricao.values()]
+    .map((grupo) => {
+      const categoriaMaisVotada = maisVotado(grupo.votos)!;
+      const mccMaisVotado = maisVotado(grupo.mccVotos);
+      const pluggyCatMaisVotada = maisVotado(grupo.pluggyCatVotos);
+      const merchantCatMaisVotada = maisVotado(grupo.merchantCatVotos);
+      const tokens = tokensSignificativos(`${grupo.descricao} ${grupo.fornecedor ?? ""}`);
+      if (mccMaisVotado != null) tokens.push(tokenMcc(mccMaisVotado));
+      if (pluggyCatMaisVotada) tokens.push(tokenPluggyCategoria(pluggyCatMaisVotada));
+      if (merchantCatMaisVotada) tokens.push(tokenMerchantCategoria(merchantCatMaisVotada));
+      return { tokens: [...new Set(tokens)], categoriaId: categoriaMaisVotada, tipo: tipoPorCategoria.get(categoriaMaisVotada) ?? null };
+    })
+    .filter((ex): ex is typeof ex & { tipo: string } => ex.tipo != null); // categoria pode ter sido excluída/renomeada desde então — sem tipo confiável, não entra no índice
 
   // document frequency: em quantas descrições DISTINTAS do histórico cada
   // palavra aparece — quanto mais espalhada entre comerciantes diferentes,
@@ -149,6 +181,7 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
   const grupos: GrupoHistorico[] = exemplos.map((ex) => ({
     tokens: ex.tokens,
     categoriaId: ex.categoriaId,
+    tipo: ex.tipo,
     norma: Math.sqrt(ex.tokens.reduce((soma, t) => soma + (idf.get(t) ?? 0) ** 2, 0)),
   }));
 
@@ -160,8 +193,12 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
  * escolhe a categoria por votação ponderada entre os melhores vizinhos —
  * pondera tanto "o quão parecido foi o melhor vizinho" (cosseno absoluto)
  * quanto "o quão os vizinhos concordaram entre si" (participação da
- * categoria vencedora na soma total). */
-function sugerirPorVizinhoMaisProximo(indice: IndiceCategorias, tokensQuery: string[]): SugestaoCategoria | null {
+ * categoria vencedora na soma total). `tipoEsperado` (ver nota de correção
+ * no topo do arquivo) restringe a busca a exemplos da MESMA natureza
+ * (RECEITA|DESPESA) do valor sendo categorizado — nunca sugere uma
+ * categoria de Receita pra uma despesa, nem vice-versa. `null` (valor
+ * exatamente zero, caso raro) não filtra por tipo. */
+function sugerirPorVizinhoMaisProximo(indice: IndiceCategorias, tokensQuery: string[], tipoEsperado: string | null): SugestaoCategoria | null {
   if (tokensQuery.length === 0 || indice.grupos.length === 0) return null;
 
   const querySet = new Set(tokensQuery);
@@ -172,6 +209,7 @@ function sugerirPorVizinhoMaisProximo(indice: IndiceCategorias, tokensQuery: str
   const pontosPorCategoria = new Map<string, number>();
 
   for (const grupo of indice.grupos) {
+    if (tipoEsperado && grupo.tipo !== tipoEsperado) continue;
     if (grupo.norma === 0) continue;
     let produtoInterno = 0;
     for (const t of grupo.tokens) {
@@ -205,22 +243,34 @@ function tokensDeConsulta(descricao: string, fornecedor?: string | null, payeeMc
   return tokens;
 }
 
+/** RECEITA se valor > 0, DESPESA se valor < 0, `null` se exatamente zero
+ * (caso raro — não filtra por tipo nesse caso). Ver nota de correção no
+ * topo do arquivo. */
+function tipoEsperadoPorValor(valor: number): string | null {
+  if (valor > 0) return "RECEITA";
+  if (valor < 0) return "DESPESA";
+  return null;
+}
+
 /** Sugere uma categoria pra UM texto novo (descrição + fornecedor +
  * opcionalmente MCC/category/merchant.category do estabelecimento, ver
  * tokenMcc/tokenPluggyCategoria/tokenMerchantCategoria acima), a partir do
- * histórico já categorizado do tenant. Retorna null se não há nenhuma
+ * histórico já categorizado do tenant. `valor` (com sinal — positivo
+ * receita, negativo despesa) restringe a busca ao mesmo tipo de categoria
+ * (ver nota de correção no topo do arquivo). Retorna null se não há nenhuma
  * descrição parecida o bastante no histórico (nada a aprender ainda, ou
  * parecido demais só por acaso). */
 export async function sugerirCategoriaPorTexto(
   tenantId: string,
   descricao: string,
+  valor: number,
   fornecedor?: string | null,
   payeeMcc?: number | null,
   pluggyCategoria?: string | null,
   pluggyMerchantCategoria?: string | null
 ): Promise<SugestaoCategoria | null> {
   const indice = await construirIndice(tenantId);
-  return sugerirPorVizinhoMaisProximo(indice, tokensDeConsulta(descricao, fornecedor, payeeMcc, pluggyCategoria, pluggyMerchantCategoria));
+  return sugerirPorVizinhoMaisProximo(indice, tokensDeConsulta(descricao, fornecedor, payeeMcc, pluggyCategoria, pluggyMerchantCategoria), tipoEsperadoPorValor(valor));
 }
 
 /** Versão em lote — constrói o índice do histórico UMA vez só e sugere pra
@@ -231,7 +281,7 @@ export async function sugerirCategoriaPorTexto(
  * sugestão, ou seja, teve uma descrição parecida o bastante no histórico). */
 export async function sugerirCategoriasEmLote(
   tenantId: string,
-  itens: { id: string; descricao: string; fornecedor?: string | null; payeeMcc?: number | null; pluggyCategoria?: string | null; pluggyMerchantCategoria?: string | null }[]
+  itens: { id: string; descricao: string; valor: number; fornecedor?: string | null; payeeMcc?: number | null; pluggyCategoria?: string | null; pluggyMerchantCategoria?: string | null }[]
 ): Promise<Map<string, SugestaoCategoria>> {
   const resultado = new Map<string, SugestaoCategoria>();
   if (itens.length === 0) return resultado;
@@ -239,7 +289,8 @@ export async function sugerirCategoriasEmLote(
   for (const item of itens) {
     const sugestao = sugerirPorVizinhoMaisProximo(
       indice,
-      tokensDeConsulta(item.descricao, item.fornecedor, item.payeeMcc, item.pluggyCategoria, item.pluggyMerchantCategoria)
+      tokensDeConsulta(item.descricao, item.fornecedor, item.payeeMcc, item.pluggyCategoria, item.pluggyMerchantCategoria),
+      tipoEsperadoPorValor(item.valor)
     );
     if (sugestao) resultado.set(item.id, sugestao);
   }

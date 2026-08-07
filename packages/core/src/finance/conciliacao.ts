@@ -192,6 +192,12 @@ export async function listarPendentesDeConciliacao(tenantId: string, periodo?: s
     .map((p) => ({
       id: p.id,
       descricao: p.descricao,
+      // valor (com sinal) — pedido do Felipe, 07/08/2026: "como é q um
+      // pagamento pode estar associado a uma Categoria de Receita? (...) a
+      // melhor forma é dividir as categorias entre Receitas e Despesas" —
+      // restringe a sugestão a categorias do mesmo tipo do sinal do valor,
+      // ver tipoEsperadoPorValor em sugestao-categoria.ts.
+      valor: Number(p.valor),
       fornecedor: p.fornecedor,
       payeeMcc: p.pluggyPayeeMcc,
       pluggyCategoria: p.pluggyCategoria,
