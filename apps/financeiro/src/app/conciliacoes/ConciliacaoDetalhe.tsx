@@ -99,7 +99,19 @@ export type RecorrenciaSugerida = { recorrente: boolean; frequencia: "MENSAL" | 
 // "aproveite também os dados de centro de custo") — voto majoritário do
 // histórico já classificado (ver sugestao-centro-custo.ts, @praxis/core).
 // Só aparece quando o lançamento ainda está no default ADMINISTRACAO.
-export type CentroCustoSugerida = { centroCustoTipo: "EMPREENDIMENTO" | "UNIDADE"; propertyId: string | null; uhId: string | null; confianca: number } | null;
+export type CentroCustoSugerida = {
+  centroCustoTipo: "EMPREENDIMENTO" | "UNIDADE";
+  propertyId: string | null;
+  uhId: string | null;
+  confianca: number;
+  // "sorteio" = mesmo proprietário/valor apontou pra mais de um imóvel no
+  // histórico (empate real) — o sistema sorteou entre eles ponderado pela
+  // frequência de cada um, em vez de deixar sem sugestão (pedido do
+  // Felipe, 06/08/2026: "o sistema pode fazer o q eu mesmo faria: atribuir
+  // aleatoriamente mesmo"). Sorteio é determinístico por lançamento, não
+  // muda a cada reload — ver sugestao-centro-custo.ts.
+  origem: "maioria" | "sorteio";
+} | null;
 
 export type ItemPendente = {
   lancamento: LancamentoPendente;
