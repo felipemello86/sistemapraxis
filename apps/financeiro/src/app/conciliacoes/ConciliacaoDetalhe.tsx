@@ -100,12 +100,28 @@ export function pareceParcelado(descricao: string): boolean {
 /** true quando a Pluggy mandou o creditCardMetadata da parcela — nesse
  * caso não precisa adivinhar nada pelo texto, o número de parcelas já é
  * conhecido (ver comentário em LancamentoPendente acima). */
-function temMetadataDeParcelamento(item: ItemPendente): boolean {
+export function temMetadataDeParcelamento(item: ItemPendente): boolean {
   return item.lancamento.pluggyParcelaTotal != null;
 }
 
-function arredondarCentavos(v: number): number {
+export function arredondarCentavos(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+/** Valor "de verdade" da parcela pra um lançamento que parece parcelado,
+ * usando o mesmo cálculo-padrão que ConciliacaoDetalhe usa ao abrir (nº de
+ * parcelas = o que a Pluggy informou, ou um palpite de 2 quando não há
+ * metadata) — existe pra o card compacto (ConciliacaoCardCompacto.tsx)
+ * poder mostrar isso ANTES do usuário abrir o detalhe (pedido do Felipe,
+ * 06/08/2026: "o valor fica o total, quando abre o detalhe, ele divide" —
+ * o resumo deveria já vir dividido, sem precisar expandir). Retorna null
+ * quando o lançamento não parece parcelado.
+ */
+export function valorParcelaPadrao(item: ItemPendente): number | null {
+  if (!pareceParcelado(item.lancamento.descricao) && !temMetadataDeParcelamento(item)) return null;
+  const valorNum = Number(item.lancamento.valor);
+  const totalParcelas = item.lancamento.pluggyParcelaTotal ?? 2;
+  return temMetadataDeParcelamento(item) ? arredondarCentavos(valorNum) : arredondarCentavos(valorNum / totalParcelas);
 }
 
 const NOMES_DIA = ["Domingo", "Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira", "Sábado"];

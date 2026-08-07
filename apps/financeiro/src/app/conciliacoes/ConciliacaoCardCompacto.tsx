@@ -6,7 +6,7 @@ import { SeletorCategoriaPopup } from "@/components/SeletorCategoriaPopup";
 import { SeletorCentroCustoPopup } from "@/components/SeletorCentroCustoPopup";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
 import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
-import { ConciliacaoDetalhe, type ItemPendente, pareceParcelado } from "./ConciliacaoDetalhe";
+import { ConciliacaoDetalhe, type ItemPendente, pareceParcelado, valorParcelaPadrao } from "./ConciliacaoDetalhe";
 import type { PropostaLote } from "./ConciliacoesView";
 
 // Card compacto de UM lançamento pendente, pra tela de Conciliações em
@@ -57,13 +57,15 @@ export function ConciliacaoCardCompacto({
   const [expandido, setExpandido] = useState(false);
   const [popupCategoria, setPopupCategoria] = useState(false);
   const [popupCentroCusto, setPopupCentroCusto] = useState(false);
-  // Valor "de verdade" quando o detalhe expandido configurou compra
-  // parcelada (pedido do Felipe, 06/08/2026: "ainda continua mostrando o
-  // valor total [na linha-resumo]") — o ConciliacaoDetalhe avisa aqui via
-  // onValorExibidoChange sempre que parcelado/valorParcelaCalculado mudam;
-  // null significa "mostra o valor bruto do banco" (não parcelado, ou
-  // detalhe nunca foi aberto).
-  const [valorParcelaExibido, setValorParcelaExibido] = useState<number | null>(null);
+  // Valor "de verdade" quando é uma compra parcelada (pedido do Felipe,
+  // 06/08/2026: primeiro "ainda continua mostrando o valor total [na
+  // linha-resumo]", depois "o valor fica o total, quando abre o detalhe,
+  // ele divide" — ou seja, o resumo já deveria vir dividido, sem precisar
+  // abrir nada). Começa com a divisão-padrão (valorParcelaPadrao, mesmo
+  // palpite que ConciliacaoDetalhe usa ao abrir); onValorExibidoChange
+  // depois mantém isso em sincronia se o usuário ajustar nº de
+  // parcelas/parcela atual dentro do detalhe expandido.
+  const [valorParcelaExibido, setValorParcelaExibido] = useState<number | null>(() => valorParcelaPadrao(item));
 
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
