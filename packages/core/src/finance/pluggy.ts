@@ -32,6 +32,7 @@
  */
 
 import { prisma } from "../prisma";
+import { Prisma } from "../../generated";
 import { somarMeses, limitesDoMes } from "./dre";
 
 const PLUGGY_BASE_URL = "https://api.pluggy.ai";
@@ -169,6 +170,20 @@ export type PluggyTransaction = {
   date: string; // ISO — a data REAL da transação. Vira dataCompetencia sempre (pedido do Felipe, 05/08/2026, 3ª rodada: "o sistema deve manter a data que vem da Pluggy como data de competência"); vira dataVencimento também, exceto em cartão de crédito com diaVencimentoFatura configurado, onde dataVencimento passa a ser a data da FATURA (ver calcularVencimentoFatura).
   category?: string; // categorização automática da própria Pluggy — usada só como sugestão, nunca grava direto (categorização final é sempre humana, ver requisito 6)
   merchant?: { name?: string };
+  // Dados de parcelamento do cartão (pedido do Felipe, 06/08/2026, depois
+  // de perguntar "o banco não manda nenhuma informação sobre o
+  // parcelamento?") — a Pluggy documenta esse objeto em
+  // docs.pluggy.ai/docs/credit-card-installments, MAS nem toda instituição
+  // financeira o preenche (não é padronizado pelo Open Finance), por isso
+  // tudo aqui é opcional e o fallback manual na tela de Conciliações
+  // continua existindo pra quando isso vier vazio. Quando vem preenchido, o
+  // `amount` da transação já é o valor só DESSA parcela (não o total — daí
+  // a Pluggy separar o total em `totalAmount`).
+  creditCardMetadata?: {
+    installmentNumber?: number; // nº da parcela atual (1, 2, 3...)
+    totalInstallments?: number; // total de parcelas da compra
+    totalAmount?: number; // valor total da compra (soma de todas as parcelas) — só quando parcelado
+  };
 };
 
 /** Busca transações de uma conta, opcionalmente só a partir de uma data
@@ -390,6 +405,17 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
             contaBancariaId: conta.id,
             pluggyTransactionId: t.id,
             pago,
+            // Metadata de parcelamento, quando a instituição financeira
+            // manda (pedido do Felipe, 06/08/2026 — ver comentário no tipo
+            // PluggyTransaction acima). Puramente informativo: só usado
+            // pra pré-preencher a seção "Compra parcelada" da tela de
+            // Conciliações — nunca altera o `valor` gravado aqui em cima,
+            // que já vem correto quando esse metadata existe (a Pluggy
+            // separa `amount`, o valor da parcela, de `totalAmount`, o
+            // valor da compra inteira).
+            pluggyParcelaAtual: t.creditCardMetadata?.installmentNumber ?? null,
+            pluggyParcelaTotal: t.creditCardMetadata?.totalInstallments ?? null,
+            pluggyValorTotalCompra: t.creditCardMetadata?.totalAmount != null ? new Prisma.Decimal(t.creditCardMetadata.totalAmount) : null,
           },
         });
         novos++;

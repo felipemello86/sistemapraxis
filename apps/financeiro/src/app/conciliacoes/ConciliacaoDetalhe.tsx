@@ -46,6 +46,14 @@ type LancamentoPendente = {
   dataVencimento: string;
   dataCompetencia: string | null;
   categoriaId: string | null;
+  // Metadata de parcelamento que a PRÓPRIA Pluggy manda, quando a
+  // instituição financeira fornece (pedido do Felipe, 06/08/2026, depois
+  // de perguntar "o banco não manda nenhuma informação sobre o
+  // parcelamento?" — ver comentário em PluggyTransaction, pluggy.ts).
+  // Nem todo banco preenche — por isso continuam opcionais/nulos e o
+  // fallback manual (usuário digita) continua existindo.
+  pluggyParcelaAtual: number | null;
+  pluggyParcelaTotal: number | null;
 };
 
 // Sugestão automática de categoria a partir do histórico já categorizado do
@@ -86,6 +94,13 @@ function categoriaInicial(item: ItemPendente): string {
 // lançamento sozinho sem alguém informar o número de parcelas".
 export function pareceParcelado(descricao: string): boolean {
   return descricao.trim().toLowerCase().startsWith("parcelado");
+}
+
+/** true quando a Pluggy mandou o creditCardMetadata da parcela — nesse
+ * caso não precisa adivinhar nada pelo texto, o número de parcelas já é
+ * conhecido (ver comentário em LancamentoPendente acima). */
+function temMetadataDeParcelamento(item: ItemPendente): boolean {
+  return item.lancamento.pluggyParcelaTotal != null;
 }
 
 function arredondarCentavos(v: number): number {
@@ -136,9 +151,9 @@ export function ConciliacaoDetalhe({
   const [propertyId, setPropertyId] = useState<string | null>(null);
   const [uhId, setUhId] = useState<string | null>(null);
   const [repetir, setRepetir] = useState<RepetirConfig>(repetirConfigPadrao(item.lancamento.dataVencimento));
-  const [parcelado, setParcelado] = useState(pareceParcelado(item.lancamento.descricao));
-  const [totalParcelas, setTotalParcelas] = useState(2);
-  const [parcelaAtual, setParcelaAtual] = useState(1);
+  const [parcelado, setParcelado] = useState(pareceParcelado(item.lancamento.descricao) || temMetadataDeParcelamento(item));
+  const [totalParcelas, setTotalParcelas] = useState(item.lancamento.pluggyParcelaTotal ?? 2);
+  const [parcelaAtual, setParcelaAtual] = useState(item.lancamento.pluggyParcelaAtual ?? 1);
   const [anexos, setAnexos] = useState<AnexoUpload[]>([]);
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [erroAnexo, setErroAnexo] = useState("");
@@ -160,9 +175,9 @@ export function ConciliacaoDetalhe({
     setPropertyId(null);
     setUhId(null);
     setRepetir(repetirConfigPadrao(item.lancamento.dataVencimento));
-    setParcelado(pareceParcelado(item.lancamento.descricao));
-    setTotalParcelas(2);
-    setParcelaAtual(1);
+    setParcelado(pareceParcelado(item.lancamento.descricao) || temMetadataDeParcelamento(item));
+    setTotalParcelas(item.lancamento.pluggyParcelaTotal ?? 2);
+    setParcelaAtual(item.lancamento.pluggyParcelaAtual ?? 1);
     setAnexos([]);
     setErroAnexo("");
     setErro("");
@@ -199,7 +214,12 @@ export function ConciliacaoDetalhe({
 
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
-  const valorParcelaCalculado = parcelado ? arredondarCentavos(valorNum / totalParcelas) : null;
+  // Quando a Pluggy manda creditCardMetadata, o `valor` do lançamento
+  // importado JÁ é só o da parcela (a Pluggy separa isso de totalAmount) —
+  // dividir de novo por totalParcelas estaria errado. Só divide quando
+  // está adivinhando pelo texto "Parcelado..." sem confirmação do banco.
+  const metadataConhecida = temMetadataDeParcelamento(item);
+  const valorParcelaCalculado = parcelado ? (metadataConhecida ? arredondarCentavos(valorNum) : arredondarCentavos(valorNum / totalParcelas)) : null;
   const parcelasRestantes = parcelado ? totalParcelas - parcelaAtual + 1 : null;
   const candidatos: Previsto[] = previstoManual ? [previstoManual, ...item.sugestoes.filter((s) => s.id !== previstoManual.id)] : item.sugestoes;
   const previstoAtivo = candidatos.find((c) => c.id === previstoEscolhidoId) ?? null;
@@ -425,6 +445,9 @@ export function ConciliacaoDetalhe({
                 </label>
                 {parcelado && (
                   <>
+                    {metadataConhecida && (
+                      <p className="text-[11px] text-blue-700 bg-blue-100/60 rounded px-2 py-1">Detectado automaticamente — o banco informou o parcelamento. Confira antes de confirmar.</p>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="label">Nº de parcelas</label>
@@ -449,7 +472,8 @@ export function ConciliacaoDetalhe({
                       </div>
                     </div>
                     <p className="text-xs text-gray-500">
-                      Valor da parcela: <span className="font-medium text-gray-700">{formatBRL(valorParcelaCalculado ?? 0)}</span> — lança essa parcela agora e prevê{" "}
+                      Valor da parcela {metadataConhecida ? "(informado pelo banco)" : "(total ÷ parcelas, confirme)"}:{" "}
+                      <span className="font-medium text-gray-700">{formatBRL(valorParcelaCalculado ?? 0)}</span> — lança essa parcela agora e prevê{" "}
                       {(parcelasRestantes ?? 1) - 1 > 0 ? `as ${(parcelasRestantes ?? 1) - 1} restantes nos próximos meses` : "que é a última parcela"}.
                     </p>
                   </>

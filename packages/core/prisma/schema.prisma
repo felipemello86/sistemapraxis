@@ -3261,6 +3261,22 @@ model FinanceLancamento {
   contaBancaria      FinanceContaBancaria? @relation(fields: [contaBancariaId], references: [id])
   pluggyTransactionId String? @unique // idempotência: reprocessar a mesma sincronização não duplica o lançamento
 
+  // Metadata de parcelamento que a PRÓPRIA Pluggy manda (campo
+  // creditCardMetadata da transação, quando a instituição financeira
+  // fornece — nem todo banco manda, ver docs.pluggy.ai/docs/credit-card-installments)
+  // — pedido do Felipe, 06/08/2026, depois de perguntar "o banco não manda
+  // nenhuma informação sobre o parcelamento?". Puramente informativo: usado
+  // só pra pré-preencher a seção "Compra parcelada" da tela de Conciliações
+  // (ConciliacaoDetalhe.tsx) sem o usuário precisar digitar o nº de
+  // parcelas à mão quando o banco já informou. Não é a mesma coisa que
+  // parcelaGrupoId/parcelaNumero/parcelaTotal acima — aqueles são de
+  // lançamento MANUAL digitado em N vezes (N linhas materializadas); estes
+  // aqui vivem numa ÚNICA linha PLUGGY (uma parcela = uma transação
+  // importada) e nunca são gravados em lançamento origem=MANUAL.
+  pluggyParcelaAtual     Int?     // creditCardMetadata.installmentNumber
+  pluggyParcelaTotal     Int?     // creditCardMetadata.totalInstallments
+  pluggyValorTotalCompra Decimal? @db.Decimal(12, 2) // creditCardMetadata.totalAmount (soma de todas as parcelas) — só referência, nunca usado em conta
+
   // Status "Quitado" (requisito do Felipe, 05/08/2026) — regra de derivação
   // vive em lib/finance/status.ts, não só neste campo:
   //   - lançamento de conta corrente (contaBancaria.tipo=BANK) = SEMPRE
