@@ -7,9 +7,10 @@ import { SeletorMes } from "@/components/SeletorMes";
 // Orçamento — redesenho de 06/08/2026 (pedido do Felipe): mesma árvore
 // colapsável da tela DRE (Bloco -> Categoria -> Lançamentos), com a MESMA
 // simplificação de estrutura mínima: Receita Bruta / Custos Variáveis
-// continuam 1 linha por bloco configurado; Despesas e Resultados Extras
-// (LUCRO_PREJUIZO_EXTRA) viram 1 linha só cada, mesclando as categorias de
-// todos os blocos daquele totalizador. O 2º nível de cada categoria mostra
+// continuam 1 linha por bloco configurado; Despesas e Operações Financeiras
+// (LUCRO_PREJUIZO_EXTRA, renomeado de "Resultados Extras" em 07/08/2026)
+// viram 1 linha só cada, mesclando as categorias de todos os blocos daquele
+// totalizador. O 2º nível de cada categoria mostra
 // 3 coisas (nesta ordem, pedido do Felipe): lançamentos JÁ REALIZADOS neste
 // mês, lançamentos PREVISTOS (recorrentes ou pontuais, cumpridos ou não) e
 // a PROVISÃO de gastos não definidos (editável, com consumido/restante).
@@ -313,6 +314,14 @@ export function OrcamentoView() {
   const [dados, setDados] = useState<OrcamentoResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // blocoId -> true quando TODAS as categorias ativas daquele bloco são
+  // tipo=RECEITA — usado só pra dar destaque visual (mesmo "patamar" da
+  // Margem Bruta) ao(s) bloco(s) de Receita Bruta, pedido do Felipe
+  // 07/08/2026. Mesmo mecanismo já usado em DreView.tsx: vem de
+  // /api/categorias (não do /api/orcamento) de propósito, pra não depender
+  // de quais categorias tiveram lançamento no mês aberto.
+  const [blocosReceita, setBlocosReceita] = useState<Set<string>>(new Set());
+
   // Geral / Empreendimento / Unidade (pedido do Felipe, 06/08/2026) — mesmo
   // filtro e mesmo componente da DreView. Ver lib/finance/centro-de-custo.ts.
   const [centroCustoTipo, setCentroCustoTipo] = useState<CentroCustoTipo>("GERAL");
@@ -333,6 +342,19 @@ export function OrcamentoView() {
     apiFetch("/api/unidades")
       .then((res) => (res.ok ? res.json() : []))
       .then(setUnidades)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    apiFetch("/api/categorias")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((categorias: { blocoId: string; tipo: string }[]) => {
+        const porBloco = new Map<string, string[]>();
+        for (const c of categorias) porBloco.set(c.blocoId, [...(porBloco.get(c.blocoId) ?? []), c.tipo]);
+        const receita = new Set<string>();
+        for (const [blocoId, tipos] of porBloco) if (tipos.length > 0 && tipos.every((t) => t === "RECEITA")) receita.add(blocoId);
+        setBlocosReceita(receita);
+      })
       .catch(() => {});
   }, []);
 
@@ -504,6 +526,7 @@ export function OrcamentoView() {
               categorias={b.categorias}
               onIniciarFluxoProvisao={iniciarFluxoProvisao}
               editavelProvisao={editavelProvisao}
+              destaque={blocosReceita.has(b.blocoId)}
             />
           ))}
           <LinhaTotal rotulo="Margem Bruta" valor={dados.margemBrutaProjetadoRS} percent={dados.margemBrutaProjetadoPercent} />
@@ -519,7 +542,7 @@ export function OrcamentoView() {
           <LinhaTotal rotulo="Geração de Caixa (Lucro Operacional)" valor={dados.geracaoDeCaixaProjetadoRS} />
 
           <LinhaGrupo
-            nome="Resultados Extras"
+            nome="Operações Financeiras"
             valor={String(blocosDe("LUCRO_PREJUIZO_EXTRA").reduce((acc, b) => acc + Number(b.projetadoRS), 0))}
             categorias={categoriasDosBlocos(blocosDe("LUCRO_PREJUIZO_EXTRA").map((b) => b.blocoId))}
             onIniciarFluxoProvisao={iniciarFluxoProvisao}

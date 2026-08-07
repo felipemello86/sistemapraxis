@@ -384,12 +384,13 @@ export function DreView() {
 
   // Nível 1 de agrupamento (pedido do Felipe, 06/08/2026): Margem Bruta
   // continua com 1 linha por bloco configurado (Receita Bruta, Custos
-  // Variáveis...). Despesas e Resultados Extras (LUCRO_PREJUIZO_EXTRA) viram
-  // UMA linha só cada, mesclando as categorias de TODOS os blocos daquele
-  // totalizador — "estrutura mínima": Receita Bruta, Custos Variáveis,
-  // Margem Bruta, Despesas, Resultados Extras, Geração de Caixa,
-  // Lucro/Prejuízo. As funções abaixo recebem uma LISTA de blocoIds (1 pra
-  // Margem Bruta, N pra Despesas/Extras) e mesclam.
+  // Variáveis...). Despesas e Operações Financeiras (LUCRO_PREJUIZO_EXTRA,
+  // renomeado de "Resultados Extras" em 07/08/2026) viram UMA linha só
+  // cada, mesclando as categorias de TODOS os blocos daquele totalizador —
+  // "estrutura mínima": Receita Bruta, Custos Variáveis, Margem Bruta,
+  // Despesas, Operações Financeiras, Geração de Caixa, Lucro/Prejuízo. As
+  // funções abaixo recebem uma LISTA de blocoIds (1 pra Margem Bruta, N pra
+  // Despesas/Extras) e mesclam.
   function categoriasCanonicasDoGrupo(blocoIds: string[]): { categoriaId: string; nome: string }[] {
     const vistos = new Map<string, string>();
     for (const mes of periodos) {
@@ -560,7 +561,7 @@ export function DreView() {
                 });
                 return (
                   <LinhaBloco
-                    bloco={{ nome: "Resultados Extras" }}
+                    bloco={{ nome: "Operações Financeiras" }}
                     valoresPorPeriodo={valoresExtras}
                     categoriasCanonicas={categoriasCanonicasDoGrupo(idsExtras)}
                     valoresCategoriaPorPeriodo={(catId) => valoresCategoriaDoGrupo(idsExtras, catId)}
