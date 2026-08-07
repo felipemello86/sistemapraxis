@@ -337,7 +337,20 @@ export function ConciliacaoDetalhe({
               <p className="text-sm font-medium text-gray-900">{formatDataBR(item.lancamento.dataVencimento)}</p>
               <p className="text-xs text-gray-400">{nomeDiaSemana(item.lancamento.dataVencimento)}</p>
             </div>
-            <p className={`text-lg font-bold ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</p>
+            {/* Uma vez marcada como parcelada, o valor "final" desse
+                lançamento passa a ser o da PARCELA, não o total importado do
+                banco (pedido do Felipe, 06/08/2026: "esse valor final não
+                deveria ser o valor da parcela?") — o total continua visível
+                embaixo, pequeno, só pra referência/auditoria de onde veio o
+                número. */}
+            <div className="text-right">
+              <p className={`text-lg font-bold ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>
+                {formatBRL(parcelado && valorParcelaCalculado != null ? valorParcelaCalculado : item.lancamento.valor)}
+              </p>
+              {parcelado && valorParcelaCalculado != null && (
+                <p className="text-[11px] text-gray-400">parcela {parcelaAtual}/{totalParcelas} de {formatBRL(item.lancamento.valor)}</p>
+              )}
+            </div>
           </div>
           <div className="text-xs text-gray-500 space-y-0.5">
             <p>Vencimento: {formatDataBR(item.lancamento.dataVencimento)}</p>
