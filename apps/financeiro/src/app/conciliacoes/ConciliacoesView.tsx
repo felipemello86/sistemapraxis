@@ -102,13 +102,15 @@ function propostaInicial(item: ItemPendente): PropostaLote {
 
 // Colunas organizáveis (pedido do Felipe, 06/08/2026): "reorganize como
 // colunas organizáveis: Lançamento / Vencimento / Conta / Descrição / Valor",
-// depois "colocar categoria e centro de custo como colunas também" e
-// "descrição como filtro de texto" (Descrição saiu do conjunto ordenável e
-// virou filtro, como o cabeçalho "Descrição" de LancamentosView.tsx).
+// depois "colocar categoria e centro de custo como colunas também",
+// "descrição como filtro de texto" e por fim "Conta/Categoria/Centro de
+// Custo devem ser filtráveis". Conta/Categoria/Centro de Custo viraram
+// filtro por checkbox (não ordenáveis) — mesmo padrão de Categoria/Status em
+// LancamentosView.tsx — só Lançamento/Vencimento/Valor continuam ordenáveis.
 // "Lançamento" = Data de Competência (com fallback pro Vencimento quando não
 // há competência informada), mesma convenção da coluna "Data" de
 // LancamentosView.tsx.
-type SortField = "lancamento" | "vencimento" | "conta" | "categoria" | "centroCusto" | "valor";
+type SortField = "lancamento" | "vencimento" | "valor";
 
 function propostaPronta(item: ItemPendente, p: PropostaLote): boolean {
   if (p.modo === "previsto") return Boolean(p.previstoId);
@@ -117,6 +119,70 @@ function propostaPronta(item: ItemPendente, p: PropostaLote): boolean {
   if (p.centroCustoTipo === "EMPREENDIMENTO") return Boolean(p.propertyId);
   if (p.centroCustoTipo === "UNIDADE") return Boolean(p.uhId);
   return true;
+}
+
+// Cabeçalho de coluna filtrável por checkbox (Conta/Categoria/Centro de
+// Custo — pedido do Felipe, 06/08/2026: "as colunas Conta, Categoria e
+// Centro de Custo devem ser filtráveis"), mesmo padrão visual do filtro de
+// Categoria/Status em LancamentosView.tsx, só que genérico (recebe a lista
+// de opções distintas já calculada pelo pai).
+function ColunaFiltro({
+  rotulo,
+  opcoes,
+  selecionados,
+  aberto,
+  onToggleAberto,
+  onFechar,
+  onAlternar,
+  onLimpar,
+}: {
+  rotulo: string;
+  opcoes: string[];
+  selecionados: Set<string>;
+  aberto: boolean;
+  onToggleAberto: () => void;
+  onFechar: () => void;
+  onAlternar: (valor: string) => void;
+  onLimpar: () => void;
+}) {
+  return (
+    <div className="relative min-w-0">
+      <button type="button" onClick={onToggleAberto} className={`flex items-center gap-1 hover:text-gray-600 truncate max-w-full ${selecionados.size > 0 ? "text-blue-700" : ""}`}>
+        <span className="truncate">
+          {rotulo}
+          {selecionados.size > 0 ? ` (${selecionados.size})` : ""}
+        </span>
+      </button>
+      {aberto && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFechar();
+            }}
+          />
+          <div
+            className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56 max-h-72 overflow-y-auto normal-case font-normal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {selecionados.size > 0 && (
+              <button type="button" onClick={onLimpar} className="text-xs text-blue-600 hover:underline mb-1">
+                Limpar filtro
+              </button>
+            )}
+            {opcoes.map((opt) => (
+              <label key={opt} className="flex items-center gap-1.5 text-xs py-1 cursor-pointer hover:bg-gray-50 px-1 rounded">
+                <input type="checkbox" checked={selecionados.has(opt)} onChange={() => onAlternar(opt)} />
+                <span className="truncate">{opt}</span>
+              </label>
+            ))}
+            {opcoes.length === 0 && <p className="text-xs text-gray-400 px-1 py-1">Nenhuma opção.</p>}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export function ConciliacoesView() {
@@ -134,6 +200,12 @@ export function ConciliacoesView() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [filtroDescricao, setFiltroDescricao] = useState("");
   const [descPopoverAberto, setDescPopoverAberto] = useState(false);
+  const [filtroContas, setFiltroContas] = useState<Set<string>>(new Set());
+  const [filtroCategoriasCol, setFiltroCategoriasCol] = useState<Set<string>>(new Set());
+  const [filtroCentrosCusto, setFiltroCentrosCusto] = useState<Set<string>>(new Set());
+  const [contaPopoverAberto, setContaPopoverAberto] = useState(false);
+  const [categoriaPopoverAberto, setCategoriaPopoverAberto] = useState(false);
+  const [centroCustoPopoverAberto, setCentroCustoPopoverAberto] = useState(false);
 
   function alternarSort(campo: SortField) {
     if (sortField === campo) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -185,38 +257,72 @@ export function ConciliacoesView() {
   const contaPorId = useMemo(() => new Map(contas.map((c) => [c.id, c.nome])), [contas]);
   const categoriaPorId = useMemo(() => new Map(categorias.map((c) => [c.id, c.nome])), [categorias]);
 
-  // Mesma lógica do resumoCentroCusto de ConciliacaoCardCompacto.tsx —
-  // duplicada aqui só pra viabilizar a ordenação pela coluna "Centro de
-  // Custo" sem precisar levantar estado do card pro pai.
+  // Valores exibidos nas colunas Conta/Categoria/Centro de Custo — usados
+  // tanto pro filtro (checkbox por valor distinto, pedido do Felipe,
+  // 06/08/2026: "as colunas Conta, Categoria e Centro de Custo devem ser
+  // filtráveis") quanto pra render no card (mesma lógica de
+  // ConciliacaoCardCompacto.tsx, duplicada aqui pra não levantar estado).
+  // "—" cobre tanto "sem conta" quanto "modo previsto" (onde categoria/
+  // centro de custo vêm do lançamento previsto casado, não são editáveis
+  // aqui).
+  function contaExibidaDe(item: ItemPendente): string {
+    return (item.lancamento.contaBancariaId && contaPorId.get(item.lancamento.contaBancariaId)) || "—";
+  }
+  function categoriaExibidaDe(p: PropostaLote | undefined): string {
+    if (!p || p.modo !== "novo") return "—";
+    return categoriaPorId.get(p.categoriaId) || "Escolher categoria";
+  }
   function resumoCentroCustoDe(p: PropostaLote): string {
     if (p.centroCustoTipo === "ADMINISTRACAO") return "Administração";
-    if (p.centroCustoTipo === "EMPREENDIMENTO") return empreendimentos.find((e) => e.id === p.propertyId)?.nome || "";
-    return unidades.find((u) => u.id === p.uhId)?.nome || "";
+    if (p.centroCustoTipo === "EMPREENDIMENTO") return empreendimentos.find((e) => e.id === p.propertyId)?.nome || "Empreendimento...";
+    return unidades.find((u) => u.id === p.uhId)?.nome || "Unidade...";
+  }
+  function centroCustoExibidoDe(p: PropostaLote | undefined): string {
+    if (!p || p.modo !== "novo") return "—";
+    return resumoCentroCustoDe(p);
   }
 
-  // Descrição virou filtro de texto em vez de coluna ordenável (pedido do
-  // Felipe, 06/08/2026) — busca acento/maiúscula-insensível via
-  // normalizarTexto (mesma normalização usada na sugestão de categoria).
+  const opcoesConta = useMemo(() => Array.from(new Set(pendentes.map(contaExibidaDe))).sort((a, b) => a.localeCompare(b)), [pendentes, contaPorId]);
+  const opcoesCategoria = useMemo(
+    () => Array.from(new Set(pendentes.map((item) => categoriaExibidaDe(propostas.get(item.lancamento.id))))).sort((a, b) => a.localeCompare(b)),
+    [pendentes, propostas, categoriaPorId]
+  );
+  const opcoesCentroCusto = useMemo(
+    () => Array.from(new Set(pendentes.map((item) => centroCustoExibidoDe(propostas.get(item.lancamento.id))))).sort((a, b) => a.localeCompare(b)),
+    [pendentes, propostas, empreendimentos, unidades]
+  );
+
+  function alternarNoFiltro(atual: Set<string>, setFn: (s: Set<string>) => void, valor: string) {
+    const next = new Set(atual);
+    if (next.has(valor)) next.delete(valor);
+    else next.add(valor);
+    setFn(next);
+  }
+
+  // Descrição virou filtro de texto (pedido do Felipe, 06/08/2026) — busca
+  // acento/maiúscula-insensível via normalizarTexto (mesma normalização
+  // usada na sugestão de categoria). Conta/Categoria/Centro de Custo viraram
+  // filtro por checkbox de valor exato.
   const pendentesFiltrados = useMemo(() => {
-    if (!filtroDescricao.trim()) return pendentes;
-    const alvo = normalizarTextoLocal(filtroDescricao);
-    return pendentes.filter((item) => normalizarTextoLocal(item.lancamento.descricao).includes(alvo));
-  }, [pendentes, filtroDescricao]);
+    let lista = pendentes;
+    if (filtroDescricao.trim()) {
+      const alvo = normalizarTextoLocal(filtroDescricao);
+      lista = lista.filter((item) => normalizarTextoLocal(item.lancamento.descricao).includes(alvo));
+    }
+    if (filtroContas.size > 0) lista = lista.filter((item) => filtroContas.has(contaExibidaDe(item)));
+    if (filtroCategoriasCol.size > 0) lista = lista.filter((item) => filtroCategoriasCol.has(categoriaExibidaDe(propostas.get(item.lancamento.id))));
+    if (filtroCentrosCusto.size > 0) lista = lista.filter((item) => filtroCentrosCusto.has(centroCustoExibidoDe(propostas.get(item.lancamento.id))));
+    return lista;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendentes, filtroDescricao, filtroContas, filtroCategoriasCol, filtroCentrosCusto, propostas, contaPorId, categoriaPorId, empreendimentos, unidades]);
 
   const pendentesOrdenados = useMemo(() => {
     function valorOrdenacao(item: ItemPendente): string | number {
-      const p = propostas.get(item.lancamento.id);
       switch (sortField) {
         case "lancamento":
           return item.lancamento.dataCompetencia || item.lancamento.dataVencimento;
         case "vencimento":
           return item.lancamento.dataVencimento;
-        case "conta":
-          return (item.lancamento.contaBancariaId && contaPorId.get(item.lancamento.contaBancariaId)) || "";
-        case "categoria":
-          return p && p.modo === "novo" ? categoriaPorId.get(p.categoriaId) || "" : "";
-        case "centroCusto":
-          return p && p.modo === "novo" ? resumoCentroCustoDe(p) : "";
         case "valor":
           return Number(item.lancamento.valor);
       }
@@ -229,8 +335,7 @@ export function ConciliacoesView() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copia;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendentesFiltrados, sortField, sortDir, contaPorId, categoriaPorId, propostas, empreendimentos, unidades]);
+  }, [pendentesFiltrados, sortField, sortDir]);
 
   const selecionados = useMemo(
     () => pendentes.filter((item) => {
@@ -316,14 +421,12 @@ export function ConciliacoesView() {
         <p className="text-gray-400 text-sm">Nenhum lançamento pendente de conciliação neste mês. 🎉</p>
       ) : (
         <div className="space-y-1.5">
-          {/* Cabeçalho de colunas ordenáveis (pedido do Felipe, 06/08/2026,
-              em duas rodadas: "reorganize como colunas organizáveis: Lanç. /
-              Venc. / Conta / Descrição / Valor" e depois "colocar categoria
-              e centro de custo como colunas também" + "abreviar Lançamento
-              (Lanc) e Vencimento (Venc.)" + "Descrição como filtro de
-              texto"). Mesmo GRID_COLUNAS dos cards, pra ficar tudo alinhado;
-              o espaçador de 20px no início corresponde ao checkbox (w-4 +
-              gap-2) de cada card. */}
+          {/* Cabeçalho de colunas (pedido do Felipe, 06/08/2026, em várias
+              rodadas): Lanc./Venc./Valor ordenáveis por clique; Descrição é
+              filtro de texto; Conta/Categoria/Centro de Custo são filtro por
+              checkbox de valor distinto (ColunaFiltro). Mesmo GRID_COLUNAS
+              dos cards, pra ficar tudo alinhado; o espaçador de 20px no
+              início corresponde ao checkbox (w-4 + gap-2) de cada card. */}
           <div className="flex items-center gap-2 px-3 text-[11px] text-gray-400 font-medium select-none">
             <div className="w-4 flex-shrink-0" />
             <div className={`flex-1 min-w-0 grid ${GRID_COLUNAS} gap-x-3 items-center`}>
@@ -331,7 +434,6 @@ export function ConciliacoesView() {
                 [
                   ["lancamento", "Lanc."],
                   ["vencimento", "Venc."],
-                  ["conta", "Conta"],
                 ] as [SortField, string][]
               ).map(([campo, rotulo]) => (
                 <button key={campo} type="button" onClick={() => alternarSort(campo)} className="flex items-center gap-0.5 hover:text-gray-600">
@@ -339,6 +441,17 @@ export function ConciliacoesView() {
                   {sortField === campo && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </button>
               ))}
+
+              <ColunaFiltro
+                rotulo="Conta"
+                opcoes={opcoesConta}
+                selecionados={filtroContas}
+                aberto={contaPopoverAberto}
+                onToggleAberto={() => setContaPopoverAberto((v) => !v)}
+                onFechar={() => setContaPopoverAberto(false)}
+                onAlternar={(v) => alternarNoFiltro(filtroContas, setFiltroContas, v)}
+                onLimpar={() => setFiltroContas(new Set())}
+              />
 
               <div className="relative">
                 <button
@@ -371,19 +484,28 @@ export function ConciliacoesView() {
                 )}
               </div>
 
-              {(
-                [
-                  ["categoria", "Categoria"],
-                  ["centroCusto", "Centro de Custo"],
-                ] as [SortField, string][]
-              ).map(([campo, rotulo]) => (
-                <button key={campo} type="button" onClick={() => alternarSort(campo)} className="flex items-center gap-0.5 hover:text-gray-600 truncate">
-                  <span className="truncate">{rotulo}</span>
-                  {sortField === campo && (sortDir === "asc" ? <ArrowUp className="w-3 h-3 flex-shrink-0" /> : <ArrowDown className="w-3 h-3 flex-shrink-0" />)}
-                </button>
-              ))}
+              <ColunaFiltro
+                rotulo="Categoria"
+                opcoes={opcoesCategoria}
+                selecionados={filtroCategoriasCol}
+                aberto={categoriaPopoverAberto}
+                onToggleAberto={() => setCategoriaPopoverAberto((v) => !v)}
+                onFechar={() => setCategoriaPopoverAberto(false)}
+                onAlternar={(v) => alternarNoFiltro(filtroCategoriasCol, setFiltroCategoriasCol, v)}
+                onLimpar={() => setFiltroCategoriasCol(new Set())}
+              />
+              <ColunaFiltro
+                rotulo="Centro de Custo"
+                opcoes={opcoesCentroCusto}
+                selecionados={filtroCentrosCusto}
+                aberto={centroCustoPopoverAberto}
+                onToggleAberto={() => setCentroCustoPopoverAberto((v) => !v)}
+                onFechar={() => setCentroCustoPopoverAberto(false)}
+                onAlternar={(v) => alternarNoFiltro(filtroCentrosCusto, setFiltroCentrosCusto, v)}
+                onLimpar={() => setFiltroCentrosCusto(new Set())}
+              />
 
-              <button type="button" onClick={() => alternarSort("valor")} className="flex items-center gap-0.5 hover:text-gray-600 justify-end">
+              <button type="button" onClick={() => alternarSort("valor")} className="flex items-center gap-0.5 hover:text-gray-600 justify-end whitespace-nowrap">
                 Valor {sortField === "valor" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
               </button>
               <span />

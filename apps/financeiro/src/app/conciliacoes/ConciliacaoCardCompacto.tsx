@@ -141,7 +141,7 @@ export function ConciliacaoCardCompacto({
             ) : (
               <span className="text-xs text-gray-300">—</span>
             )}
-            <span className={`text-sm font-semibold text-right ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</span>
+            <span className={`text-sm font-semibold text-right whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</span>
             <button
               type="button"
               onClick={() => setExpandido((v) => !v)}

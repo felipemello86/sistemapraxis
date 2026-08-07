@@ -4,5 +4,8 @@
 // organizáveis: Lançamento / Vencimento / Conta / Descrição / Valor" +
 // depois "colocar categoria e centro de custo como colunas também" — ordem
 // final: Lanc. / Venc. / Conta / Descrição / Categoria / Centro de Custo /
-// Valor / (botão de expandir, sem cabeçalho de texto).
-export const GRID_COLUNAS = "grid-cols-[40px_40px_84px_minmax(0,1fr)_130px_120px_84px_20px]";
+// Valor / (botão de expandir, sem cabeçalho de texto). Valor alargado de
+// 84px pra 108px (pedido do Felipe, 06/08/2026: "o valor -R$ 2.300,00
+// ficou ocupando duas linhas") + whitespace-nowrap nas células, já que
+// "-R$ X.XXX,XX" não cabia em 84px e quebrava linha.
+export const GRID_COLUNAS = "grid-cols-[40px_40px_84px_minmax(0,1fr)_130px_120px_108px_20px]";
