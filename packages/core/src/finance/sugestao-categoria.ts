@@ -45,10 +45,25 @@ interface IndiceCategorias {
 const MAX_HISTORICO = 5000; // suficiente pra aprender padrões sem carregar o histórico inteiro do tenant
 const MIN_COSSENO = 0.2; // abaixo disso o "vizinho mais próximo" é parecido demais por acaso (só palavra genérica em comum) pra confiar
 
+// MCC (Merchant Category Code, ver mcc.ts) entra no mesmo espaço vetorial
+// de tokens de texto como um "pseudo-token" (ex.: MCC 5411 vira "mcc5411")
+// — pedido do Felipe, 06/08/2026: "tem algum campo q vem da pluggy q fale
+// da natureza do estabelecimento comercial q fez a venda?", capturado
+// justamente pra reforçar a sugestão de categoria quando o NOME do
+// estabelecimento é novo/nunca visto mas a NATUREZA dele (mesmo MCC) já é
+// conhecida do histórico — ex.: um restaurante novo que o Felipe nunca
+// comprou antes, mas com o mesmo MCC 5812 de outros restaurantes já
+// categorizados como "Lanches e Refeições". Prefixo "mcc" (letras) evita
+// colisão com token puramente numérico que porventura apareça no texto de
+// uma descrição real (tokensSignificativos mantém dígitos).
+function tokenMcc(mcc: number): string {
+  return `mcc${mcc}`;
+}
+
 async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
   const historico = await prisma.financeLancamento.findMany({
     where: { tenantId, categoriaId: { not: null } },
-    select: { descricao: true, fornecedor: true, categoriaId: true },
+    select: { descricao: true, fornecedor: true, categoriaId: true, pluggyPayeeMcc: true },
     orderBy: { createdAt: "desc" },
     take: MAX_HISTORICO,
   });
@@ -58,8 +73,11 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
   // repetida dezenas de vezes (ex.: mensalidade de lavanderia, sempre com a
   // mesma descrição exata) não pode valer dezenas de exemplos de treino —
   // cada descrição DISTINTA vira 1 exemplo só, usando a categoria mais
-  // votada entre as ocorrências dela.
-  const porDescricao = new Map<string, { descricao: string; fornecedor: string | null; votos: Map<string, number> }>();
+  // votada entre as ocorrências dela (e o MCC mais votado, quando presente).
+  const porDescricao = new Map<
+    string,
+    { descricao: string; fornecedor: string | null; votos: Map<string, number>; mccVotos: Map<number, number> }
+  >();
   for (const h of historico) {
     if (!h.categoriaId) continue;
     // normalizarTexto (não trim()+toLowerCase() puro) é essencial aqui: os
@@ -68,15 +86,19 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
     const chave = `${normalizarTexto(h.descricao)}|${normalizarTexto(h.fornecedor)}`;
     let grupo = porDescricao.get(chave);
     if (!grupo) {
-      grupo = { descricao: h.descricao, fornecedor: h.fornecedor, votos: new Map() };
+      grupo = { descricao: h.descricao, fornecedor: h.fornecedor, votos: new Map(), mccVotos: new Map() };
       porDescricao.set(chave, grupo);
     }
     grupo.votos.set(h.categoriaId, (grupo.votos.get(h.categoriaId) ?? 0) + 1);
+    if (h.pluggyPayeeMcc != null) grupo.mccVotos.set(h.pluggyPayeeMcc, (grupo.mccVotos.get(h.pluggyPayeeMcc) ?? 0) + 1);
   }
 
   const exemplos = [...porDescricao.values()].map((grupo) => {
     const categoriaMaisVotada = [...grupo.votos.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    return { tokens: [...new Set(tokensSignificativos(`${grupo.descricao} ${grupo.fornecedor ?? ""}`))], categoriaId: categoriaMaisVotada };
+    const mccMaisVotado = grupo.mccVotos.size > 0 ? [...grupo.mccVotos.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
+    const tokensTexto = tokensSignificativos(`${grupo.descricao} ${grupo.fornecedor ?? ""}`);
+    const tokens = mccMaisVotado != null ? [...tokensTexto, tokenMcc(mccMaisVotado)] : tokensTexto;
+    return { tokens: [...new Set(tokens)], categoriaId: categoriaMaisVotada };
   });
 
   // document frequency: em quantas descrições DISTINTAS do histórico cada
@@ -141,13 +163,20 @@ function sugerirPorVizinhoMaisProximo(indice: IndiceCategorias, tokensQuery: str
   return { categoriaId, confianca };
 }
 
-/** Sugere uma categoria pra UM texto novo (descrição + fornecedor), a
- * partir do histórico já categorizado do tenant. Retorna null se não há
- * nenhuma descrição parecida o bastante no histórico (nada a aprender
- * ainda, ou parecido demais só por acaso). */
-export async function sugerirCategoriaPorTexto(tenantId: string, descricao: string, fornecedor?: string | null): Promise<SugestaoCategoria | null> {
+function tokensDeConsulta(descricao: string, fornecedor?: string | null, payeeMcc?: number | null): string[] {
+  const tokens = tokensSignificativos(`${descricao} ${fornecedor ?? ""}`);
+  if (payeeMcc != null) tokens.push(tokenMcc(payeeMcc));
+  return tokens;
+}
+
+/** Sugere uma categoria pra UM texto novo (descrição + fornecedor +
+ * opcionalmente o MCC do estabelecimento, ver tokenMcc acima), a partir do
+ * histórico já categorizado do tenant. Retorna null se não há nenhuma
+ * descrição parecida o bastante no histórico (nada a aprender ainda, ou
+ * parecido demais só por acaso). */
+export async function sugerirCategoriaPorTexto(tenantId: string, descricao: string, fornecedor?: string | null, payeeMcc?: number | null): Promise<SugestaoCategoria | null> {
   const indice = await construirIndice(tenantId);
-  return sugerirPorVizinhoMaisProximo(indice, tokensSignificativos(`${descricao} ${fornecedor ?? ""}`));
+  return sugerirPorVizinhoMaisProximo(indice, tokensDeConsulta(descricao, fornecedor, payeeMcc));
 }
 
 /** Versão em lote — constrói o índice do histórico UMA vez só e sugere pra
@@ -158,13 +187,13 @@ export async function sugerirCategoriaPorTexto(tenantId: string, descricao: stri
  * sugestão, ou seja, teve uma descrição parecida o bastante no histórico). */
 export async function sugerirCategoriasEmLote(
   tenantId: string,
-  itens: { id: string; descricao: string; fornecedor?: string | null }[]
+  itens: { id: string; descricao: string; fornecedor?: string | null; payeeMcc?: number | null }[]
 ): Promise<Map<string, SugestaoCategoria>> {
   const resultado = new Map<string, SugestaoCategoria>();
   if (itens.length === 0) return resultado;
   const indice = await construirIndice(tenantId);
   for (const item of itens) {
-    const sugestao = sugerirPorVizinhoMaisProximo(indice, tokensSignificativos(`${item.descricao} ${item.fornecedor ?? ""}`));
+    const sugestao = sugerirPorVizinhoMaisProximo(indice, tokensDeConsulta(item.descricao, item.fornecedor, item.payeeMcc));
     if (sugestao) resultado.set(item.id, sugestao);
   }
   return resultado;

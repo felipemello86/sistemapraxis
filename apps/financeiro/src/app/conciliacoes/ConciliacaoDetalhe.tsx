@@ -7,6 +7,7 @@ import { SeletorCentroCusto, type Empreendimento, type Unidade } from "@/compone
 import { SeletorCategoria } from "@/components/SeletorCategoria";
 import { BuscarLancamentoModal, type LancamentoEscolhido } from "@/components/BuscarLancamentoModal";
 import { RepetirLancamentoModal, repetirConfigPadrao, resumoRepeticao, type RepetirConfig, type ContaParaSelect } from "@/components/RepetirLancamentoModal";
+import { descricaoMcc } from "./mccLocal";
 
 // Redesign da tela de Conciliações (pedido do Felipe, 06/08/2026) —
 // espelha o layout do Conta Azul: dois cards que "se conectam". O
@@ -55,6 +56,12 @@ type LancamentoPendente = {
   // fallback manual (usuário digita) continua existindo.
   pluggyParcelaAtual: number | null;
   pluggyParcelaTotal: number | null;
+  // MCC (Merchant Category Code) do estabelecimento — pedido do Felipe,
+  // 06/08/2026: "tem algum campo q vem da pluggy q fale da natureza do
+  // estabelecimento comercial q fez a venda?". Confirmado ao vivo contra a
+  // conta real do tenant; ver mcc.ts (@praxis/core) pra tradução em
+  // português. Só em transações de cartão.
+  pluggyPayeeMcc: number | null;
 };
 
 // Sugestão automática de categoria a partir do histórico já categorizado do
@@ -257,6 +264,11 @@ export function ConciliacaoDetalhe({
   // lançamento") — `contas` já vem carregado pra outra finalidade
   // (RepetirLancamentoModal), reaproveitado aqui só pra exibição.
   const contaNome = contas.find((c) => c.id === item.lancamento.contaBancariaId)?.nome ?? null;
+  // Natureza do estabelecimento (MCC — pedido do Felipe, 06/08/2026: "tem
+  // algum campo q vem da pluggy q fale da natureza do estabelecimento
+  // comercial q fez a venda?"). Só em transações de cartão; nem todo MCC
+  // está mapeado (ver mccLocal.ts), nesse caso mostra só o código.
+  const mccDescricao = descricaoMcc(item.lancamento.pluggyPayeeMcc);
   const candidatos: Previsto[] = previstoManual ? [previstoManual, ...item.sugestoes.filter((s) => s.id !== previstoManual.id)] : item.sugestoes;
   const previstoAtivo = candidatos.find((c) => c.id === previstoEscolhidoId) ?? null;
 
@@ -388,6 +400,9 @@ export function ConciliacaoDetalhe({
               <p>Lançamento (competência): {formatDataBR(item.lancamento.dataCompetencia)}</p>
             )}
             {contaNome && <p>Conta/cartão: {contaNome}</p>}
+            {item.lancamento.pluggyPayeeMcc != null && (
+              <p>Estabelecimento: {mccDescricao ? `${mccDescricao} (MCC ${item.lancamento.pluggyPayeeMcc})` : `MCC ${item.lancamento.pluggyPayeeMcc}`}</p>
+            )}
           </div>
           <div className="border-t border-gray-100 pt-3">
             <p className="text-sm text-gray-800">{item.lancamento.descricao}</p>

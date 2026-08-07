@@ -183,6 +183,13 @@ export type PluggyTransaction = {
     installmentNumber?: number; // nº da parcela atual (1, 2, 3...)
     totalInstallments?: number; // total de parcelas da compra
     totalAmount?: number; // valor total da compra (soma de todas as parcelas) — só quando parcelado
+    // MCC (Merchant Category Code) do estabelecimento — pedido do Felipe,
+    // 06/08/2026: "tem algum campo q vem da pluggy q fale da natureza do
+    // estabelecimento comercial q fez a venda?". Confirmado ao vivo contra
+    // a conta real do tenant (docs.pluggy.ai/docs/transactions): vem
+    // preenchido em praticamente toda transação de cartão, mesmo sem
+    // parcelamento. Ver mcc.ts pra tradução em português.
+    payeeMCC?: number;
   };
 };
 
@@ -416,6 +423,7 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
             pluggyParcelaAtual: t.creditCardMetadata?.installmentNumber ?? null,
             pluggyParcelaTotal: t.creditCardMetadata?.totalInstallments ?? null,
             pluggyValorTotalCompra: t.creditCardMetadata?.totalAmount != null ? new Prisma.Decimal(t.creditCardMetadata.totalAmount) : null,
+            pluggyPayeeMcc: t.creditCardMetadata?.payeeMCC ?? null,
           },
         });
         novos++;

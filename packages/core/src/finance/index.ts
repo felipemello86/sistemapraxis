@@ -8,3 +8,4 @@ export * from "./conciliacao";
 export * from "./orcamento";
 export * from "./texto";
 export * from "./sugestao-categoria";
+export * from "./mcc";

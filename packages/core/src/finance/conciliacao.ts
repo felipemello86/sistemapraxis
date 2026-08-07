@@ -177,7 +177,10 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
   // qualquer coisa. Só quem já tem categoriaId (foi categorizado antes, ex.:
   // via tela de categorização em lote) não precisa de sugestão — o
   // frontend usa o categoriaId existente do lançamento com prioridade.
-  const semCategoria = pendentes.filter((p) => !p.categoriaId).map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor }));
+  // payeeMcc (MCC — natureza do estabelecimento, pedido do Felipe,
+  // 06/08/2026) entra como sinal A MAIS na sugestão, ao lado do texto — ver
+  // tokenMcc em sugestao-categoria.ts.
+  const semCategoria = pendentes.filter((p) => !p.categoriaId).map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor, payeeMcc: p.pluggyPayeeMcc }));
   const sugestoesCategoria = await sugerirCategoriasEmLote(tenantId, semCategoria);
 
   return pendentes.map((real) => {
