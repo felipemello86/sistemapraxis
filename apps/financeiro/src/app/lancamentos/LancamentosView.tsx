@@ -18,7 +18,7 @@ import { SeletorCentroCusto, type Empreendimento, type Unidade } from "@/compone
 // range customizado). A aba ativa manda no fetch.
 
 type Categoria = { id: string; nome: string; tipo: string; bloco: string };
-type ContaBancaria = { id: string; nome: string; tipo: "BANK" | "CREDIT"; saldoAtual: string | null };
+type ContaBancaria = { id: string; nome: string; apelido: string | null; tipo: "BANK" | "CREDIT"; saldoAtual: string | null };
 type ContaConectada = { id: string; instituicao: string; contas: ContaBancaria[] };
 
 type StatusLancamento = "VENCIDO" | "A_VENCER" | "QUITADO";
@@ -188,7 +188,12 @@ export function LancamentosView() {
   const [catPopoverAberto, setCatPopoverAberto] = useState(false);
   const [statusPopoverAberto, setStatusPopoverAberto] = useState(false);
 
-  const todasContas = useMemo(() => contasConectadas.flatMap((cc) => cc.contas.map((c) => ({ ...c, instituicao: cc.instituicao }))), [contasConectadas]);
+  // nome: apelido ?? nome original — pedido do Felipe, 07/08/2026, "os
+  // apelidos devem ser exibidos em todas as telas de uso do sistema".
+  const todasContas = useMemo(
+    () => contasConectadas.flatMap((cc) => cc.contas.map((c) => ({ ...c, nome: c.apelido || c.nome, instituicao: cc.instituicao }))),
+    [contasConectadas]
+  );
   const contaAtual = todasContas.find((c) => c.id === contaSelecionada) || null;
 
   // Cartão de crédito não tem "saldo atual" que faça sentido (não é conta

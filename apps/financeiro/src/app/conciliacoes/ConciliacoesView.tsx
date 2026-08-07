@@ -323,8 +323,10 @@ export function ConciliacoesView() {
     if (resU.ok) setUnidades(await resU.json());
     if (resCt.ok) {
       const data = await resCt.json();
-      const contasConectadas: { instituicao: string; contas: { id: string; nome: string }[] }[] = data.contasConectadas || [];
-      setContas(contasConectadas.flatMap((cc) => cc.contas.map((c) => ({ id: c.id, nome: c.nome, instituicao: cc.instituicao }))));
+      const contasConectadas: { instituicao: string; contas: { id: string; nome: string; apelido: string | null }[] }[] = data.contasConectadas || [];
+      // nome: apelido ?? nome original — pedido do Felipe, 07/08/2026, "os
+      // apelidos devem ser exibidos em todas as telas de uso do sistema".
+      setContas(contasConectadas.flatMap((cc) => cc.contas.map((c) => ({ id: c.id, nome: c.apelido || c.nome, instituicao: cc.instituicao }))));
     }
     setLoading(false);
   }

@@ -12,3 +12,4 @@ export * from "./mcc";
 export * from "./sugestao-recorrencia";
 export * from "./sugestao-centro-custo";
 export * from "./validacao-dre";
+export * from "./transacoes-automatizadas";

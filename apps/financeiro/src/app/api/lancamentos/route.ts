@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     where,
     include: {
       categoria: { select: { nome: true, tipo: true, bloco: { select: { nome: true } } } },
-      contaBancaria: { select: { id: true, nome: true, tipo: true } },
+      contaBancaria: { select: { id: true, nome: true, apelido: true, tipo: true } },
       property: { select: { nome: true } },
       uh: { select: { numero: true } },
     },
@@ -118,6 +118,10 @@ export async function GET(req: NextRequest) {
     return {
       ...resto,
       categoria: l.categoria ? { nome: l.categoria.nome, tipo: l.categoria.tipo, bloco: l.categoria.bloco.nome } : null,
+      // Apelido (pedido do Felipe, 07/08/2026) substitui o nome original da
+      // Pluggy em toda tela de uso — aqui o extrato só mostra o nome de
+      // exibição, não expõe `apelido` bruto (não editável nesta tela).
+      contaBancaria: l.contaBancaria ? { id: l.contaBancaria.id, nome: l.contaBancaria.apelido || l.contaBancaria.nome, tipo: l.contaBancaria.tipo } : null,
       empreendimento: property?.nome ?? null,
       unidade: uh?.numero ?? null,
       status: calcularStatusLancamento({ contaTipo: l.contaBancaria?.tipo, pago: l.pago, dataVencimento: l.dataVencimento, hoje }),

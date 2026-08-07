@@ -24,7 +24,10 @@ export async function GET() {
   return NextResponse.json(
     cartoes.map((c) => ({
       id: c.id,
-      nome: c.nome,
+      // Apelido (pedido do Felipe, 07/08/2026) — editado em Contas
+      // conectadas, exibido aqui como o nome do cartão. `nome` original da
+      // Pluggy fica só de fallback, nunca exposto sozinho.
+      nome: c.apelido || c.nome,
       instituicao: c.contaConectada.instituicao,
       diaVencimentoFatura: c.diaVencimentoFatura,
       diaFechamentoFatura: c.diaFechamentoFatura,

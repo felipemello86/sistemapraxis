@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Landmark, PlusCircle, RefreshCw } from "lucide-react";
+import { Landmark, PlusCircle, RefreshCw, Pencil, Check } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // Contas conectadas via Pluggy (requisito 6/10) — Unicred Conta Corrente,
@@ -21,7 +21,7 @@ declare global {
 // versão que pode deixar de existir no CDN deles.
 const PLUGGY_CONNECT_SCRIPT = "https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js";
 
-type ContaBancaria = { id: string; nome: string; tipo: string; saldoAtual: string | null; limiteCredito: string | null };
+type ContaBancaria = { id: string; nome: string; apelido: string | null; tipo: string; saldoAtual: string | null; limiteCredito: string | null };
 type ContaConectada = { id: string; instituicao: string; status: string; ultimaSincronizacaoEm: string | null; contas: ContaBancaria[] };
 
 function formatBRL(v: string | number | null): string {
@@ -38,6 +38,52 @@ const STATUS_LABEL: Record<string, { label: string; cor: string }> = {
   OUTDATED: { label: "Desatualizada", cor: "text-amber-700 bg-amber-50" },
   WAITING_USER_INPUT: { label: "Aguardando confirmação", cor: "text-amber-700 bg-amber-50" },
 };
+
+// Apelido editável por conta/cartão (pedido do Felipe, 07/08/2026): clique
+// no lápis pra editar inline; salva no blur/Enter, "" limpa o apelido
+// (volta a mostrar o nome original da Pluggy). Mesmo padrão de DiaInput em
+// configuracoes/cartoes/CartoesView.tsx.
+function ApelidoInput({ valorInicial, placeholder, onSalvar }: { valorInicial: string | null; placeholder: string; onSalvar: (v: string) => void }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(valorInicial ?? "");
+  const [salvo, setSalvo] = useState(false);
+  useEffect(() => setValor(valorInicial ?? ""), [valorInicial]);
+
+  function confirmar() {
+    setEditando(false);
+    if (valor.trim() !== (valorInicial ?? "")) {
+      onSalvar(valor.trim());
+      setSalvo(true);
+      setTimeout(() => setSalvo(false), 1500);
+    }
+  }
+
+  if (editando) {
+    return (
+      <input
+        autoFocus
+        className="input text-sm py-1 px-2 w-40"
+        placeholder={placeholder}
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        onBlur={confirmar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") confirmar();
+          if (e.key === "Escape") {
+            setValor(valorInicial ?? "");
+            setEditando(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button onClick={() => setEditando(true)} className="text-gray-300 hover:text-gray-600 flex-shrink-0" title="Editar apelido">
+      {salvo ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Pencil className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
 
 export function ContasView() {
   const [pluggyConfigurado, setPluggyConfigurado] = useState<boolean | null>(null);
@@ -140,6 +186,12 @@ export function ContasView() {
     }
   }
 
+  // Salva o apelido de uma conta/cartão (pedido do Felipe, 07/08/2026).
+  async function salvarApelido(contaBancariaId: string, apelido: string) {
+    await apiFetch("/api/contas", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contaBancariaId, apelido }) });
+    carregar();
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold text-gray-900">Contas conectadas</h1>
@@ -205,9 +257,15 @@ export function ContasView() {
                     </div>
                     <div className="space-y-1.5">
                       {cc.contas.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">{c.nome}</span>
-                          <span className="text-gray-900 font-medium">{formatBRL(c.tipo === "CREDIT" ? c.limiteCredito : c.saldoAtual)}</span>
+                        <div key={c.id} className="flex items-center justify-between text-sm gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="min-w-0">
+                              <span className="text-gray-700 truncate block">{c.apelido || c.nome}</span>
+                              {c.apelido && <span className="text-xs text-gray-400 truncate block">{c.nome}</span>}
+                            </div>
+                            <ApelidoInput valorInicial={c.apelido} placeholder={c.nome} onSalvar={(v) => salvarApelido(c.id, v)} />
+                          </div>
+                          <span className="text-gray-900 font-medium flex-shrink-0">{formatBRL(c.tipo === "CREDIT" ? c.limiteCredito : c.saldoAtual)}</span>
                         </div>
                       ))}
                     </div>
