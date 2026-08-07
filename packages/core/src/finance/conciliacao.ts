@@ -215,7 +215,7 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
   // sugestão.
   const semCentroCusto = pendentes
     .filter((p) => p.centroCustoTipo === "ADMINISTRACAO" && !p.propertyId && !p.uhId)
-    .map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor }));
+    .map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor, valor: Number(p.valor) }));
   const sugestoesCentroCusto = await sugerirCentroCustoEmLote(tenantId, semCentroCusto);
 
   return pendentes.map((real) => {
