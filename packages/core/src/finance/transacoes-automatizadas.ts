@@ -49,6 +49,7 @@ import { limitesDoMes } from "./mes";
 import { validarCategoriaTipo } from "./sugestao-categoria";
 import { tokensSignificativos } from "./texto";
 import { sendPushToUser } from "../push";
+import { dataAtualSP } from "../timezone";
 
 function diffDias(a: string, b: string): number {
   const [a1, a2, a3] = a.split("-").map(Number);
@@ -121,7 +122,7 @@ export async function criarTransacaoAutomatizada(tenantId: string, dados: DadosT
     uhId = dados.uhId!;
   }
 
-  return prisma.financeTransacaoAutomatizada.create({
+  const regra = await prisma.financeTransacaoAutomatizada.create({
     data: {
       tenantId,
       descricao: dados.descricao.trim(),
@@ -137,6 +138,23 @@ export async function criarTransacaoAutomatizada(tenantId: string, dados: DadosT
       criadoPorNome,
     },
   });
+
+  // Pedido do Felipe, 07/08/2026: "não tem uma forma mais ágil do sistema
+  // fazer isso?" — sem isso, uma regra cadastrada com diaDoMes já passado
+  // no mês corrente só apareceria no kanban no próximo horário do cron
+  // (gerarExecucoesDoDia roda 1x por dia, 8h05 BRT), até 24h depois. Gera a
+  // pendência do mês corrente na hora, se já for o caso — mesma função do
+  // cron, então continua idempotente/seguro mesmo se o cron rodar de novo
+  // no mesmo dia (unique [transacaoAutomatizadaId, mesReferencia]).
+  try {
+    await gerarExecucoesDoDia(tenantId, dataAtualSP());
+  } catch (e) {
+    // Não deixa a criação da regra falhar por causa disso — pior caso, a
+    // pendência aparece no próximo cron, como já era antes dessa mudança.
+    console.error("[transacoes-automatizadas] falha ao gerar execução imediata:", e);
+  }
+
+  return regra;
 }
 
 export async function atualizarTransacaoAutomatizada(tenantId: string, id: string, dados: Partial<DadosTransacaoAutomatizada & { ativo: boolean }>) {
