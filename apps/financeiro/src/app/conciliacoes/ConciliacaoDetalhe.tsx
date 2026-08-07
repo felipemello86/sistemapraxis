@@ -185,7 +185,7 @@ export function valorParcelaPadrao(item: ItemPendente): number | null {
  * ConciliacoesView.tsx), pra ficar consistente em qualquer lugar que essa
  * proposta apareça. */
 export function repetirInicial(item: ItemPendente): RepetirConfig {
-  const base = repetirConfigPadrao(item.lancamento.dataVencimento);
+  const base = repetirConfigPadrao(item.lancamento.dataVencimento, item.lancamento.fornecedor || "");
   if (item.recorrenciaSugerida?.recorrente) {
     return { ...base, habilitado: true, frequencia: item.recorrenciaSugerida.frequencia };
   }
@@ -394,6 +394,15 @@ export function ConciliacaoDetalhe({
       setErro("Confira o número de parcelas.");
       return;
     }
+    const criarTransacaoAutomatizada = !parcelado && repetir.habilitado && repetir.transacaoAutomatizada;
+    if (criarTransacaoAutomatizada && !repetir.favorecido.trim()) {
+      setErro("Informe o favorecido da Transação Automatizada.");
+      return;
+    }
+    if (criarTransacaoAutomatizada && !repetir.dadosBancarios.trim()) {
+      setErro("Informe os dados bancários da Transação Automatizada.");
+      return;
+    }
     setSalvando(true);
     try {
       const res = await apiFetch("/api/conciliacao", {
@@ -408,7 +417,11 @@ export function ConciliacaoDetalhe({
             propertyId: centroCustoTipo === "EMPREENDIMENTO" ? propertyId : null,
             uhId: centroCustoTipo === "UNIDADE" ? uhId : null,
             dataVencimento: parcelado ? item.lancamento.dataVencimento : repetir.habilitado ? repetir.primeiroVencimento : item.lancamento.dataVencimento,
-            recorrente: parcelado ? (parcelasRestantes ?? 1) > 1 : repetir.habilitado,
+            // Transação Automatizada assume a recorrência (fluxo de
+            // aprovação próprio) — este lançamento fica só desta vez, senão
+            // a despesa contaria duas vezes nos meses seguintes (ver
+            // comentário em RepetirLancamentoModal.tsx).
+            recorrente: parcelado ? (parcelasRestantes ?? 1) > 1 : criarTransacaoAutomatizada ? false : repetir.habilitado,
             recorrenciaFrequencia: parcelado ? "MENSAL" : repetir.frequencia,
             recorrenciaQtde: parcelado ? parcelasRestantes : repetir.habilitado && repetir.qtdeTipo === "numero" ? repetir.qtdeNumero : null,
             contaBancariaId: parcelado ? null : repetir.contaBancariaId || null,
@@ -424,6 +437,35 @@ export function ConciliacaoDetalhe({
         setErro(data.error || "Erro ao criar e conciliar.");
         return;
       }
+
+      if (criarTransacaoAutomatizada) {
+        const resTA = await apiFetch("/api/transacoes-automatizadas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            descricao,
+            favorecido: repetir.favorecido,
+            dadosBancarios: repetir.dadosBancarios,
+            valor: Math.abs(Number(item.lancamento.valor)),
+            diaDoMes: Number(repetir.primeiroVencimento.slice(8, 10)),
+            categoriaId,
+            centroCustoTipo,
+            propertyId: centroCustoTipo === "EMPREENDIMENTO" ? propertyId : null,
+            uhId: centroCustoTipo === "UNIDADE" ? uhId : null,
+            contaBancariaId: repetir.contaBancariaId || null,
+          }),
+        });
+        if (!resTA.ok) {
+          const dataTA = await resTA.json().catch(() => ({}));
+          // O lançamento deste mês já foi conciliado com sucesso acima —
+          // só a REGRA pra futuros meses falhou (ex.: só Master pode
+          // cadastrar). Avisa sem desfazer a conciliação já feita.
+          setErro(`Lançamento conciliado, mas a Transação Automatizada não foi criada: ${dataTA.error || "erro desconhecido"}`);
+          onConciliado();
+          return;
+        }
+      }
+
       onConciliado();
     } finally {
       setSalvando(false);

@@ -451,6 +451,12 @@ export function ConciliacoesView() {
             mesReferencia: (item.lancamento.dataCompetencia || item.lancamento.dataVencimento).slice(0, 7),
           };
         }
+        // Transação Automatizada (pedido do Felipe, 07/08/2026) assume a
+        // recorrência pro futuro (fluxo de aprovação próprio, ver
+        // RepetirLancamentoModal.tsx) — este lançamento fica só desta vez,
+        // senão a despesa contaria duas vezes nos meses seguintes.
+        const criarTA = p.repetir.habilitado && p.repetir.transacaoAutomatizada;
+
         // Recorrência (pedido do Felipe, 06/08/2026: "adicione uma coluna de
         // Recorrência (...) use a inteligência do sistema e o backup do
         // conta azul para pré-configurar") — antes ia sempre `false` aqui,
@@ -464,7 +470,7 @@ export function ConciliacoesView() {
           propertyId: p.centroCustoTipo === "EMPREENDIMENTO" ? p.propertyId : null,
           uhId: p.centroCustoTipo === "UNIDADE" ? p.uhId : null,
           dataVencimento: p.repetir.habilitado ? p.repetir.primeiroVencimento : item.lancamento.dataVencimento,
-          recorrente: p.repetir.habilitado,
+          recorrente: criarTA ? false : p.repetir.habilitado,
           recorrenciaFrequencia: p.repetir.frequencia,
           recorrenciaQtde: p.repetir.habilitado && p.repetir.qtdeTipo === "numero" ? p.repetir.qtdeNumero : null,
           contaBancariaId: p.repetir.contaBancariaId || null,
@@ -473,11 +479,51 @@ export function ConciliacoesView() {
         };
         return { lancamentoId: item.lancamento.id, novo };
       });
+
+      // Transações Automatizadas a criar (fora do lote de conciliação —
+      // são um recurso à parte, ver /api/transacoes-automatizadas). Só os
+      // itens "novo" com o toggle ligado; "previsto" não passa por `novo`
+      // então não tem como ter marcado o toggle.
+      const paraTransacaoAutomatizada = selecionados
+        .map((item) => ({ item, p: propostas.get(item.lancamento.id)! }))
+        .filter(({ p }) => p.modo === "novo" && p.repetir.habilitado && p.repetir.transacaoAutomatizada);
+
       const res = await apiFetch("/api/conciliacao", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lote }) });
       const data = await res.json().catch(() => ({ ok: 0, total: lote.length, erros: [] }));
       const falhas = data.erros?.length || 0;
+
+      let taOk = 0;
+      let taFalhas = 0;
+      if (paraTransacaoAutomatizada.length > 0) {
+        const resultadosTA = await Promise.all(
+          paraTransacaoAutomatizada.map(({ item, p }) =>
+            apiFetch("/api/transacoes-automatizadas", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                descricao: item.lancamento.descricao,
+                favorecido: p.repetir.favorecido,
+                dadosBancarios: p.repetir.dadosBancarios,
+                valor: Math.abs(Number(item.lancamento.valor)),
+                diaDoMes: Number(p.repetir.primeiroVencimento.slice(8, 10)),
+                categoriaId: p.categoriaId,
+                centroCustoTipo: p.centroCustoTipo,
+                propertyId: p.centroCustoTipo === "EMPREENDIMENTO" ? p.propertyId : null,
+                uhId: p.centroCustoTipo === "UNIDADE" ? p.uhId : null,
+                contaBancariaId: p.repetir.contaBancariaId || null,
+              }),
+            })
+          )
+        );
+        taOk = resultadosTA.filter((r) => r.ok).length;
+        taFalhas = resultadosTA.length - taOk;
+      }
+
       setResultado(
-        `${data.ok || 0} lançamento${(data.ok || 0) !== 1 ? "s" : ""} conciliado${(data.ok || 0) !== 1 ? "s" : ""}.` + (falhas > 0 ? ` ${falhas} falharam — confira os cards restantes.` : "")
+        `${data.ok || 0} lançamento${(data.ok || 0) !== 1 ? "s" : ""} conciliado${(data.ok || 0) !== 1 ? "s" : ""}.` +
+          (falhas > 0 ? ` ${falhas} falharam — confira os cards restantes.` : "") +
+          (taOk > 0 ? ` ${taOk} Transação${taOk !== 1 ? "ões" : ""} Automatizada${taOk !== 1 ? "s" : ""} cadastrada${taOk !== 1 ? "s" : ""}.` : "") +
+          (taFalhas > 0 ? ` ${taFalhas} Transação Automatizada não pôde ser cadastrada.` : "")
       );
       carregar();
     } finally {
