@@ -13,6 +13,7 @@ import { limitesDoMes, projetarDataNoMes, ocorreNoMes, calcularFimRecorrencia } 
 import { tokensSignificativos } from "./texto";
 import { sugerirCategoriasEmLote, type SugestaoCategoria } from "./sugestao-categoria";
 import { sugerirRecorrenciaEmLote, type SugestaoRecorrencia } from "./sugestao-recorrencia";
+import { sugerirCentroCustoEmLote, type SugestaoCentroCusto } from "./sugestao-centro-custo";
 
 function diffDias(a: string, b: string): number {
   const [a1, a2, a3] = a.split("-").map(Number);
@@ -206,6 +207,17 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
     pendentes.map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor }))
   );
 
+  // Sugestão de Centro de Custo (pedido do Felipe, 06/08/2026: "aproveite
+  // também os dados de centro de custo") — mesmo espírito das anteriores,
+  // ver sugestao-centro-custo.ts. Só entra quem ainda está no default
+  // ADMINISTRACAO sem UH/Empreendimento específico — quem já tem um centro
+  // de custo próprio (ex.: veio do backfill do Conta Azul) não precisa de
+  // sugestão.
+  const semCentroCusto = pendentes
+    .filter((p) => p.centroCustoTipo === "ADMINISTRACAO" && !p.propertyId && !p.uhId)
+    .map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor }));
+  const sugestoesCentroCusto = await sugerirCentroCustoEmLote(tenantId, semCentroCusto);
+
   return pendentes.map((real) => {
     const m = (real.dataCompetencia || real.dataVencimento).slice(0, 7);
     const fulfilled = fulfilledPorMes.get(m) ?? new Map();
@@ -217,8 +229,9 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
 
     const categoriaSugerida: SugestaoCategoria | null = sugestoesCategoria.get(real.id) ?? null;
     const recorrenciaSugerida: SugestaoRecorrencia | null = sugestoesRecorrencia.get(real.id) ?? null;
+    const centroCustoSugerida: SugestaoCentroCusto | null = sugestoesCentroCusto.get(real.id) ?? null;
 
-    return { lancamento: real, sugestoes: candidatos, melhorSugestao: candidatos[0] ?? null, categoriaSugerida, recorrenciaSugerida };
+    return { lancamento: real, sugestoes: candidatos, melhorSugestao: candidatos[0] ?? null, categoriaSugerida, recorrenciaSugerida, centroCustoSugerida };
   });
 }
 

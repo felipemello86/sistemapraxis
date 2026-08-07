@@ -10,3 +10,4 @@ export * from "./texto";
 export * from "./sugestao-categoria";
 export * from "./mcc";
 export * from "./sugestao-recorrencia";
+export * from "./sugestao-centro-custo";

@@ -67,3 +67,13 @@ export function tokensSignificativos(s: string): string[] {
     .split(" ")
     .filter((t) => t.length >= 4 && !STOPWORDS.has(t));
 }
+
+/** Chave de agrupamento "é a mesma cobrança" — descrição+fornecedor
+ * normalizados (não tokensSignificativos: aqui queremos IGUALDADE exata do
+ * texto normalizado, não similaridade). Usada por qualquer lugar que
+ * precise agrupar ocorrências históricas da mesma cobrança recorrente pra
+ * aprender um padrão (categoria, recorrência, centro de custo) — ficar
+ * numa função só garante que todos enxergam "o mesmo grupo" da mesma forma. */
+export function chaveAgrupamento(descricao: string, fornecedor?: string | null): string {
+  return `${normalizarTexto(descricao)}|${normalizarTexto(fornecedor)}`;
+}

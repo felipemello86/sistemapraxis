@@ -64,12 +64,30 @@ export interface PropostaLote {
 const CONFIANCA_MINIMA_PREVISTO = 70;
 const CONFIANCA_MINIMA_CATEGORIA = 55; // mesmo limiar do card "Novo lançamento" individual (ConciliacaoDetalhe.tsx)
 
+// Centro de Custo (pedido do Felipe, 06/08/2026: "aproveite também os
+// dados de centro de custo") — pré-preenche com a sugestão (voto
+// majoritário do histórico, ver sugestao-centro-custo.ts) quando o
+// lançamento em si ainda não tem um centro de custo próprio salvo. O
+// backend já filtra por confiança mínima antes de mandar
+// centroCustoSugerida (ver MIN_CONFIANCA em sugestao-centro-custo.ts) —
+// aqui só decide EMPREENDIMENTO vs UNIDADE e monta o objeto parcial.
+function centroCustoInicial(item: ItemPendente): Pick<PropostaLote, "centroCustoTipo" | "propertyId" | "uhId"> {
+  if (item.lancamento.centroCustoTipo === "EMPREENDIMENTO" || item.lancamento.centroCustoTipo === "UNIDADE") {
+    return { centroCustoTipo: item.lancamento.centroCustoTipo, propertyId: item.lancamento.propertyId, uhId: item.lancamento.uhId };
+  }
+  if (item.centroCustoSugerida) {
+    return { centroCustoTipo: item.centroCustoSugerida.centroCustoTipo, propertyId: item.centroCustoSugerida.propertyId, uhId: item.centroCustoSugerida.uhId };
+  }
+  return { centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null };
+}
+
 function propostaInicial(item: ItemPendente): PropostaLote {
   // Recorrência (pedido do Felipe, 06/08/2026) — pré-preenchida a partir de
   // item.recorrenciaSugerida em TODOS os ramos abaixo (mesmo o "previsto",
   // que não usa `repetir` pra nada hoje, mas fica pronto caso o usuário
   // troque pra "novo lançamento" pelo seletor do card).
   const repetir = repetirInicial(item);
+  const centroCusto = centroCustoInicial(item);
   if (item.melhorSugestao && (item.melhorSugestao.confianca ?? 0) >= CONFIANCA_MINIMA_PREVISTO) {
     return {
       checked: true,
@@ -95,9 +113,7 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       modo: "novo",
       previstoId: "",
       categoriaId: item.lancamento.categoriaId ?? item.categoriaSugerida?.categoriaId ?? "",
-      centroCustoTipo: "ADMINISTRACAO",
-      propertyId: null,
-      uhId: null,
+      ...centroCusto,
       repetir,
     };
   }
@@ -119,9 +135,7 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       modo: "novo",
       previstoId: "",
       categoriaId: item.lancamento.categoriaId,
-      centroCustoTipo: "ADMINISTRACAO",
-      propertyId: null,
-      uhId: null,
+      ...centroCusto,
       repetir,
     };
   }
@@ -131,13 +145,11 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       modo: "novo",
       previstoId: "",
       categoriaId: item.categoriaSugerida.categoriaId,
-      centroCustoTipo: "ADMINISTRACAO",
-      propertyId: null,
-      uhId: null,
+      ...centroCusto,
       repetir,
     };
   }
-  return { checked: false, modo: "novo", previstoId: "", categoriaId: "", centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null, repetir };
+  return { checked: false, modo: "novo", previstoId: "", categoriaId: "", ...centroCusto, repetir };
 }
 
 // Colunas organizáveis (pedido do Felipe, 06/08/2026): "reorganize como

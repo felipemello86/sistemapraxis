@@ -48,6 +48,14 @@ type LancamentoPendente = {
   dataCompetencia: string | null;
   categoriaId: string | null;
   contaBancariaId: string | null;
+  // Centro de Custo já salvo no próprio lançamento (pedido do Felipe,
+  // 06/08/2026: "aproveite também os dados de centro de custo") — quando
+  // já veio de um backfill (ex.: import do Conta Azul), tem prioridade
+  // sobre qualquer sugestão (mesmo espírito de categoriaId acima, ver
+  // centroCustoInicial em ConciliacoesView.tsx).
+  centroCustoTipo: string;
+  propertyId: string | null;
+  uhId: string | null;
   // Metadata de parcelamento que a PRÓPRIA Pluggy manda, quando a
   // instituição financeira fornece (pedido do Felipe, 06/08/2026, depois
   // de perguntar "o banco não manda nenhuma informação sobre o
@@ -87,12 +95,19 @@ type CategoriaSugerida = { categoriaId: string; confianca: number } | null;
 // popup "Repetir Lançamento"; nunca decide sozinha.
 export type RecorrenciaSugerida = { recorrente: boolean; frequencia: "MENSAL" | "ANUAL"; origem: "historico" | "conta_azul" | "ambos"; confianca: number } | null;
 
+// Sugestão automática de CENTRO DE CUSTO (pedido do Felipe, 06/08/2026:
+// "aproveite também os dados de centro de custo") — voto majoritário do
+// histórico já classificado (ver sugestao-centro-custo.ts, @praxis/core).
+// Só aparece quando o lançamento ainda está no default ADMINISTRACAO.
+export type CentroCustoSugerida = { centroCustoTipo: "EMPREENDIMENTO" | "UNIDADE"; propertyId: string | null; uhId: string | null; confianca: number } | null;
+
 export type ItemPendente = {
   lancamento: LancamentoPendente;
   sugestoes: Previsto[];
   melhorSugestao: Previsto | null;
   categoriaSugerida: CategoriaSugerida;
   recorrenciaSugerida: RecorrenciaSugerida;
+  centroCustoSugerida: CentroCustoSugerida;
 };
 
 // Confiança mínima pra pré-preencher a Categoria sozinha sem o usuário

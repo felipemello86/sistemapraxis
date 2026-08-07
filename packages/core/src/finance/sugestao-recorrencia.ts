@@ -29,7 +29,7 @@
 // final é sempre humana).
 
 import { prisma } from "../prisma";
-import { normalizarTexto } from "./texto";
+import { chaveAgrupamento } from "./texto";
 
 export interface SugestaoRecorrencia {
   recorrente: boolean;
@@ -41,12 +41,12 @@ export interface SugestaoRecorrencia {
 const MAX_HISTORICO = 5000;
 const MIN_OCORRENCIAS = 3; // menos que isso é ruído demais (podia ser coincidência de 2 compras avulsas ~1 mês de intervalo)
 
-/** Chave de agrupamento — EXATAMENTE a mesma de sugestao-categoria.ts
- * (`porDescricao`) e do script importar-recorrencia-conta-azul.ts, pra
- * garantir que os três enxerguem "a mesma cobrança" da mesma forma. */
-export function chaveRecorrencia(descricao: string, fornecedor?: string | null): string {
-  return `${normalizarTexto(descricao)}|${normalizarTexto(fornecedor)}`;
-}
+/** Alias — este módulo nasceu antes de chaveAgrupamento virar compartilhada
+ * em texto.ts; mantido pra não quebrar scripts/importar-recorrencia-conta-azul.ts
+ * (que já importa `chaveRecorrencia` daqui) e qualquer outro import
+ * existente. Mesma função, mesmo resultado de sugestao-categoria.ts e
+ * sugestao-centro-custo.ts. */
+export const chaveRecorrencia = chaveAgrupamento;
 
 function diffDias(a: string, b: string): number {
   const [a1, a2, a3] = a.split("-").map(Number);
