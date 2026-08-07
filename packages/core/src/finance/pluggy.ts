@@ -168,8 +168,16 @@ export type PluggyTransaction = {
   description: string;
   amount: number; // conta corrente (BANK): negativo = saída, positivo = entrada (mesma convenção do nosso FinanceLancamento.valor). Cartão (CREDIT): INVERTIDO — positivo = compra (despesa), negativo = pagamento/estorno (ver sincronizarContasDoTenant, que já corrige isso na hora de gravar)
   date: string; // ISO — a data REAL da transação. Vira dataCompetencia sempre (pedido do Felipe, 05/08/2026, 3ª rodada: "o sistema deve manter a data que vem da Pluggy como data de competência"); vira dataVencimento também, exceto em cartão de crédito com diaVencimentoFatura configurado, onde dataVencimento passa a ser a data da FATURA (ver calcularVencimentoFatura).
-  category?: string; // categorização automática da própria Pluggy — usada só como sugestão, nunca grava direto (categorização final é sempre humana, ver requisito 6)
-  merchant?: { name?: string };
+  category?: string; // categorização automática da própria Pluggy, nível da TRANSAÇÃO (ex. "Groceries") — usada só como sugestão, nunca grava direto (categorização final é sempre humana, ver requisito 6)
+  merchant?: {
+    name?: string;
+    // Categoria do ESTABELECIMENTO em si (mais específica que `category`
+    // acima, ex. "Video Streaming" pro Netflix) — pedido do Felipe,
+    // 06/08/2026: "capture também [category/merchant] e também use como
+    // sugestão adicional [mesmo espírito do MCC]". Confirmado ao vivo que o
+    // plano do tenant retorna isso.
+    category?: string;
+  };
   // Dados de parcelamento do cartão (pedido do Felipe, 06/08/2026, depois
   // de perguntar "o banco não manda nenhuma informação sobre o
   // parcelamento?") — a Pluggy documenta esse objeto em
@@ -424,6 +432,8 @@ export async function sincronizarContasDoTenant(tenantId: string): Promise<{ nov
             pluggyParcelaTotal: t.creditCardMetadata?.totalInstallments ?? null,
             pluggyValorTotalCompra: t.creditCardMetadata?.totalAmount != null ? new Prisma.Decimal(t.creditCardMetadata.totalAmount) : null,
             pluggyPayeeMcc: t.creditCardMetadata?.payeeMCC ?? null,
+            pluggyCategoria: t.category ?? null,
+            pluggyMerchantCategoria: t.merchant?.category ?? null,
           },
         });
         novos++;

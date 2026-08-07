@@ -60,10 +60,26 @@ function tokenMcc(mcc: number): string {
   return `mcc${mcc}`;
 }
 
+// Mesmo espírito do MCC (pedido do Felipe, 06/08/2026: "capture também
+// [category/merchant] e também use como sugestão adicional [mesmo espírito
+// do MCC]") — a PRÓPRIA Pluggy manda uma categorização automática dela, em
+// dois níveis: da transação (`category`, ex. "Groceries") e do
+// estabelecimento (`merchant.category`, ex. "Video Streaming"). Cada uma
+// vira seu próprio pseudo-token, com prefixo distinto (pcat_/mcat_) pra não
+// colidir entre si nem com o MCC — são sinais de natureza PARECIDA mas
+// vindos de fontes diferentes (Enrichment Categorizer da Pluggy vs. MCC
+// padrão Visa/Mastercard), então tratados como tokens independentes.
+function tokenPluggyCategoria(cat: string): string {
+  return `pcat_${normalizarTexto(cat).replace(/[^a-z0-9]/g, "")}`;
+}
+function tokenMerchantCategoria(cat: string): string {
+  return `mcat_${normalizarTexto(cat).replace(/[^a-z0-9]/g, "")}`;
+}
+
 async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
   const historico = await prisma.financeLancamento.findMany({
     where: { tenantId, categoriaId: { not: null } },
-    select: { descricao: true, fornecedor: true, categoriaId: true, pluggyPayeeMcc: true },
+    select: { descricao: true, fornecedor: true, categoriaId: true, pluggyPayeeMcc: true, pluggyCategoria: true, pluggyMerchantCategoria: true },
     orderBy: { createdAt: "desc" },
     take: MAX_HISTORICO,
   });
@@ -73,10 +89,18 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
   // repetida dezenas de vezes (ex.: mensalidade de lavanderia, sempre com a
   // mesma descrição exata) não pode valer dezenas de exemplos de treino —
   // cada descrição DISTINTA vira 1 exemplo só, usando a categoria mais
-  // votada entre as ocorrências dela (e o MCC mais votado, quando presente).
+  // votada entre as ocorrências dela (e o MCC/category/merchant.category
+  // mais votados, quando presentes).
   const porDescricao = new Map<
     string,
-    { descricao: string; fornecedor: string | null; votos: Map<string, number>; mccVotos: Map<number, number> }
+    {
+      descricao: string;
+      fornecedor: string | null;
+      votos: Map<string, number>;
+      mccVotos: Map<number, number>;
+      pluggyCatVotos: Map<string, number>;
+      merchantCatVotos: Map<string, number>;
+    }
   >();
   for (const h of historico) {
     if (!h.categoriaId) continue;
@@ -86,18 +110,28 @@ async function construirIndice(tenantId: string): Promise<IndiceCategorias> {
     const chave = `${normalizarTexto(h.descricao)}|${normalizarTexto(h.fornecedor)}`;
     let grupo = porDescricao.get(chave);
     if (!grupo) {
-      grupo = { descricao: h.descricao, fornecedor: h.fornecedor, votos: new Map(), mccVotos: new Map() };
+      grupo = { descricao: h.descricao, fornecedor: h.fornecedor, votos: new Map(), mccVotos: new Map(), pluggyCatVotos: new Map(), merchantCatVotos: new Map() };
       porDescricao.set(chave, grupo);
     }
     grupo.votos.set(h.categoriaId, (grupo.votos.get(h.categoriaId) ?? 0) + 1);
     if (h.pluggyPayeeMcc != null) grupo.mccVotos.set(h.pluggyPayeeMcc, (grupo.mccVotos.get(h.pluggyPayeeMcc) ?? 0) + 1);
+    if (h.pluggyCategoria) grupo.pluggyCatVotos.set(h.pluggyCategoria, (grupo.pluggyCatVotos.get(h.pluggyCategoria) ?? 0) + 1);
+    if (h.pluggyMerchantCategoria) grupo.merchantCatVotos.set(h.pluggyMerchantCategoria, (grupo.merchantCatVotos.get(h.pluggyMerchantCategoria) ?? 0) + 1);
+  }
+
+  function maisVotado<T>(votos: Map<T, number>): T | null {
+    return votos.size > 0 ? [...votos.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
   }
 
   const exemplos = [...porDescricao.values()].map((grupo) => {
-    const categoriaMaisVotada = [...grupo.votos.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    const mccMaisVotado = grupo.mccVotos.size > 0 ? [...grupo.mccVotos.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
-    const tokensTexto = tokensSignificativos(`${grupo.descricao} ${grupo.fornecedor ?? ""}`);
-    const tokens = mccMaisVotado != null ? [...tokensTexto, tokenMcc(mccMaisVotado)] : tokensTexto;
+    const categoriaMaisVotada = maisVotado(grupo.votos)!;
+    const mccMaisVotado = maisVotado(grupo.mccVotos);
+    const pluggyCatMaisVotada = maisVotado(grupo.pluggyCatVotos);
+    const merchantCatMaisVotada = maisVotado(grupo.merchantCatVotos);
+    const tokens = tokensSignificativos(`${grupo.descricao} ${grupo.fornecedor ?? ""}`);
+    if (mccMaisVotado != null) tokens.push(tokenMcc(mccMaisVotado));
+    if (pluggyCatMaisVotada) tokens.push(tokenPluggyCategoria(pluggyCatMaisVotada));
+    if (merchantCatMaisVotada) tokens.push(tokenMerchantCategoria(merchantCatMaisVotada));
     return { tokens: [...new Set(tokens)], categoriaId: categoriaMaisVotada };
   });
 
@@ -163,20 +197,30 @@ function sugerirPorVizinhoMaisProximo(indice: IndiceCategorias, tokensQuery: str
   return { categoriaId, confianca };
 }
 
-function tokensDeConsulta(descricao: string, fornecedor?: string | null, payeeMcc?: number | null): string[] {
+function tokensDeConsulta(descricao: string, fornecedor?: string | null, payeeMcc?: number | null, pluggyCategoria?: string | null, pluggyMerchantCategoria?: string | null): string[] {
   const tokens = tokensSignificativos(`${descricao} ${fornecedor ?? ""}`);
   if (payeeMcc != null) tokens.push(tokenMcc(payeeMcc));
+  if (pluggyCategoria) tokens.push(tokenPluggyCategoria(pluggyCategoria));
+  if (pluggyMerchantCategoria) tokens.push(tokenMerchantCategoria(pluggyMerchantCategoria));
   return tokens;
 }
 
 /** Sugere uma categoria pra UM texto novo (descrição + fornecedor +
- * opcionalmente o MCC do estabelecimento, ver tokenMcc acima), a partir do
+ * opcionalmente MCC/category/merchant.category do estabelecimento, ver
+ * tokenMcc/tokenPluggyCategoria/tokenMerchantCategoria acima), a partir do
  * histórico já categorizado do tenant. Retorna null se não há nenhuma
  * descrição parecida o bastante no histórico (nada a aprender ainda, ou
  * parecido demais só por acaso). */
-export async function sugerirCategoriaPorTexto(tenantId: string, descricao: string, fornecedor?: string | null, payeeMcc?: number | null): Promise<SugestaoCategoria | null> {
+export async function sugerirCategoriaPorTexto(
+  tenantId: string,
+  descricao: string,
+  fornecedor?: string | null,
+  payeeMcc?: number | null,
+  pluggyCategoria?: string | null,
+  pluggyMerchantCategoria?: string | null
+): Promise<SugestaoCategoria | null> {
   const indice = await construirIndice(tenantId);
-  return sugerirPorVizinhoMaisProximo(indice, tokensDeConsulta(descricao, fornecedor, payeeMcc));
+  return sugerirPorVizinhoMaisProximo(indice, tokensDeConsulta(descricao, fornecedor, payeeMcc, pluggyCategoria, pluggyMerchantCategoria));
 }
 
 /** Versão em lote — constrói o índice do histórico UMA vez só e sugere pra
@@ -187,13 +231,16 @@ export async function sugerirCategoriaPorTexto(tenantId: string, descricao: stri
  * sugestão, ou seja, teve uma descrição parecida o bastante no histórico). */
 export async function sugerirCategoriasEmLote(
   tenantId: string,
-  itens: { id: string; descricao: string; fornecedor?: string | null; payeeMcc?: number | null }[]
+  itens: { id: string; descricao: string; fornecedor?: string | null; payeeMcc?: number | null; pluggyCategoria?: string | null; pluggyMerchantCategoria?: string | null }[]
 ): Promise<Map<string, SugestaoCategoria>> {
   const resultado = new Map<string, SugestaoCategoria>();
   if (itens.length === 0) return resultado;
   const indice = await construirIndice(tenantId);
   for (const item of itens) {
-    const sugestao = sugerirPorVizinhoMaisProximo(indice, tokensDeConsulta(item.descricao, item.fornecedor, item.payeeMcc));
+    const sugestao = sugerirPorVizinhoMaisProximo(
+      indice,
+      tokensDeConsulta(item.descricao, item.fornecedor, item.payeeMcc, item.pluggyCategoria, item.pluggyMerchantCategoria)
+    );
     if (sugestao) resultado.set(item.id, sugestao);
   }
   return resultado;

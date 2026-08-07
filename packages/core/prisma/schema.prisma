@@ -3289,6 +3289,21 @@ model FinanceLancamento {
   // muito diferente uma da outra (nome fantasia novo, nunca visto antes).
   pluggyPayeeMcc Int? // creditCardMetadata.payeeMCC
 
+  // Categorização automática da PRÓPRIA Pluggy (pedido do Felipe,
+  // 06/08/2026: "capture também [category/merchant] e também use como
+  // sugestão adicional [mesmo espírito do MCC]"). `pluggyCategoria` é a
+  // categoria da TRANSAÇÃO (campo `category` da API, ex. "Groceries",
+  // "Shopping"); `pluggyMerchantCategoria` é a categoria do
+  // ESTABELECIMENTO (campo `merchant.category`, ex. "Services", "Video
+  // Streaming") — confirmado ao vivo que o plano do tenant retorna os
+  // dois. Puramente informativo + sinal a mais na sugestão de categoria
+  // (sugestao-categoria.ts), nunca grava a categoria real do lançamento
+  // sozinho — categorização final continua sempre humana (requisito 6).
+  // `merchant.name` já é capturado separadamente em `fornecedor` (não
+  // duplicado aqui).
+  pluggyCategoria         String? // category (nível da transação)
+  pluggyMerchantCategoria String? // merchant.category (nível do estabelecimento)
+
   // Status "Quitado" (requisito do Felipe, 05/08/2026) — regra de derivação
   // vive em lib/finance/status.ts, não só neste campo:
   //   - lançamento de conta corrente (contaBancaria.tipo=BANK) = SEMPRE

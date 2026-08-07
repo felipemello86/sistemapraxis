@@ -62,6 +62,14 @@ type LancamentoPendente = {
   // conta real do tenant; ver mcc.ts (@praxis/core) pra tradução em
   // português. Só em transações de cartão.
   pluggyPayeeMcc: number | null;
+  // Categorização automática da PRÓPRIA Pluggy (pedido do Felipe,
+  // 06/08/2026: "capture também [category/merchant] e também use como
+  // sugestão adicional") — nível da transação e nível do estabelecimento,
+  // respectivamente. Confirmado ao vivo que o plano do tenant retorna os
+  // dois. Puramente informativo aqui (a categorização final é sempre
+  // humana); também entra como sinal extra na sugestão (ver conciliacao.ts).
+  pluggyCategoria: string | null;
+  pluggyMerchantCategoria: string | null;
 };
 
 // Sugestão automática de categoria a partir do histórico já categorizado do
@@ -264,11 +272,16 @@ export function ConciliacaoDetalhe({
   // lançamento") — `contas` já vem carregado pra outra finalidade
   // (RepetirLancamentoModal), reaproveitado aqui só pra exibição.
   const contaNome = contas.find((c) => c.id === item.lancamento.contaBancariaId)?.nome ?? null;
-  // Natureza do estabelecimento (MCC — pedido do Felipe, 06/08/2026: "tem
-  // algum campo q vem da pluggy q fale da natureza do estabelecimento
-  // comercial q fez a venda?"). Só em transações de cartão; nem todo MCC
-  // está mapeado (ver mccLocal.ts), nesse caso mostra só o código.
+  // Natureza do estabelecimento (pedido do Felipe, 06/08/2026: "tem algum
+  // campo q vem da pluggy q fale da natureza do estabelecimento comercial
+  // q fez a venda?" + depois "capture também [category/merchant]"). Três
+  // fontes possíveis, em ordem de preferência: descrição do MCC (mais
+  // específica, ex. "Padaria"), categoria do estabelecimento da própria
+  // Pluggy (merchant.category, ex. "Video Streaming"), categoria da
+  // transação (category, ex. "Groceries") — mostra a primeira disponível,
+  // e o código MCC cru como referência extra quando também existe.
   const mccDescricao = descricaoMcc(item.lancamento.pluggyPayeeMcc);
+  const estabelecimentoTexto = mccDescricao ?? item.lancamento.pluggyMerchantCategoria ?? item.lancamento.pluggyCategoria ?? null;
   const candidatos: Previsto[] = previstoManual ? [previstoManual, ...item.sugestoes.filter((s) => s.id !== previstoManual.id)] : item.sugestoes;
   const previstoAtivo = candidatos.find((c) => c.id === previstoEscolhidoId) ?? null;
 
@@ -400,8 +413,11 @@ export function ConciliacaoDetalhe({
               <p>Lançamento (competência): {formatDataBR(item.lancamento.dataCompetencia)}</p>
             )}
             {contaNome && <p>Conta/cartão: {contaNome}</p>}
-            {item.lancamento.pluggyPayeeMcc != null && (
-              <p>Estabelecimento: {mccDescricao ? `${mccDescricao} (MCC ${item.lancamento.pluggyPayeeMcc})` : `MCC ${item.lancamento.pluggyPayeeMcc}`}</p>
+            {(estabelecimentoTexto || item.lancamento.pluggyPayeeMcc != null) && (
+              <p>
+                Estabelecimento: {estabelecimentoTexto ?? `MCC ${item.lancamento.pluggyPayeeMcc}`}
+                {item.lancamento.pluggyPayeeMcc != null && estabelecimentoTexto && ` (MCC ${item.lancamento.pluggyPayeeMcc})`}
+              </p>
             )}
           </div>
           <div className="border-t border-gray-100 pt-3">
