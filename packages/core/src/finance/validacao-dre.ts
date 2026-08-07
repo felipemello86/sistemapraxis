@@ -28,7 +28,7 @@
 // "categoria não encontrada" em vez de falhar silenciosamente.
 
 import { prisma } from "../prisma";
-import { limitesDoMes } from "./mes";
+import { limitesDoMes, ocorreNoMes } from "./mes";
 
 export type RegraValidacaoDre = "ALUGUEL_ENERGIA" | "DIARIAS_RESERVA" | "SIMPLES_NACIONAL" | "SETUP";
 
@@ -51,7 +51,7 @@ const NOME_CATEGORIA_SIMPLES = "Simples Nacional - DAS";
 export async function validarDre(tenantId: string, mes: string): Promise<ValidacaoDre> {
   const { inicio, fim } = limitesDoMes(mes);
 
-  const [uhsAtivas, categorias, reais] = await Promise.all([
+  const [uhsAtivas, categorias, naoRecorrentes, candidatosRecorrentes] = await Promise.all([
     // Mesmo critério de "UH ativa nesse mês" de carregarContextoRateio em
     // centro-de-custo.ts.
     prisma.uH.findMany({
@@ -59,13 +59,39 @@ export async function validarDre(tenantId: string, mes: string): Promise<Validac
       select: { id: true, numero: true },
     }),
     prisma.financeCategoria.findMany({ where: { tenantId }, select: { id: true, nome: true } }),
-    // Mesma query de `lancamentosDoMes` em dre.ts — só o real/não-recorrente
-    // conta como "cumprido" (ver nota de escopo no topo do arquivo).
+    // Mesma query de `lancamentosDoMes` em dre.ts — pedido do Felipe,
+    // 07/08/2026: "para contar, tem q ou estar conciliado ou estar como
+    // recorrente" — um real (PLUGGY) só conta se já passou pela Conciliação
+    // (conciliadoComId ou conciliadoDiverso); um previsto MANUAL pontual
+    // ainda não cumprido não conta (não tem nenhum dos dois).
     prisma.financeLancamento.findMany({
-      where: { tenantId, recorrente: false, dataVencimento: { gte: inicio, lte: fim } },
+      where: {
+        tenantId,
+        recorrente: false,
+        dataVencimento: { gte: inicio, lte: fim },
+        OR: [{ conciliadoComId: { not: null } }, { conciliadoDiverso: true }],
+      },
       select: { categoriaId: true, centroCustoTipo: true, uhId: true },
     }),
+    // Ocorrências recorrentes (mesma query de `candidatosRecorrentes` em
+    // dre.ts) — sempre contam, "ou estar como recorrente".
+    prisma.financeLancamento.findMany({
+      where: {
+        tenantId,
+        recorrente: true,
+        dataVencimento: { lte: fim },
+        OR: [{ recorrenciaFimData: null }, { recorrenciaFimData: { gte: inicio } }],
+      },
+      select: { categoriaId: true, centroCustoTipo: true, uhId: true, dataVencimento: true, recorrenciaFrequencia: true },
+    }),
   ]);
+
+  const recorrentesDoMes = candidatosRecorrentes.filter((l) => {
+    const raizEstaNesteMes = l.dataVencimento >= inicio && l.dataVencimento <= fim;
+    return raizEstaNesteMes || ocorreNoMes(l.dataVencimento, l.recorrenciaFrequencia, mes);
+  });
+
+  const reais = [...naoRecorrentes, ...recorrentesDoMes];
 
   const idPorNome = new Map(categorias.map((c) => [c.nome, c.id]));
   const idAluguel = idPorNome.get(NOME_CATEGORIA_ALUGUEL) ?? null;

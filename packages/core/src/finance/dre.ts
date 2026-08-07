@@ -74,6 +74,17 @@ export interface DreLinhaLancamento {
   // mês) pra a UI só desabilitar/marcar visualmente, nunca reimplementar.
   origem: string; // MANUAL | PLUGGY
   conciliavel: boolean;
+  // Pedido do Felipe, 07/08/2026: "para contar [como Realizado], tem q ou
+  // estar conciliado ou estar como recorrente" — um lançamento PLUGGY sem
+  // ter passado pela tela de Conciliações (conciliadoComId/conciliadoDiverso
+  // ainda vazios) ou um previsto MANUAL pontual ainda não cumprido NÃO
+  // conta mais como realizado só por ter categoria — precisa ter sido
+  // revisado de fato (ou ser uma ocorrência recorrente, que já é um
+  // compromisso assumido por definição). Ver uso em `linhasPorCategoria`
+  // abaixo; `pendentesCategorizacao` continua olhando TODAS as linhas
+  // (categorizado ou não, realizado ou não) — esse campo não afeta o aviso
+  // de "falta categorizar".
+  realizado: boolean;
 }
 
 export interface DreCategoriaResumo {
@@ -179,6 +190,7 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
       projetadaDeRecorrencia: false,
       origem: l.origem,
       conciliavel: l.origem === "MANUAL", // já filtramos os fulfilled acima, então todo MANUAL que sobrou ainda está pendente
+      realizado: Boolean(l.conciliadoComId) || l.conciliadoDiverso,
     });
   }
 
@@ -201,9 +213,13 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
       projetadaDeRecorrencia: !raizEstaNesteMes,
       origem: l.origem,
       conciliavel: l.origem === "MANUAL",
+      realizado: true, // recorrente sempre conta (pedido do Felipe, 07/08/2026: "ou estar como recorrente") — é um compromisso assumido, não precisa de conciliação pra contar
     });
   }
 
+  // "Falta categorizar" olha TODAS as linhas, independente de já estarem
+  // conciliadas ou não — categorização é um passo anterior e separado da
+  // conciliação (ver nota do campo `realizado` em DreLinhaLancamento).
   const pendentesCategorizacao = linhas.filter((l) => l.categoriaId === null);
 
   const orcadoPorCategoria = new Map<string, Prisma.Decimal>();
@@ -216,10 +232,12 @@ export async function calcularDre(tenantId: string, mes: string, filtroCentroCus
     }
   }
 
-  // Agrupa por categoria (só lançamentos já categorizados)
+  // Agrupa por categoria — só lançamentos já categorizados E "realizados de
+  // fato" (conciliados ou recorrentes, ver nota em DreLinhaLancamento.realizado
+  // e pedido do Felipe, 07/08/2026) entram nos totais/listas por categoria.
   const linhasPorCategoria = new Map<string, DreLinhaLancamento[]>();
   for (const l of linhas) {
-    if (!l.categoriaId) continue;
+    if (!l.categoriaId || !l.realizado) continue;
     const arr = linhasPorCategoria.get(l.categoriaId) ?? [];
     arr.push(l);
     linhasPorCategoria.set(l.categoriaId, arr);
