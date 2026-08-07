@@ -60,6 +60,13 @@ export function ConciliacaoCardCompacto({
   const valorNum = Number(item.lancamento.valor);
   const categoriasFiltradas = categorias.filter((c) => c.tipo === (valorNum >= 0 ? "RECEITA" : "DESPESA"));
   const categoriaEscolhida = categorias.find((c) => c.id === proposta.categoriaId) ?? null;
+  // Conta/cartão + as duas datas (pedido do Felipe, 06/08/2026: "facilita
+  // exibir o que é a data vencimento e o que é a data lançamento" +
+  // "sinto falta de saber de qual conta (ou cartão) se trata") — a data de
+  // competência só aparece quando difere da de vencimento (cartão de
+  // crédito: a compra é numa data, mas só "vence" na fatura, mais tarde).
+  const contaNome = contas.find((c) => c.id === item.lancamento.contaBancariaId)?.nome ?? null;
+  const dataCompetenciaDifere = item.lancamento.dataCompetencia && item.lancamento.dataCompetencia !== item.lancamento.dataVencimento;
   // Sem previsto já esperando por ela, uma compra parcelada não pode ser
   // resolvida no card compacto — falta o nº de parcelas, que só dá pra
   // informar no editor completo (ver pareceParcelado em ConciliacaoDetalhe.tsx).
@@ -95,8 +102,16 @@ export function ConciliacaoCardCompacto({
         <div className="flex-1 min-w-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 items-center">
           {/* Lançamento do banco */}
           <div className="min-w-0">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-[11px] text-gray-400 flex-shrink-0">{formatDataBR(item.lancamento.dataVencimento)}</span>
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-[11px] text-gray-400 flex-shrink-0" title="Data de Vencimento">
+                Venc. {formatDataBR(item.lancamento.dataVencimento)}
+              </span>
+              {dataCompetenciaDifere && (
+                <span className="text-[11px] text-gray-400 flex-shrink-0" title="Data de Competência (quando o lançamento aconteceu de fato)">
+                  · Lçto. {formatDataBR(item.lancamento.dataCompetencia!)}
+                </span>
+              )}
+              {contaNome && <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1 flex-shrink-0">{contaNome}</span>}
               <span className="text-sm text-gray-800 truncate">{item.lancamento.descricao}</span>
             </div>
 

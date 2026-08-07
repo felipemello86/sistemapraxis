@@ -46,6 +46,7 @@ type LancamentoPendente = {
   dataVencimento: string;
   dataCompetencia: string | null;
   categoriaId: string | null;
+  contaBancariaId: string | null;
   // Metadata de parcelamento que a PRÓPRIA Pluggy manda, quando a
   // instituição financeira fornece (pedido do Felipe, 06/08/2026, depois
   // de perguntar "o banco não manda nenhuma informação sobre o
@@ -221,6 +222,11 @@ export function ConciliacaoDetalhe({
   const metadataConhecida = temMetadataDeParcelamento(item);
   const valorParcelaCalculado = parcelado ? (metadataConhecida ? arredondarCentavos(valorNum) : arredondarCentavos(valorNum / totalParcelas)) : null;
   const parcelasRestantes = parcelado ? totalParcelas - parcelaAtual + 1 : null;
+  // Conta/cartão de onde o lançamento veio (pedido do Felipe, 06/08/2026:
+  // "sinto falta de saber de qual conta (ou cartão) se trata aquele
+  // lançamento") — `contas` já vem carregado pra outra finalidade
+  // (RepetirLancamentoModal), reaproveitado aqui só pra exibição.
+  const contaNome = contas.find((c) => c.id === item.lancamento.contaBancariaId)?.nome ?? null;
   const candidatos: Previsto[] = previstoManual ? [previstoManual, ...item.sugestoes.filter((s) => s.id !== previstoManual.id)] : item.sugestoes;
   const previstoAtivo = candidatos.find((c) => c.id === previstoEscolhidoId) ?? null;
 
@@ -332,6 +338,13 @@ export function ConciliacaoDetalhe({
               <p className="text-xs text-gray-400">{nomeDiaSemana(item.lancamento.dataVencimento)}</p>
             </div>
             <p className={`text-lg font-bold ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</p>
+          </div>
+          <div className="text-xs text-gray-500 space-y-0.5">
+            <p>Vencimento: {formatDataBR(item.lancamento.dataVencimento)}</p>
+            {item.lancamento.dataCompetencia && (
+              <p>Lançamento (competência): {formatDataBR(item.lancamento.dataCompetencia)}</p>
+            )}
+            {contaNome && <p>Conta/cartão: {contaNome}</p>}
           </div>
           <div className="border-t border-gray-100 pt-3">
             <p className="text-sm text-gray-800">{item.lancamento.descricao}</p>
