@@ -44,7 +44,9 @@ export function ContasView() {
   const [contasConectadas, setContasConectadas] = useState<ContaConectada[]>([]);
   const [loading, setLoading] = useState(true);
   const [conectando, setConectando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState("");
+  const [resultadoSync, setResultadoSync] = useState("");
 
   async function carregar() {
     setLoading(true);
@@ -112,6 +114,32 @@ export function ContasView() {
     }
   }
 
+  // Força uma sincronização imediata (pedido do Felipe, 06/08/2026: "como
+  // faço pra forçar uma nova coleta de dados?" — antes disso só rolava pelo
+  // cron diário às 11h UTC ou quando a própria Pluggy mandava um webhook de
+  // transação nova). Chama a mesma função do cron/webhook, que já é
+  // idempotente — clicar de novo não duplica nada, só não traz nada de
+  // novo se a Pluggy ainda não tiver nada de novo do lado dela.
+  async function sincronizarAgora() {
+    setErro("");
+    setResultadoSync("");
+    setSincronizando(true);
+    try {
+      const res = await apiFetch("/api/contas/sincronizar", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErro(data.error || "Erro ao sincronizar.");
+        return;
+      }
+      setResultadoSync(data.novos > 0 ? `${data.novos} lançamento${data.novos !== 1 ? "s" : ""} novo${data.novos !== 1 ? "s" : ""} importado${data.novos !== 1 ? "s" : ""}.` : "Nenhum lançamento novo — já estava tudo em dia.");
+      carregar();
+    } catch (e: any) {
+      setErro(e.message);
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold text-gray-900">Contas conectadas</h1>
@@ -146,10 +174,22 @@ export function ContasView() {
       ) : (
         <>
           {erro && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{erro}</p>}
+          {resultadoSync && <p className="text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">{resultadoSync}</p>}
 
-          <button onClick={conectarConta} disabled={conectando} className="btn-primary flex items-center gap-1.5 text-sm">
-            <PlusCircle className="w-4 h-4" /> {conectando ? "Abrindo..." : "Conectar conta ou cartão"}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={conectarConta} disabled={conectando} className="btn-primary flex items-center gap-1.5 text-sm">
+              <PlusCircle className="w-4 h-4" /> {conectando ? "Abrindo..." : "Conectar conta ou cartão"}
+            </button>
+            {contasConectadas.length > 0 && (
+              <button
+                onClick={sincronizarAgora}
+                disabled={sincronizando}
+                className="flex items-center gap-1.5 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 rounded-lg px-3 py-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${sincronizando ? "animate-spin" : ""}`} /> {sincronizando ? "Sincronizando..." : "Sincronizar agora"}
+              </button>
+            )}
+          </div>
 
           {contasConectadas.length === 0 ? (
             <p className="text-gray-400 text-sm">Nenhuma conta conectada ainda.</p>
