@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
 
@@ -58,6 +58,13 @@ type DreBlocoResumo = {
   categorias: DreCategoria[];
 };
 
+// Validação de conformidade (pedido do Felipe, 07/08/2026) — ver
+// lib/finance/validacao-dre.ts pras 3 regras. `itens` é a lista de
+// pendências (vazia = tudo conforme); cada mensagem já é auto-explicativa o
+// bastante pra funcionar como checklist do que falta preencher.
+type ItemValidacaoDre = { regra: string; mensagem: string };
+type ValidacaoDreResponse = { ok: boolean; itens: ItemValidacaoDre[] };
+
 type DreResponse = {
   mes: string;
   blocos: DreBlocoResumo[];
@@ -69,6 +76,7 @@ type DreResponse = {
   pendentesCategorizacao: DreLinha[];
   mesAnterior: string;
   mesSeguinte: string;
+  validacao: ValidacaoDreResponse;
 };
 
 type Empreendimento = { id: string; nome: string };
@@ -183,6 +191,61 @@ function LinhaCategoriaDre({ nome, valoresPorPeriodo, lancamentos }: { nome: str
             ))
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Selo de validação de conformidade (pedido do Felipe, 07/08/2026): check
+// se o mês cumpre as 3 regras (ver lib/finance/validacao-dre.ts),
+// triângulo de alerta senão — sem emoji, ícones do lucide. Clique abre um
+// popover com a lista do que está faltando/duplicado, que já funciona como
+// checklist do que falta preencher (não existe uma tela de "sugestão"
+// separada pra isso — a própria lista de pendências é a sugestão).
+function SeloValidacaoDre({ validacao }: { validacao: ValidacaoDreResponse | undefined }) {
+  const [aberto, setAberto] = useState(false);
+  if (!validacao) return null;
+
+  return (
+    <div className="relative flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className={`flex items-center justify-center w-6 h-6 rounded-full ${validacao.ok ? "text-green-600 hover:bg-green-50" : "text-amber-600 hover:bg-amber-50"}`}
+        title={validacao.ok ? "DRE conforme com as regras de validação" : `${validacao.itens.length} pendência${validacao.itens.length !== 1 ? "s" : ""} de validação`}
+      >
+        {validacao.ok ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+      </button>
+
+      {aberto && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={(e) => {
+              e.stopPropagation();
+              setAberto(false);
+            }}
+          />
+          <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2.5 w-72" onClick={(e) => e.stopPropagation()}>
+            {validacao.ok ? (
+              <p className="text-xs text-green-700 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" /> Todas as regras de validação cumpridas.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs font-medium text-gray-700 mb-1.5">Pendências de validação:</p>
+                <ul className="space-y-1 max-h-64 overflow-y-auto">
+                  {validacao.itens.map((item, i) => (
+                    <li key={i} className="text-xs text-amber-700 flex items-start gap-1.5">
+                      <span className="text-amber-400 mt-0.5 flex-shrink-0">•</span>
+                      <span>{item.mensagem}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
@@ -360,6 +423,7 @@ export function DreView() {
     <div className="max-w-2xl mx-auto space-y-3">
       <div className="flex items-center gap-1.5 flex-wrap">
         <SeletorMes mes={periodos[0]} onChange={(m) => mudarPeriodo(0, m)} className="flex-shrink-0" />
+        <SeloValidacaoDre validacao={dados[periodos[0]]?.validacao} />
         {periodos[0] !== mesAtualSP() && (
           <button onClick={() => mudarPeriodo(0, mesAtualSP())} className="text-xs text-blue-700 font-medium hover:underline flex-shrink-0">
             hoje
@@ -369,6 +433,7 @@ export function DreView() {
         {periodos.slice(1).map((mes, i) => (
           <div key={i} className="flex items-center gap-1 bg-gray-100 rounded-lg pl-2 pr-1 py-1 flex-shrink-0">
             <input type="month" value={mes} onChange={(e) => e.target.value && mudarPeriodo(i + 1, e.target.value)} className="text-xs bg-transparent border-0 focus:outline-none w-[5.5rem]" />
+            <SeloValidacaoDre validacao={dados[mes]?.validacao} />
             <button onClick={() => removerPeriodo(i + 1)} className="text-gray-400 hover:text-red-600">
               <X className="w-3.5 h-3.5" />
             </button>

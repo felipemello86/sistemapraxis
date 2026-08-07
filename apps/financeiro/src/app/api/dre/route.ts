@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, hasModuleAccess, calcularDre, dataAtualSP, mesAdjacente, type FiltroCentroCusto } from "@praxis/core";
+import { getSession, hasModuleAccess, calcularDre, validarDre, dataAtualSP, mesAdjacente, type FiltroCentroCusto } from "@praxis/core";
 
 // Calcula a DRE de um mês (?mes=YYYY-MM, default: mês atual) — passado,
 // atual ou futuro, mesma função pras três situações (requisito 2 do
@@ -37,11 +37,16 @@ export async function GET(req: Request) {
     filtroCentroCusto = { tipo: "GERAL" };
   }
 
-  const dre = await calcularDre(session.tenantId, mes, filtroCentroCusto);
+  // Validação de conformidade (pedido do Felipe, 07/08/2026) — SEMPRE
+  // tenant-wide (independente do filtro de Centro de Custo da tela: o
+  // símbolo representa se O MÊS está com os lançamentos certos, não uma
+  // visão filtrada dele).
+  const [dre, validacao] = await Promise.all([calcularDre(session.tenantId, mes, filtroCentroCusto), validarDre(session.tenantId, mes)]);
 
   return NextResponse.json({
     ...dre,
     mesAnterior: mesAdjacente(mes, -1),
     mesSeguinte: mesAdjacente(mes, 1),
+    validacao,
   });
 }
