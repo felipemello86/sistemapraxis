@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Link2, Loader2 } from "lucide-react";
+import { Link2, Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
@@ -8,6 +8,7 @@ import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
 import type { NovoLancamentoConciliacao } from "@praxis/core";
 import { type ItemPendente, pareceParcelado } from "./ConciliacaoDetalhe";
 import { ConciliacaoCardCompacto } from "./ConciliacaoCardCompacto";
+import { GRID_COLUNAS } from "./gridColunas";
 
 // Tela de Conciliações — 2º redesign (pedido do Felipe, 06/08/2026):
 // "precisa ser mais rápida (...) conciliar uma quantidade grande de
@@ -84,6 +85,13 @@ function propostaInicial(item: ItemPendente): PropostaLote {
   return { checked: false, modo: "novo", previstoId: "", categoriaId: "", centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null };
 }
 
+// Colunas organizáveis (pedido do Felipe, 06/08/2026): "reorganize como
+// colunas organizáveis: Lançamento / Vencimento / Conta / Descrição / Valor".
+// "Lançamento" = Data de Competência (com fallback pro Vencimento quando não
+// há competência informada), mesma convenção da coluna "Data" de
+// LancamentosView.tsx.
+type SortField = "lancamento" | "vencimento" | "conta" | "descricao" | "valor";
+
 function propostaPronta(item: ItemPendente, p: PropostaLote): boolean {
   if (p.modo === "previsto") return Boolean(p.previstoId);
   if (pareceParcelado(item.lancamento.descricao)) return false; // sempre exige abrir o detalhe pra informar o nº de parcelas
@@ -104,6 +112,16 @@ export function ConciliacoesView() {
   const [propostas, setPropostas] = useState<Map<string, PropostaLote>>(new Map());
   const [conciliandoLote, setConciliandoLote] = useState(false);
   const [resultado, setResultado] = useState("");
+  const [sortField, setSortField] = useState<SortField>("vencimento");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function alternarSort(campo: SortField) {
+    if (sortField === campo) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortField(campo);
+      setSortDir("asc");
+    }
+  }
 
   async function carregar() {
     setLoading(true);
@@ -143,6 +161,33 @@ export function ConciliacoesView() {
       return next;
     });
   }
+
+  const contaPorId = useMemo(() => new Map(contas.map((c) => [c.id, c.nome])), [contas]);
+
+  const pendentesOrdenados = useMemo(() => {
+    function valorOrdenacao(item: ItemPendente): string | number {
+      switch (sortField) {
+        case "lancamento":
+          return item.lancamento.dataCompetencia || item.lancamento.dataVencimento;
+        case "vencimento":
+          return item.lancamento.dataVencimento;
+        case "conta":
+          return (item.lancamento.contaBancariaId && contaPorId.get(item.lancamento.contaBancariaId)) || "";
+        case "descricao":
+          return item.lancamento.descricao;
+        case "valor":
+          return Number(item.lancamento.valor);
+      }
+    }
+    const copia = [...pendentes];
+    copia.sort((a, b) => {
+      const va = valorOrdenacao(a);
+      const vb = valorOrdenacao(b);
+      const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return copia;
+  }, [pendentes, sortField, sortDir, contaPorId]);
 
   const selecionados = useMemo(
     () => pendentes.filter((item) => {
@@ -228,7 +273,38 @@ export function ConciliacoesView() {
         <p className="text-gray-400 text-sm">Nenhum lançamento pendente de conciliação neste mês. 🎉</p>
       ) : (
         <div className="space-y-1.5">
-          {pendentes.map((item) => {
+          {/* Cabeçalho de colunas ordenáveis (pedido do Felipe, 06/08/2026):
+              "reorganize como colunas organizáveis: Lançamento / Vencimento /
+              Conta / Descrição / Valor". Mesmo GRID_COLUNAS dos cards, pra
+              ficar tudo alinhado; o espaçador de 20px no início corresponde
+              ao checkbox (w-4 + gap-2) de cada card. */}
+          <div className="flex items-center gap-2 px-3 text-[11px] text-gray-400 font-medium select-none">
+            <div className="w-4 flex-shrink-0" />
+            <div className={`flex-1 min-w-0 grid ${GRID_COLUNAS} gap-x-3`}>
+              {(
+                [
+                  ["lancamento", "Lançamento"],
+                  ["vencimento", "Vencimento"],
+                  ["conta", "Conta"],
+                  ["descricao", "Descrição"],
+                  ["valor", "Valor"],
+                ] as [SortField, string][]
+              ).map(([campo, rotulo]) => (
+                <button
+                  key={campo}
+                  type="button"
+                  onClick={() => alternarSort(campo)}
+                  className={`flex items-center gap-0.5 hover:text-gray-600 ${campo === "valor" ? "justify-end" : ""}`}
+                >
+                  {rotulo}
+                  {sortField === campo && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                </button>
+              ))}
+              <span />
+            </div>
+          </div>
+
+          {pendentesOrdenados.map((item) => {
             const proposta = propostas.get(item.lancamento.id);
             if (!proposta) return null;
             return (

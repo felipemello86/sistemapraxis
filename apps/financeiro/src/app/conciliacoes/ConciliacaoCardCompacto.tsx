@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ChevronDown, ChevronUp, ArrowRight, Layers } from "lucide-react";
+import { GRID_COLUNAS } from "./gridColunas";
 import { SeletorCategoriaPopup } from "@/components/SeletorCategoriaPopup";
 import { SeletorCentroCustoPopup } from "@/components/SeletorCentroCustoPopup";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
@@ -66,7 +67,6 @@ export function ConciliacaoCardCompacto({
   // competência só aparece quando difere da de vencimento (cartão de
   // crédito: a compra é numa data, mas só "vence" na fatura, mais tarde).
   const contaNome = contas.find((c) => c.id === item.lancamento.contaBancariaId)?.nome ?? null;
-  const dataCompetenciaDifere = item.lancamento.dataCompetencia && item.lancamento.dataCompetencia !== item.lancamento.dataVencimento;
   // Sem previsto já esperando por ela, uma compra parcelada não pode ser
   // resolvida no card compacto — falta o nº de parcelas, que só dá pra
   // informar no editor completo (ver pareceParcelado em ConciliacaoDetalhe.tsx).
@@ -99,69 +99,73 @@ export function ConciliacaoCardCompacto({
           title={pronta ? "Incluir na conciliação em lote" : "Complete a proposta (categoria/centro de custo) pra poder incluir"}
         />
 
-        <div className="flex-1 min-w-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 items-center">
-          {/* Lançamento do banco */}
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-[11px] text-gray-400 flex-shrink-0" title="Data de Vencimento">
-                Venc. {formatDataBR(item.lancamento.dataVencimento)}
-              </span>
-              {dataCompetenciaDifere && (
-                <span className="text-[11px] text-gray-400 flex-shrink-0" title="Data de Competência (quando o lançamento aconteceu de fato)">
-                  · Lçto. {formatDataBR(item.lancamento.dataCompetencia!)}
-                </span>
-              )}
-              {contaNome && <span className="text-[10px] text-gray-500 bg-gray-100 rounded px-1 flex-shrink-0">{contaNome}</span>}
-              <span className="text-sm text-gray-800 truncate">{item.lancamento.descricao}</span>
-            </div>
-
-            {/* Proposta */}
-            <div className="flex items-center gap-1.5 mt-0.5 text-xs">
-              <ArrowRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
-              {item.sugestoes.length > 0 || proposta.modo === "previsto" ? (
-                <select
-                  value={proposta.modo === "previsto" ? proposta.previstoId : "novo"}
-                  onChange={(e) => selecionarPrevistoOuNovo(e.target.value)}
-                  className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[220px] truncate"
-                >
-                  <option value="novo">+ Novo lançamento...</option>
-                  {item.sugestoes.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.confianca}% · {s.descricao} ({formatBRL(s.valor)})
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-
-              {precisaAbrirParaParcelar ? (
-                <button type="button" onClick={() => setExpandido(true)} className="flex items-center gap-1 text-amber-600 font-medium hover:underline">
-                  <Layers className="w-3 h-3" /> Compra parcelada — abrir detalhe pra configurar
-                </button>
-              ) : (
-                proposta.modo === "novo" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setPopupCategoria(true)}
-                      className={`truncate font-medium hover:underline ${categoriaEscolhida ? "text-blue-700" : "text-amber-600"}`}
-                    >
-                      {categoriaEscolhida?.nome || "Escolher categoria"}
-                    </button>
-                    <span className="text-gray-300">·</span>
-                    <button type="button" onClick={() => setPopupCentroCusto(true)} className="text-gray-500 hover:underline truncate">
-                      {resumoCentroCusto}
-                    </button>
-                  </>
-                )
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <span className={`text-sm font-semibold ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</span>
-            <button type="button" onClick={() => setExpandido((v) => !v)} className="text-gray-400 hover:text-gray-700" title="Editar detalhes (recorrência, anexos, buscar lançamento...)">
+        <div className="flex-1 min-w-0">
+          {/* Lançamento do banco — colunas organizáveis (pedido do Felipe,
+              06/08/2026): Lançamento / Vencimento / Conta / Descrição / Valor,
+              alinhadas com o cabeçalho ordenável em ConciliacoesView.tsx via
+              o mesmo GRID_COLUNAS. */}
+          <div className={`grid ${GRID_COLUNAS} gap-x-3 items-center`}>
+            <span className="text-xs text-gray-700 flex-shrink-0" title="Data de Competência (quando o lançamento aconteceu de fato)">
+              {formatDataBR(item.lancamento.dataCompetencia || item.lancamento.dataVencimento)}
+            </span>
+            <span className="text-xs text-gray-400 flex-shrink-0" title="Data de Vencimento">
+              {formatDataBR(item.lancamento.dataVencimento)}
+            </span>
+            <span className="text-[11px] text-gray-500 truncate" title={contaNome ?? undefined}>
+              {contaNome ?? "—"}
+            </span>
+            <span className="text-sm text-gray-800 truncate">{item.lancamento.descricao}</span>
+            <span className={`text-sm font-semibold text-right ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</span>
+            <button
+              type="button"
+              onClick={() => setExpandido((v) => !v)}
+              className="text-gray-400 hover:text-gray-700 justify-self-end"
+              title="Editar detalhes (recorrência, anexos, buscar lançamento...)"
+            >
               {expandido ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
+          </div>
+
+          {/* Proposta — alinhada sob a coluna "Lançamento" (deslocada pela
+              largura do checkbox, que não faz parte do grid de colunas). */}
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs">
+            <ArrowRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+            {item.sugestoes.length > 0 || proposta.modo === "previsto" ? (
+              <select
+                value={proposta.modo === "previsto" ? proposta.previstoId : "novo"}
+                onChange={(e) => selecionarPrevistoOuNovo(e.target.value)}
+                className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[220px] truncate"
+              >
+                <option value="novo">+ Novo lançamento...</option>
+                {item.sugestoes.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.confianca}% · {s.descricao} ({formatBRL(s.valor)})
+                  </option>
+                ))}
+              </select>
+            ) : null}
+
+            {precisaAbrirParaParcelar ? (
+              <button type="button" onClick={() => setExpandido(true)} className="flex items-center gap-1 text-amber-600 font-medium hover:underline">
+                <Layers className="w-3 h-3" /> Compra parcelada — abrir detalhe pra configurar
+              </button>
+            ) : (
+              proposta.modo === "novo" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setPopupCategoria(true)}
+                    className={`truncate font-medium hover:underline ${categoriaEscolhida ? "text-blue-700" : "text-amber-600"}`}
+                  >
+                    {categoriaEscolhida?.nome || "Escolher categoria"}
+                  </button>
+                  <span className="text-gray-300">·</span>
+                  <button type="button" onClick={() => setPopupCentroCusto(true)} className="text-gray-500 hover:underline truncate">
+                    {resumoCentroCusto}
+                  </button>
+                </>
+              )
+            )}
           </div>
         </div>
       </div>
