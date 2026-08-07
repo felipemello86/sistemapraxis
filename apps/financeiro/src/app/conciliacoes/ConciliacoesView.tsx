@@ -4,9 +4,9 @@ import { Link2, Loader2, ArrowUp, ArrowDown, Search } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
-import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
+import type { ContaParaSelect, RepetirConfig } from "@/components/RepetirLancamentoModal";
 import type { NovoLancamentoConciliacao } from "@praxis/core";
-import { type ItemPendente, pareceParcelado } from "./ConciliacaoDetalhe";
+import { type ItemPendente, pareceParcelado, repetirInicial } from "./ConciliacaoDetalhe";
 import { ConciliacaoCardCompacto } from "./ConciliacaoCardCompacto";
 import { GRID_COLUNAS } from "./gridColunas";
 
@@ -50,12 +50,26 @@ export interface PropostaLote {
   centroCustoTipo: "ADMINISTRACAO" | "EMPREENDIMENTO" | "UNIDADE";
   propertyId: string | null;
   uhId: string | null;
+  // Recorrência (pedido do Felipe, 06/08/2026: "adicione uma coluna de
+  // Recorrência (...) use a inteligência do sistema e o backup do conta
+  // azul para pré-configurar") — só se aplica quando modo="novo" (vira a
+  // recorrência do previsto NOVO criado ao conciliar, ver criarEConciliar
+  // em conciliacao.ts); quando modo="previsto" a recorrência já existe no
+  // previsto casado, não é editável aqui (ver indicador só-leitura em
+  // ConciliacaoCardCompacto.tsx). Pré-preenchido por repetirInicial(item)
+  // a partir de item.recorrenciaSugerida.
+  repetir: RepetirConfig;
 }
 
 const CONFIANCA_MINIMA_PREVISTO = 70;
 const CONFIANCA_MINIMA_CATEGORIA = 55; // mesmo limiar do card "Novo lançamento" individual (ConciliacaoDetalhe.tsx)
 
 function propostaInicial(item: ItemPendente): PropostaLote {
+  // Recorrência (pedido do Felipe, 06/08/2026) — pré-preenchida a partir de
+  // item.recorrenciaSugerida em TODOS os ramos abaixo (mesmo o "previsto",
+  // que não usa `repetir` pra nada hoje, mas fica pronto caso o usuário
+  // troque pra "novo lançamento" pelo seletor do card).
+  const repetir = repetirInicial(item);
   if (item.melhorSugestao && (item.melhorSugestao.confianca ?? 0) >= CONFIANCA_MINIMA_PREVISTO) {
     return {
       checked: true,
@@ -65,6 +79,7 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       centroCustoTipo: "ADMINISTRACAO",
       propertyId: null,
       uhId: null,
+      repetir,
     };
   }
   // Compra parcelada (pedido do Felipe, 06/08/2026): sem um previsto já
@@ -83,6 +98,7 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       centroCustoTipo: "ADMINISTRACAO",
       propertyId: null,
       uhId: null,
+      repetir,
     };
   }
   // Já tem categoria própria salva (categorização em lote anterior, import
@@ -106,6 +122,7 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       centroCustoTipo: "ADMINISTRACAO",
       propertyId: null,
       uhId: null,
+      repetir,
     };
   }
   if (item.categoriaSugerida && item.categoriaSugerida.confianca >= CONFIANCA_MINIMA_CATEGORIA) {
@@ -117,9 +134,10 @@ function propostaInicial(item: ItemPendente): PropostaLote {
       centroCustoTipo: "ADMINISTRACAO",
       propertyId: null,
       uhId: null,
+      repetir,
     };
   }
-  return { checked: false, modo: "novo", previstoId: "", categoriaId: "", centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null };
+  return { checked: false, modo: "novo", previstoId: "", categoriaId: "", centroCustoTipo: "ADMINISTRACAO", propertyId: null, uhId: null, repetir };
 }
 
 // Colunas organizáveis (pedido do Felipe, 06/08/2026): "reorganize como
@@ -381,14 +399,25 @@ export function ConciliacoesView() {
             mesReferencia: (item.lancamento.dataCompetencia || item.lancamento.dataVencimento).slice(0, 7),
           };
         }
+        // Recorrência (pedido do Felipe, 06/08/2026: "adicione uma coluna de
+        // Recorrência (...) use a inteligência do sistema e o backup do
+        // conta azul para pré-configurar") — antes ia sempre `false` aqui,
+        // ignorando qualquer configuração feita na nova coluna/popup. Mesmo
+        // mapeamento de campos que ConciliacaoDetalhe.tsx#conciliar já usa
+        // pro editor completo, pra ficar consistente entre os dois fluxos.
         const novo: NovoLancamentoConciliacao = {
           descricao: item.lancamento.descricao,
           categoriaId: p.categoriaId,
           centroCustoTipo: p.centroCustoTipo,
           propertyId: p.centroCustoTipo === "EMPREENDIMENTO" ? p.propertyId : null,
           uhId: p.centroCustoTipo === "UNIDADE" ? p.uhId : null,
-          dataVencimento: item.lancamento.dataVencimento,
-          recorrente: false,
+          dataVencimento: p.repetir.habilitado ? p.repetir.primeiroVencimento : item.lancamento.dataVencimento,
+          recorrente: p.repetir.habilitado,
+          recorrenciaFrequencia: p.repetir.frequencia,
+          recorrenciaQtde: p.repetir.habilitado && p.repetir.qtdeTipo === "numero" ? p.repetir.qtdeNumero : null,
+          contaBancariaId: p.repetir.contaBancariaId || null,
+          formaPagamento: p.repetir.formaPagamento || null,
+          observacoes: p.repetir.observacoes || null,
         };
         return { lancamentoId: item.lancamento.id, novo };
       });
@@ -526,6 +555,13 @@ export function ConciliacoesView() {
                 onAlternar={(v) => alternarNoFiltro(filtroCentrosCusto, setFiltroCentrosCusto, v)}
                 onLimpar={() => setFiltroCentrosCusto(new Set())}
               />
+
+              {/* Recorrência (pedido do Felipe, 06/08/2026): só um símbolo
+                  por linha (ver ConciliacaoCardCompacto.tsx), sem filtro —
+                  o cabeçalho é só o rótulo, centralizado sobre o ícone. */}
+              <span className="text-center" title="Recorrência">
+                Rec.
+              </span>
 
               <button type="button" onClick={() => alternarSort("valor")} className="flex items-center gap-0.5 hover:text-gray-600 justify-end whitespace-nowrap">
                 Valor {sortField === "valor" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}

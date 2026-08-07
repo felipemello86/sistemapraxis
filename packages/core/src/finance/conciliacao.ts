@@ -12,6 +12,7 @@ import { Prisma } from "../../generated";
 import { limitesDoMes, projetarDataNoMes, ocorreNoMes, calcularFimRecorrencia } from "./mes";
 import { tokensSignificativos } from "./texto";
 import { sugerirCategoriasEmLote, type SugestaoCategoria } from "./sugestao-categoria";
+import { sugerirRecorrenciaEmLote, type SugestaoRecorrencia } from "./sugestao-recorrencia";
 
 function diffDias(a: string, b: string): number {
   const [a1, a2, a3] = a.split("-").map(Number);
@@ -193,6 +194,18 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
     }));
   const sugestoesCategoria = await sugerirCategoriasEmLote(tenantId, semCategoria);
 
+  // Sugestão de Recorrência (pedido do Felipe, 06/08/2026: "use a
+  // inteligência do sistema e o backup do conta azul para pré-configurar a
+  // recorrência (...) isso vai me poupar muito trabalho") — pré-preenche o
+  // popup "Repetir Lançamento" de CADA pendente (não só quem ainda não tem
+  // categoria, diferente da sugestão de categoria acima) combinando padrão
+  // ao vivo no histórico + tabela FinanceRegraRecorrencia (seedada do Conta
+  // Azul) — ver sugestao-recorrencia.ts.
+  const sugestoesRecorrencia = await sugerirRecorrenciaEmLote(
+    tenantId,
+    pendentes.map((p) => ({ id: p.id, descricao: p.descricao, fornecedor: p.fornecedor }))
+  );
+
   return pendentes.map((real) => {
     const m = (real.dataCompetencia || real.dataVencimento).slice(0, 7);
     const fulfilled = fulfilledPorMes.get(m) ?? new Map();
@@ -203,8 +216,9 @@ export async function listarPendentesDeConciliacao(tenantId: string, mes?: strin
       .sort((a, b) => b.confianca - a.confianca);
 
     const categoriaSugerida: SugestaoCategoria | null = sugestoesCategoria.get(real.id) ?? null;
+    const recorrenciaSugerida: SugestaoRecorrencia | null = sugestoesRecorrencia.get(real.id) ?? null;
 
-    return { lancamento: real, sugestoes: candidatos, melhorSugestao: candidatos[0] ?? null, categoriaSugerida };
+    return { lancamento: real, sugestoes: candidatos, melhorSugestao: candidatos[0] ?? null, categoriaSugerida, recorrenciaSugerida };
   });
 }
 

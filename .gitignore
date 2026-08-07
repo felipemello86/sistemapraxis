@@ -26,6 +26,7 @@ packages/core/generated_verify6/
 packages/core/generated_verify7/
 packages/core/generated_verify8/
 packages/core/generated_verify9/
+packages/core/generated_verify10/
 packages/core/prisma/schema.verify.prisma
 packages/core/prisma/schema.verify2.prisma
 packages/core/prisma/schema.verify3.prisma
@@ -35,6 +36,7 @@ packages/core/prisma/schema.verify6.prisma
 packages/core/prisma/schema.verify7.prisma
 packages/core/prisma/schema.verify8.prisma
 packages/core/prisma/schema.verify9.prisma
+packages/core/prisma/schema.verify10.prisma
 packages/core/check_old_tmp.js
 packages/core/apply_mig3_tmp.js
 packages/core/*_tmp.js

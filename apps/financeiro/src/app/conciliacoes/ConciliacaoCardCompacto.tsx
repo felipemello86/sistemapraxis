@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
-import { ChevronDown, ChevronUp, ArrowRight, Layers } from "lucide-react";
+import { ChevronDown, ChevronUp, ArrowRight, Layers, Repeat } from "lucide-react";
 import { GRID_COLUNAS } from "./gridColunas";
 import { SeletorCategoriaPopup } from "@/components/SeletorCategoriaPopup";
 import { SeletorCentroCustoPopup } from "@/components/SeletorCentroCustoPopup";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
-import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
+import { RepetirLancamentoModal, resumoRepeticao, type ContaParaSelect } from "@/components/RepetirLancamentoModal";
 import { ConciliacaoDetalhe, type ItemPendente, pareceParcelado, valorParcelaPadrao } from "./ConciliacaoDetalhe";
 import type { PropostaLote } from "./ConciliacoesView";
 
@@ -57,6 +57,7 @@ export function ConciliacaoCardCompacto({
   const [expandido, setExpandido] = useState(false);
   const [popupCategoria, setPopupCategoria] = useState(false);
   const [popupCentroCusto, setPopupCentroCusto] = useState(false);
+  const [popupRecorrencia, setPopupRecorrencia] = useState(false);
   // Valor "de verdade" quando é uma compra parcelada (pedido do Felipe,
   // 06/08/2026: primeiro "ainda continua mostrando o valor total [na
   // linha-resumo]", depois "o valor fica o total, quando abre o detalhe,
@@ -80,6 +81,12 @@ export function ConciliacaoCardCompacto({
   // resolvida no card compacto — falta o nº de parcelas, que só dá pra
   // informar no editor completo (ver pareceParcelado em ConciliacaoDetalhe.tsx).
   const precisaAbrirParaParcelar = proposta.modo === "novo" && pareceParcelado(item.lancamento.descricao);
+  // Recorrência (pedido do Felipe, 06/08/2026: "adicione uma coluna de
+  // Recorrência (...) basta um símbolo em cada linha (...) ao clicar no
+  // símbolo, abre-se popup pra editar"). Só é EDITÁVEL no modo "novo" (vira
+  // a recorrência do previsto novo criado ao conciliar); no modo "previsto"
+  // a recorrência já pertence ao previsto casado — mostra só-leitura.
+  const previstoCasado = proposta.modo === "previsto" ? item.sugestoes.find((s) => s.id === proposta.previstoId) : null;
 
   const resumoCentroCusto =
     proposta.centroCustoTipo === "ADMINISTRACAO"
@@ -149,6 +156,23 @@ export function ConciliacaoCardCompacto({
               </button>
             ) : (
               <span className="text-xs text-gray-300">—</span>
+            )}
+            {proposta.modo === "novo" ? (
+              <button
+                type="button"
+                onClick={() => setPopupRecorrencia(true)}
+                title={resumoRepeticao(proposta.repetir)}
+                className={`flex justify-center ${proposta.repetir.habilitado ? "text-blue-700" : "text-gray-300 hover:text-gray-500"}`}
+              >
+                <Repeat className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <span
+                className={`flex justify-center ${previstoCasado?.recorrente ? "text-blue-400" : "text-gray-200"}`}
+                title={previstoCasado?.recorrente ? "Recorrência já definida no lançamento previsto vinculado" : "Sem recorrência"}
+              >
+                <Repeat className="w-3.5 h-3.5" />
+              </span>
             )}
             <span className={`text-sm font-semibold text-right whitespace-nowrap ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>
               {formatBRL(valorParcelaExibido ?? item.lancamento.valor)}
@@ -229,6 +253,13 @@ export function ConciliacaoCardCompacto({
         empreendimentos={empreendimentos}
         unidades={unidades}
         onChange={(v) => onChangeProposta({ centroCustoTipo: v.centroCustoTipo, propertyId: v.empreendimentoId, uhId: v.unidadeId })}
+      />
+      <RepetirLancamentoModal
+        open={popupRecorrencia}
+        onClose={() => setPopupRecorrencia(false)}
+        value={proposta.repetir}
+        onChange={(v) => onChangeProposta({ repetir: v })}
+        contas={contas}
       />
     </div>
   );

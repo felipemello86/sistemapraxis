@@ -79,11 +79,20 @@ type LancamentoPendente = {
 // lançamento ainda não tem categoriaId próprio.
 type CategoriaSugerida = { categoriaId: string; confianca: number } | null;
 
+// Sugestão automática de RECORRÊNCIA (pedido do Felipe, 06/08/2026: "use a
+// inteligência do sistema e o backup do conta azul para pré-configurar a
+// recorrência (...) isso vai me poupar muito trabalho") — combina padrão
+// detectado ao vivo no histórico com a tabela FinanceRegraRecorrencia
+// (seedada do Conta Azul, ver sugestao-recorrencia.ts). Só pré-preenche o
+// popup "Repetir Lançamento"; nunca decide sozinha.
+export type RecorrenciaSugerida = { recorrente: boolean; frequencia: "MENSAL" | "ANUAL"; origem: "historico" | "conta_azul" | "ambos"; confianca: number } | null;
+
 export type ItemPendente = {
   lancamento: LancamentoPendente;
   sugestoes: Previsto[];
   melhorSugestao: Previsto | null;
   categoriaSugerida: CategoriaSugerida;
+  recorrenciaSugerida: RecorrenciaSugerida;
 };
 
 // Confiança mínima pra pré-preencher a Categoria sozinha sem o usuário
@@ -139,6 +148,23 @@ export function valorParcelaPadrao(item: ItemPendente): number | null {
   return temMetadataDeParcelamento(item) ? arredondarCentavos(valorNum) : arredondarCentavos(valorNum / totalParcelas);
 }
 
+/** Config inicial do popup "Repetir Lançamento" pra um item — pedido do
+ * Felipe, 06/08/2026: "use a inteligência do sistema e o backup do conta
+ * azul para pré-configurar a recorrência (...) isso vai me poupar muito
+ * trabalho". Começa do padrão (desligado) e liga sozinho quando
+ * item.recorrenciaSugerida indica recorrência (ver sugestao-recorrencia.ts,
+ * @praxis/core) — usado tanto aqui (editor completo) quanto no card
+ * compacto/coluna Recorrência (ConciliacaoCardCompacto.tsx,
+ * ConciliacoesView.tsx), pra ficar consistente em qualquer lugar que essa
+ * proposta apareça. */
+export function repetirInicial(item: ItemPendente): RepetirConfig {
+  const base = repetirConfigPadrao(item.lancamento.dataVencimento);
+  if (item.recorrenciaSugerida?.recorrente) {
+    return { ...base, habilitado: true, frequencia: item.recorrenciaSugerida.frequencia };
+  }
+  return base;
+}
+
 const NOMES_DIA = ["Domingo", "Segunda-Feira", "Terça-Feira", "Quarta-Feira", "Quinta-Feira", "Sexta-Feira", "Sábado"];
 
 function formatBRL(v: string | number): string {
@@ -191,7 +217,7 @@ export function ConciliacaoDetalhe({
   const [centroCustoTipo, setCentroCustoTipo] = useState<"ADMINISTRACAO" | "EMPREENDIMENTO" | "UNIDADE">("ADMINISTRACAO");
   const [propertyId, setPropertyId] = useState<string | null>(null);
   const [uhId, setUhId] = useState<string | null>(null);
-  const [repetir, setRepetir] = useState<RepetirConfig>(repetirConfigPadrao(item.lancamento.dataVencimento));
+  const [repetir, setRepetir] = useState<RepetirConfig>(repetirInicial(item));
   const [parcelado, setParcelado] = useState(pareceParcelado(item.lancamento.descricao) || temMetadataDeParcelamento(item));
   const [totalParcelas, setTotalParcelas] = useState(item.lancamento.pluggyParcelaTotal ?? 2);
   const [parcelaAtual, setParcelaAtual] = useState(item.lancamento.pluggyParcelaAtual ?? 1);
@@ -215,7 +241,7 @@ export function ConciliacaoDetalhe({
     setCentroCustoTipo("ADMINISTRACAO");
     setPropertyId(null);
     setUhId(null);
-    setRepetir(repetirConfigPadrao(item.lancamento.dataVencimento));
+    setRepetir(repetirInicial(item));
     setParcelado(pareceParcelado(item.lancamento.descricao) || temMetadataDeParcelamento(item));
     setTotalParcelas(item.lancamento.pluggyParcelaTotal ?? 2);
     setParcelaAtual(item.lancamento.pluggyParcelaAtual ?? 1);

@@ -127,6 +127,7 @@ model Tenant {
   financeOrcamentos       FinanceOrcamento[]
   financeContasConectadas FinanceContaConectada[]
   financeContasBancarias  FinanceContaBancaria[]
+  financeRegrasRecorrencia FinanceRegraRecorrencia[]
 
   // Vendas (CRM do tenant) — pedido do Felipe (06/08/2026), ver bloco de
   // models acima (perto de PipelineStage/DemoLead do admin).
@@ -3392,6 +3393,42 @@ model FinanceLancamento {
   @@index([tenantId, uhId])
   @@index([tenantId, conciliadoComId])
   @@index([tenantId, conciliadoMesReferencia])
+}
+
+// Sinal de recorrência importado do Conta Azul (pedido do Felipe,
+// 06/08/2026: "use a inteligência do sistema e o backup do conta azul para
+// pré-configurar a recorrência (...) quero um setup inicial de recorrências
+// fiel ao q eu tinha no conta azul"). NÃO é por lançamento — é por GRUPO de
+// descrição (mesma chave de agrupamento usada em sugestao-categoria.ts:
+// normalizarTexto(descrição)|normalizarTexto(fornecedor)), porque o dado do
+// Conta Azul não pode virar `recorrente=true` direto num FinanceLancamento
+// já existente: `recorrente` tem um significado especial (dre.ts projeta
+// aquela linha virtualmente em TODO mês futuro — ver comentário acima,
+// "Recorrência: OPOSTO do parcelamento"), então setá-lo num lançamento
+// PLUGGY (real, já materializado) duplicaria a despesa/receita pra sempre.
+// Esta tabela é só um LOOKUP consultado por sugestao-recorrencia.ts na hora
+// de pré-preencher o popup "Repetir Lançamento" de um lançamento pendente
+// ainda não conciliado — o `recorrente=true` de verdade só nasce quando o
+// usuário confirma e o previsto novo é criado (criarEConciliar).
+//
+// Populada uma única vez pelo script scripts/importar-recorrencia-conta-azul.ts
+// (mesmo algoritmo de casamento data+valor+texto do
+// importar-categorizacao-conta-azul.ts) — o .xls em si nunca é lido em
+// runtime/produção (é dado sensível, gitignored, só existe localmente).
+model FinanceRegraRecorrencia {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  chave      String // normalizarTexto(descrição)|normalizarTexto(fornecedor) — mesmo agrupamento de sugestao-categoria.ts
+  recorrente Boolean
+  frequencia String  @default("MENSAL") // MENSAL | ANUAL — só relevante se recorrente=true
+  origem     String // "CONTA_AZUL" por enquanto (sinal ao vivo do próprio histórico não precisa de tabela, é recalculado na hora — ver sugestao-recorrencia.ts)
+  amostras   Int     @default(1) // quantas linhas do Conta Azul confirmaram esse padrão — só informativo/debug
+
+  criadoEm DateTime @default(now())
+
+  @@unique([tenantId, chave])
 }
 
 // Orçamento (linha de base) configurável tanto por categoria individual
