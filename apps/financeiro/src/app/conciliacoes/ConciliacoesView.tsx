@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Link2, Loader2, ArrowUp, ArrowDown } from "lucide-react";
+import { Link2, Loader2, ArrowUp, ArrowDown, Search } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { SeletorMes } from "@/components/SeletorMes";
 import type { Empreendimento, Unidade } from "@/components/SeletorCentroCusto";
 import type { ContaParaSelect } from "@/components/RepetirLancamentoModal";
-import type { NovoLancamentoConciliacao } from "@praxis/core";
+import { normalizarTexto, type NovoLancamentoConciliacao } from "@praxis/core";
 import { type ItemPendente, pareceParcelado } from "./ConciliacaoDetalhe";
 import { ConciliacaoCardCompacto } from "./ConciliacaoCardCompacto";
 import { GRID_COLUNAS } from "./gridColunas";
@@ -86,11 +86,14 @@ function propostaInicial(item: ItemPendente): PropostaLote {
 }
 
 // Colunas organizáveis (pedido do Felipe, 06/08/2026): "reorganize como
-// colunas organizáveis: Lançamento / Vencimento / Conta / Descrição / Valor".
+// colunas organizáveis: Lançamento / Vencimento / Conta / Descrição / Valor",
+// depois "colocar categoria e centro de custo como colunas também" e
+// "descrição como filtro de texto" (Descrição saiu do conjunto ordenável e
+// virou filtro, como o cabeçalho "Descrição" de LancamentosView.tsx).
 // "Lançamento" = Data de Competência (com fallback pro Vencimento quando não
 // há competência informada), mesma convenção da coluna "Data" de
 // LancamentosView.tsx.
-type SortField = "lancamento" | "vencimento" | "conta" | "descricao" | "valor";
+type SortField = "lancamento" | "vencimento" | "conta" | "categoria" | "centroCusto" | "valor";
 
 function propostaPronta(item: ItemPendente, p: PropostaLote): boolean {
   if (p.modo === "previsto") return Boolean(p.previstoId);
@@ -114,6 +117,8 @@ export function ConciliacoesView() {
   const [resultado, setResultado] = useState("");
   const [sortField, setSortField] = useState<SortField>("vencimento");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [filtroDescricao, setFiltroDescricao] = useState("");
+  const [descPopoverAberto, setDescPopoverAberto] = useState(false);
 
   function alternarSort(campo: SortField) {
     if (sortField === campo) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -163,9 +168,29 @@ export function ConciliacoesView() {
   }
 
   const contaPorId = useMemo(() => new Map(contas.map((c) => [c.id, c.nome])), [contas]);
+  const categoriaPorId = useMemo(() => new Map(categorias.map((c) => [c.id, c.nome])), [categorias]);
+
+  // Mesma lógica do resumoCentroCusto de ConciliacaoCardCompacto.tsx —
+  // duplicada aqui só pra viabilizar a ordenação pela coluna "Centro de
+  // Custo" sem precisar levantar estado do card pro pai.
+  function resumoCentroCustoDe(p: PropostaLote): string {
+    if (p.centroCustoTipo === "ADMINISTRACAO") return "Administração";
+    if (p.centroCustoTipo === "EMPREENDIMENTO") return empreendimentos.find((e) => e.id === p.propertyId)?.nome || "";
+    return unidades.find((u) => u.id === p.uhId)?.nome || "";
+  }
+
+  // Descrição virou filtro de texto em vez de coluna ordenável (pedido do
+  // Felipe, 06/08/2026) — busca acento/maiúscula-insensível via
+  // normalizarTexto (mesma normalização usada na sugestão de categoria).
+  const pendentesFiltrados = useMemo(() => {
+    if (!filtroDescricao.trim()) return pendentes;
+    const alvo = normalizarTexto(filtroDescricao);
+    return pendentes.filter((item) => normalizarTexto(item.lancamento.descricao).includes(alvo));
+  }, [pendentes, filtroDescricao]);
 
   const pendentesOrdenados = useMemo(() => {
     function valorOrdenacao(item: ItemPendente): string | number {
+      const p = propostas.get(item.lancamento.id);
       switch (sortField) {
         case "lancamento":
           return item.lancamento.dataCompetencia || item.lancamento.dataVencimento;
@@ -173,13 +198,15 @@ export function ConciliacoesView() {
           return item.lancamento.dataVencimento;
         case "conta":
           return (item.lancamento.contaBancariaId && contaPorId.get(item.lancamento.contaBancariaId)) || "";
-        case "descricao":
-          return item.lancamento.descricao;
+        case "categoria":
+          return p && p.modo === "novo" ? categoriaPorId.get(p.categoriaId) || "" : "";
+        case "centroCusto":
+          return p && p.modo === "novo" ? resumoCentroCustoDe(p) : "";
         case "valor":
           return Number(item.lancamento.valor);
       }
     }
-    const copia = [...pendentes];
+    const copia = [...pendentesFiltrados];
     copia.sort((a, b) => {
       const va = valorOrdenacao(a);
       const vb = valorOrdenacao(b);
@@ -187,7 +214,8 @@ export function ConciliacoesView() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copia;
-  }, [pendentes, sortField, sortDir, contaPorId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendentesFiltrados, sortField, sortDir, contaPorId, categoriaPorId, propostas, empreendimentos, unidades]);
 
   const selecionados = useMemo(
     () => pendentes.filter((item) => {
@@ -273,36 +301,83 @@ export function ConciliacoesView() {
         <p className="text-gray-400 text-sm">Nenhum lançamento pendente de conciliação neste mês. 🎉</p>
       ) : (
         <div className="space-y-1.5">
-          {/* Cabeçalho de colunas ordenáveis (pedido do Felipe, 06/08/2026):
-              "reorganize como colunas organizáveis: Lançamento / Vencimento /
-              Conta / Descrição / Valor". Mesmo GRID_COLUNAS dos cards, pra
-              ficar tudo alinhado; o espaçador de 20px no início corresponde
-              ao checkbox (w-4 + gap-2) de cada card. */}
+          {/* Cabeçalho de colunas ordenáveis (pedido do Felipe, 06/08/2026,
+              em duas rodadas: "reorganize como colunas organizáveis: Lanç. /
+              Venc. / Conta / Descrição / Valor" e depois "colocar categoria
+              e centro de custo como colunas também" + "abreviar Lançamento
+              (Lanc) e Vencimento (Venc.)" + "Descrição como filtro de
+              texto"). Mesmo GRID_COLUNAS dos cards, pra ficar tudo alinhado;
+              o espaçador de 20px no início corresponde ao checkbox (w-4 +
+              gap-2) de cada card. */}
           <div className="flex items-center gap-2 px-3 text-[11px] text-gray-400 font-medium select-none">
             <div className="w-4 flex-shrink-0" />
-            <div className={`flex-1 min-w-0 grid ${GRID_COLUNAS} gap-x-3`}>
+            <div className={`flex-1 min-w-0 grid ${GRID_COLUNAS} gap-x-3 items-center`}>
               {(
                 [
-                  ["lancamento", "Lançamento"],
-                  ["vencimento", "Vencimento"],
+                  ["lancamento", "Lanc."],
+                  ["vencimento", "Venc."],
                   ["conta", "Conta"],
-                  ["descricao", "Descrição"],
-                  ["valor", "Valor"],
                 ] as [SortField, string][]
               ).map(([campo, rotulo]) => (
-                <button
-                  key={campo}
-                  type="button"
-                  onClick={() => alternarSort(campo)}
-                  className={`flex items-center gap-0.5 hover:text-gray-600 ${campo === "valor" ? "justify-end" : ""}`}
-                >
+                <button key={campo} type="button" onClick={() => alternarSort(campo)} className="flex items-center gap-0.5 hover:text-gray-600">
                   {rotulo}
                   {sortField === campo && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                 </button>
               ))}
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDescPopoverAberto((v) => !v)}
+                  className={`flex items-center gap-1 hover:text-gray-600 ${filtroDescricao ? "text-blue-700" : ""}`}
+                >
+                  Descrição
+                  {filtroDescricao && <Search className="w-3 h-3" />}
+                </button>
+                {descPopoverAberto && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDescPopoverAberto(false);
+                      }}
+                    />
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56 normal-case font-normal" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        autoFocus
+                        className="input text-xs py-1.5"
+                        placeholder="Buscar descrição..."
+                        value={filtroDescricao}
+                        onChange={(e) => setFiltroDescricao(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {(
+                [
+                  ["categoria", "Categoria"],
+                  ["centroCusto", "Centro de Custo"],
+                ] as [SortField, string][]
+              ).map(([campo, rotulo]) => (
+                <button key={campo} type="button" onClick={() => alternarSort(campo)} className="flex items-center gap-0.5 hover:text-gray-600 truncate">
+                  <span className="truncate">{rotulo}</span>
+                  {sortField === campo && (sortDir === "asc" ? <ArrowUp className="w-3 h-3 flex-shrink-0" /> : <ArrowDown className="w-3 h-3 flex-shrink-0" />)}
+                </button>
+              ))}
+
+              <button type="button" onClick={() => alternarSort("valor")} className="flex items-center gap-0.5 hover:text-gray-600 justify-end">
+                Valor {sortField === "valor" && (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+              </button>
               <span />
             </div>
           </div>
+
+          {pendentesOrdenados.length === 0 && (
+            <p className="text-gray-400 text-sm px-3 py-2">Nenhum lançamento encontrado com esse filtro.</p>
+          )}
 
           {pendentesOrdenados.map((item) => {
             const proposta = propostas.get(item.lancamento.id);

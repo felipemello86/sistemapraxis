@@ -100,10 +100,12 @@ export function ConciliacaoCardCompacto({
         />
 
         <div className="flex-1 min-w-0">
-          {/* Lançamento do banco — colunas organizáveis (pedido do Felipe,
-              06/08/2026): Lançamento / Vencimento / Conta / Descrição / Valor,
+          {/* Colunas organizáveis (pedido do Felipe, 06/08/2026): Lanc. /
+              Venc. / Conta / Descrição / Categoria / Centro de Custo / Valor,
               alinhadas com o cabeçalho ordenável em ConciliacoesView.tsx via
-              o mesmo GRID_COLUNAS. */}
+              o mesmo GRID_COLUNAS. Categoria/Centro de Custo só são
+              editáveis (e mostram algo além de "—") no modo "novo" — no modo
+              "previsto" esses dados já vêm do lançamento previsto casado. */}
           <div className={`grid ${GRID_COLUNAS} gap-x-3 items-center`}>
             <span className="text-xs text-gray-700 flex-shrink-0" title="Data de Competência (quando o lançamento aconteceu de fato)">
               {formatDataBR(item.lancamento.dataCompetencia || item.lancamento.dataVencimento)}
@@ -115,6 +117,30 @@ export function ConciliacaoCardCompacto({
               {contaNome ?? "—"}
             </span>
             <span className="text-sm text-gray-800 truncate">{item.lancamento.descricao}</span>
+            {proposta.modo === "novo" ? (
+              <button
+                type="button"
+                onClick={() => setPopupCategoria(true)}
+                title={categoriaEscolhida?.nome}
+                className={`text-xs text-left truncate font-medium hover:underline ${categoriaEscolhida ? "text-blue-700" : "text-amber-600"}`}
+              >
+                {categoriaEscolhida?.nome || "Escolher categoria"}
+              </button>
+            ) : (
+              <span className="text-xs text-gray-300">—</span>
+            )}
+            {proposta.modo === "novo" ? (
+              <button
+                type="button"
+                onClick={() => setPopupCentroCusto(true)}
+                title={resumoCentroCusto}
+                className="text-xs text-left truncate text-gray-600 hover:underline"
+              >
+                {resumoCentroCusto}
+              </button>
+            ) : (
+              <span className="text-xs text-gray-300">—</span>
+            )}
             <span className={`text-sm font-semibold text-right ${valorNum >= 0 ? "text-green-700" : "text-red-600"}`}>{formatBRL(item.lancamento.valor)}</span>
             <button
               type="button"
@@ -126,47 +152,36 @@ export function ConciliacaoCardCompacto({
             </button>
           </div>
 
-          {/* Proposta — alinhada sob a coluna "Lançamento" (deslocada pela
-              largura do checkbox, que não faz parte do grid de colunas). */}
-          <div className="flex items-center gap-1.5 mt-0.5 text-xs">
-            <ArrowRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
-            {item.sugestoes.length > 0 || proposta.modo === "previsto" ? (
-              <select
-                value={proposta.modo === "previsto" ? proposta.previstoId : "novo"}
-                onChange={(e) => selecionarPrevistoOuNovo(e.target.value)}
-                className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[220px] truncate"
-              >
-                <option value="novo">+ Novo lançamento...</option>
-                {item.sugestoes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.confianca}% · {s.descricao} ({formatBRL(s.valor)})
-                  </option>
-                ))}
-              </select>
-            ) : null}
+          {/* Linha extra — só aparece quando há algo que não cabe nas
+              colunas: selecionar/trocar o previsto casado, ou o aviso de
+              compra parcelada. Categoria/centro de custo já viraram colunas
+              acima, então essa linha fica vazia (e escondida) na maioria dos
+              cards "novo lançamento" já prontos. */}
+          {(item.sugestoes.length > 0 || proposta.modo === "previsto" || precisaAbrirParaParcelar) && (
+            <div className="flex items-center gap-1.5 mt-0.5 text-xs">
+              <ArrowRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+              {item.sugestoes.length > 0 || proposta.modo === "previsto" ? (
+                <select
+                  value={proposta.modo === "previsto" ? proposta.previstoId : "novo"}
+                  onChange={(e) => selecionarPrevistoOuNovo(e.target.value)}
+                  className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white max-w-[220px] truncate"
+                >
+                  <option value="novo">+ Novo lançamento...</option>
+                  {item.sugestoes.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.confianca}% · {s.descricao} ({formatBRL(s.valor)})
+                    </option>
+                  ))}
+                </select>
+              ) : null}
 
-            {precisaAbrirParaParcelar ? (
-              <button type="button" onClick={() => setExpandido(true)} className="flex items-center gap-1 text-amber-600 font-medium hover:underline">
-                <Layers className="w-3 h-3" /> Compra parcelada — abrir detalhe pra configurar
-              </button>
-            ) : (
-              proposta.modo === "novo" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setPopupCategoria(true)}
-                    className={`truncate font-medium hover:underline ${categoriaEscolhida ? "text-blue-700" : "text-amber-600"}`}
-                  >
-                    {categoriaEscolhida?.nome || "Escolher categoria"}
-                  </button>
-                  <span className="text-gray-300">·</span>
-                  <button type="button" onClick={() => setPopupCentroCusto(true)} className="text-gray-500 hover:underline truncate">
-                    {resumoCentroCusto}
-                  </button>
-                </>
-              )
-            )}
-          </div>
+              {precisaAbrirParaParcelar && (
+                <button type="button" onClick={() => setExpandido(true)} className="flex items-center gap-1 text-amber-600 font-medium hover:underline">
+                  <Layers className="w-3 h-3" /> Compra parcelada — abrir detalhe pra configurar
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
